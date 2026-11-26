@@ -544,7 +544,20 @@ export class Sr260 extends Remote {
         }
     }
 
+    /** The rows, then the text colour when one is set: every path that pushes rows (setup, wake, /set) re-applies it. */
+    override async sendRoomInfo(room: string, source: string): Promise<void> {
+        await super.sendRoomInfo(room, source);
+        const color = this.setting<number>("text_color_byte");
+        if (typeof color === "number") await this.set(`c4.zr.tc ${hex2(color)}`);
+    }
+
     override async setValue(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {
+        if (key === "text_color") {
+            const byte = rgb332(value);
+            this.saveSetting("text_color_byte", byte);
+            if (byte !== undefined) await this.set(`c4.zr.tc ${hex2(byte)}`);
+            return {text_color: byte === undefined ? "" : String(value)};
+        }
         if (key === "show_message") {
             const obj = value && typeof value === "object" ? (value as Record<string, unknown>) : {message: value};
             await this.showMessage(String(obj.message ?? ""), obj.icon === undefined ? undefined : Number(obj.icon), Number(obj.seconds ?? 0) || 0);
@@ -552,4 +565,25 @@ export class Sr260 extends Remote {
         }
         return super.setValue(key, value, meta);
     }
+}
+/**
+ * The SR260's text colour (c4.zr.tc) is one RGB332 byte: red bits 7-5, green
+ * 4-2, blue 1-0 (256 colours; it also sets the text brightness). Takes
+ * "#rrggbb", [r, g, b], {r, g, b} or the byte itself; empty leaves the
+ * remote's own colour.
+ */
+export function rgb332(value: unknown): number | undefined {
+    let rgb: number[] | undefined;
+    if (typeof value === "number") return Math.max(0, Math.min(255, Math.round(value)));
+    if (typeof value === "string" && /^#?[0-9a-f]{6}$/i.test(value.trim())) {
+        const h = value.trim().replace("#", "");
+        rgb = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
+    } else if (Array.isArray(value) && value.length === 3) rgb = value.map(Number);
+    else if (value && typeof value === "object") {
+        const v = value as {r?: unknown; g?: unknown; b?: unknown};
+        rgb = [v.r, v.g, v.b].map(Number);
+    }
+    if (!rgb || rgb.some((c) => !Number.isFinite(c))) return undefined;
+    const [r, g, b] = rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))));
+    return (r & 0xe0) | ((g & 0xe0) >> 3) | (b >> 6);
 }

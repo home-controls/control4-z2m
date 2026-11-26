@@ -137,7 +137,7 @@ that isn't listed, follow `docs/TESTING.md`: it says what to do and what to send
 | C4-KP2-Z | Keypad | as the KP3-Z, two buttons. **Untested** |
 | C4-Z2IO-ZP | Contact / relay I/O | io_mode, relays, pulses, contacts, temperatures, humidity |
 | C4-SR250B (C4-SR250) | LCD remote | buttons, battery, room name / active source on the LCD, list menus, display messages |
-| C4-SR260 | LCD remote | as SR250 plus glyphs and `show_message` |
+| C4-SR260 | LCD remote | as SR250 plus glyphs, `show_message` and `text_color` |
 
 **Low-wattage loads on a DIM1-Z.** The DIM1-Z is rated for loads of 25 W and
 up; a lighter LED load can flicker at the bottom of the range or fail to start

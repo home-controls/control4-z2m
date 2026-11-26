@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
+import {rgb332} from "../src/devices/remote";
 import {Rig, tick} from "./rig";
 
 let rig: Rig;
@@ -191,6 +192,26 @@ describe("LCD text length", () => {
         expect(frames[0].text).toMatch(/^0s[0-9a-f]{4} c4\.ln\.ri "The Upstairs Family Room" "A very long/);
         // The full text is still what Zigbee2MQTT shows.
         expect(rig.store.get(R250, "active_source")).toBe(long);
+    });
+});
+
+describe("SR260 text colour", () => {
+    it("maps #rrggbb to RGB332 and sends c4.zr.tc", async () => {
+        expect(rgb332("#ff0000")).toBe(0xe0);
+        expect(rgb332("#00ff00")).toBe(0x1c);
+        expect(rgb332([0, 0, 255])).toBe(0x03);
+        expect(rgb332({r: 176, g: 208, b: 224})).toBe(0xbb);
+        expect(rgb332("")).toBeUndefined();
+        const from = rig.transport.sent.length;
+        await set(R260, "text_color", "#ff0000");
+        expect(rig.cmds(from)).toEqual(["c4.zr.tc e0"]);
+    });
+
+    it("re-applies the colour after the rows", async () => {
+        await set(R260, "text_color", "#00ff00");
+        const from = rig.transport.sent.length;
+        await set(R260, "room_name", "Den");
+        expect(rig.cmds(from)).toEqual(['c4.ln.ri "Den" ""', "c4.zr.tc 1c"]);
     });
 });
 

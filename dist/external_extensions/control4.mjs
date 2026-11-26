@@ -5782,7 +5782,19 @@ var Sr260 = class extends Remote {
       });
     }
   }
+  /** The rows, then the text colour when one is set: every path that pushes rows (setup, wake, /set) re-applies it. */
+  async sendRoomInfo(room, source) {
+    await super.sendRoomInfo(room, source);
+    const color = this.setting("text_color_byte");
+    if (typeof color === "number") await this.set(`c4.zr.tc ${hex2(color)}`);
+  }
   async setValue(key, value, meta) {
+    if (key === "text_color") {
+      const byte2 = rgb332(value);
+      this.saveSetting("text_color_byte", byte2);
+      if (byte2 !== void 0) await this.set(`c4.zr.tc ${hex2(byte2)}`);
+      return { text_color: byte2 === void 0 ? "" : String(value) };
+    }
     if (key === "show_message") {
       const obj = value && typeof value === "object" ? value : { message: value };
       await this.showMessage(String(obj.message ?? ""), obj.icon === void 0 ? void 0 : Number(obj.icon), Number(obj.seconds ?? 0) || 0);
@@ -5791,6 +5803,21 @@ var Sr260 = class extends Remote {
     return super.setValue(key, value, meta);
   }
 };
+function rgb332(value) {
+  let rgb2;
+  if (typeof value === "number") return Math.max(0, Math.min(255, Math.round(value)));
+  if (typeof value === "string" && /^#?[0-9a-f]{6}$/i.test(value.trim())) {
+    const h = value.trim().replace("#", "");
+    rgb2 = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
+  } else if (Array.isArray(value) && value.length === 3) rgb2 = value.map(Number);
+  else if (value && typeof value === "object") {
+    const v = value;
+    rgb2 = [v.r, v.g, v.b].map(Number);
+  }
+  if (!rgb2 || rgb2.some((c) => !Number.isFinite(c))) return void 0;
+  const [r, g, b] = rgb2.map((c) => Math.max(0, Math.min(255, Math.round(c))));
+  return r & 224 | (g & 224) >> 3 | b >> 6;
+}
 
 // src/devices/rosw120.ts
 var ROSW_READBACK_DELAY = 1e3;
