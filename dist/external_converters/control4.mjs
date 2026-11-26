@@ -50,13 +50,20 @@ var MODELS = [
     description: "Configurable keypad"
   },
   {
-    // Not yet seen on a real one: the strings it checks in with are a guess from the
-    // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
-    // unsupported, with its check-in logged, until it is added here.
+    // C4-KD120 is what one checks in as (bharat's converter, five units on 5.1.1).
+    // C4-KD277 is in that converter too, unseen; C4-KD240 is a guess from its part
+    // number. One that differs stays unsupported, with its check-in logged.
     family: "kd120",
     model: "C4-KD120",
-    aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+    aliases: ["C4-KD120", "C4-KD277", "C4-KD240"],
     description: "Keypad dimmer (untested)"
+  },
+  {
+    // Forward-phase dimmer: bharat's converter runs it on the APD120's definition.
+    family: "apd120",
+    model: "C4-FPD120",
+    aliases: ["C4-FPD120"],
+    description: "Forward phase dimmer (as the APD120; untested)"
   },
   {
     family: "kp3",
@@ -90,6 +97,7 @@ var FAN_BUTTONS = {
   5: "off"
 };
 var KC_POSITIONS = 7;
+var AUX_BUTTONS = { 7: "aux_top", 8: "aux_bottom" };
 var KC_LED_SLOTS = 12;
 var KC_NUMBERING_OPTION = "button_numbering";
 var KC_LAYOUT_OPTION = "button_layout";
@@ -674,7 +682,7 @@ function kdExposes(layout) {
     e.light_brightness(),
     ...transitions(),
     ...tvParams(APD120_TV_PARAMS),
-    ...kcKeypadExposes(layout),
+    ...kcKeypadExposes(layout, names(AUX_BUTTONS)),
     ...wires.map(
       (w) => e.enum(`button_position_${w + 1}_behaviour`, ea.STATE_SET, [...BUTTON_BEHAVIOUR_NAMES]).withLabel(`Position ${w + 1} button behaviour`).withDescription(
         `What the button at position ${w + 1} from the top does to the load: load_on, load_off, toggle, momentary (dims while held, back on release) or event_only (only sends its taps). Factory: toggle`
@@ -685,7 +693,7 @@ function kdExposes(layout) {
     ...gen3Health(true)
   ];
 }
-function kcKeypadExposes(layout) {
+function kcKeypadExposes(layout, extraButtons = []) {
   const wires = layout.wires;
   const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({ length: KC_POSITIONS }, (_, i) => `button_${i + 1}`);
   const leds = [];
@@ -700,7 +708,7 @@ function kcKeypadExposes(layout) {
     for (let slot = 0; slot < KC_LED_SLOTS; slot++) add(slot, `LED ${slot + 1}`);
   }
   return [
-    actions(buttonNames, [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+    actions([...buttonNames, ...extraButtons], [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
     ledBrightness(),
     ledTransition(),
     ...leds,

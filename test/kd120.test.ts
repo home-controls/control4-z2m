@@ -84,6 +84,13 @@ describe("C4-KD120 keypad dimmer", () => {
             expect(rig.last(KD).state).toBeUndefined();
         });
 
+        it("names an auxiliary keypad's presses (wires 07 / 08) apart from its own buttons, and learns no button from them", () => {
+            rig.ascii(KD, "0t0001 sa c4.dmx.cc 07 01");
+            rig.ascii(KD, "0t0002 sa c4.dmx.cc 08 02");
+            expect(rig.actions(KD)).toEqual(["aux_top_single", "aux_bottom_double"]);
+            expect((rig.runtime.get(KD) as Kd120).fittedWires()).toBeUndefined();
+        });
+
         it("shows every position's button behaviour as toggle until read", () => {
             const state = rig.last(KD);
             for (let n = 1; n <= 7; n++) expect(state[`button_position_${n}_behaviour`]).toBe("toggle");
@@ -127,6 +134,19 @@ describe("C4-KD120 keypad dimmer", () => {
     });
 });
 
+describe("C4-FPD120", () => {
+    it("is an APD120 under its own model", async () => {
+        const FPD = "0x000fff00000000d2";
+        rig.add(FPD, GENERIC_MODEL);
+        rig.start();
+        rig.checkin(FPD, "c4:control4_light:C4-FPD120");
+        await tick(10);
+        expect(rig.runtime.get(FPD)?.family).toBe("apd120");
+        expect(rig.devices.get(FPD)?.modelID).toBe("C4-FPD120");
+        expect(buildDefinitions().find((d: {model: string}) => d.model === "C4-FPD120")?.zigbeeModel).toEqual(["C4-FPD120"]);
+    });
+});
+
 describe("C4-KD120 definition", () => {
     it("exposes a light, the keypad, power and each position's behaviour until its buttons are known", () => {
         const props = kdExposes({wires: undefined, numbering: "pairs"}).map((x) => (x as {property?: string; type?: string}).property ?? (x as {type: string}).type);
@@ -139,9 +159,14 @@ describe("C4-KD120 definition", () => {
         expect(props).not.toContain("button_position_3_behaviour");
     });
 
+    it("has actions for an auxiliary keypad", () => {
+        const action = kdExposes({wires: [0, 2], numbering: "pairs"}).find((x) => (x as {property?: string}).property === "action") as {values: string[]};
+        expect(action.values).toEqual(expect.arrayContaining(["button_1_single", "button_2_hold", "aux_top_single", "aux_bottom_double"]));
+    });
+
     it("is built for every alias", () => {
         const def = buildDefinitions().find((d: {model: string}) => d.model === "C4-KD120");
-        expect(def.zigbeeModel).toEqual(["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"]);
+        expect(def.zigbeeModel).toEqual(["C4-KD120", "C4-KD277", "C4-KD240"]);
         expect(def.description).toContain("untested");
     });
 });

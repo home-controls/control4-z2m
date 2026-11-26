@@ -6,7 +6,8 @@ named Control4 devices this project doesn't handle yet. This note covers what ea
 talks, and what adding it takes. It goes with the branch `c4-new-models`, which adds two things:
 
 - **Probe mode.** A device that checks in with a model this build doesn't know stays usable and tells us about itself.
-- **The C4-KD120 keypad dimmer**, built from notes alone and not yet tested on hardware.
+- **The C4-KD120 keypad dimmer**, built from notes alone and not yet tested on hardware, and the **C4-FPD120**
+  forward-phase dimmer as an APD120.
 
 ## Who has what
 
@@ -20,8 +21,8 @@ talks, and what adding it takes. It goes with the branch `c4-new-models`, which 
 
 "Gen3" is the board the APD120, SW120277 and KC120277 share (the `c4.dmx.*` firmware,
 `2026-11-07-kc-apd-sw-capability-map.md`). "Gen1/Gen2" is the LDZ / LSZ / KPZ / DIM1-Z generation (`c4.dm.*`,
-`c4.kp.*`, `2026-11-02-dim1z-capability-map.md`). No check-in string for any model below has been seen, so each
-alias is a guess from the part number until a log shows the real one.
+`c4.kp.*`, `2026-11-02-dim1z-capability-map.md`). The check-in strings and protocol notes come from other
+projects' code (**What other projects found**, below). None of these models has been seen on our own networks.
 
 | Rowch wrote | Part number (best match) | What it is | Talks | Status on this branch | What adding it needs |
 |---|---|---|---|---|---|
@@ -31,18 +32,19 @@ alias is a guess from the part number until a log shows the real one.
 | ZIO | C4-Z2IO-ZP | Contact / relay I/O | `c4.z2x` | Supported, **never tested on hardware** (jtela0 has one too) | A tester, as above |
 | SR250 | C4-SR250B | LCD remote | `c4.ln` / remote | **Supported** | Nothing |
 | (jtela0) SR260 | C4-SR260 | LCD remote | as SR250 | Supported, **never tested on hardware** | A tester |
-| KD120 | C4-KD120-xx / C4-KD277-xx | Keypad dimmer: "an APD120 and a KC120277 in one device" | Gen3, APD firmware line | **Added, untested** (below) | A tester to confirm the check-in string, button wires and LED slots |
-| V-FPD120 | C4-FPD120-xx | Forward-phase dimmer, Control4's replacement for the DIM1-Z | Gen3 most likely | Probe mode | Its check-in and fingerprint. If it answers `c4.dmx`, it is an APD120 alias (forward phase only) |
-| V-SW120 | C4-SW120-xx? (no public datasheet under this number) | 120 V switch | Gen3 most likely | Probe mode | As the FPD120: if `c4.dmx`, an SW120277 alias |
-| V-ROSW120 | C4-V-ROSW120-xx | In-wall duplex receptacle: one always-on outlet, one switched; a repeater | Unknown: Gen3, or the LOZ outlet profile | Probe mode | Its fingerprint decides: `c4.dmx` means an SW120277 with one relay; 0xC25E reports mean the outlet family with one switched outlet |
-| LOZ-5D1 | LOZ-5D1-W | Plug-in dimmer, two dimmable outlets, 700 W total | Gen1/2 `c4.dm`, two channels | Probe mode | A new "outlet dimmer" family, below |
-| LSZ-102 | LSZ-102-x | Gen1 wireless switch | Gen1 `c4.dm`? | Probe mode | Its check-in, fingerprint and button frames. Probably close to the FS1-Z |
-| LSZ-3W1 | LSZ-3W1-x | Gen1 three-way unit (SmartThings forum users call it a 3-way dimmer) | Gen1 `c4.dm`? | Probe mode | As the LSZ-102. Probably close to the DIM1-Z |
-| SR-150 | C4-SR150 | Remote without an LCD | remote, as SR250? | Probe mode | Its button frames: every key once, to build its button map |
+| KD120 | C4-KD120 (checks in as `c4:control4_light:C4-KD120`) | Keypad dimmer: "an APD120 and a KC120277 in one device" | Gen3, APD firmware line | **Added, untested** (below) | A tester to confirm the button wires and LED slots on our code |
+| V-FPD120 | C4-FPD120 | Forward-phase dimmer, Control4's replacement for the DIM1-Z | Gen3, as the APD120 | **Added, untested**: an APD120 under its own model | A tester. The "Essential" C4-V-FPD120 may check in differently, and stays in probe mode until one does |
+| V-SW120 | Probably C4-V-SW120277 (the driver's name; nothing public under "SW120") | Switch | Gen3 | Probe mode | Its check-in. If it is `C4-SW120277` it is already supported |
+| V-ROSW120 | C4-V-ROSW120 (checks in as `c4:control4_light:C4-V-ROSW120`) | In-wall duplex receptacle with one button | ZCL on/off on EP1, no reports; one button (id 00) on `c4.dmx` | Probe mode | A small family: ZCL on/off, read back after each command (it sends no reports and refuses binds), and one button |
+| LOZ-5D1 | LOZ-5D1-W | Plug-in dimmer, two dimmable outlets, 700 W total | Outlet 1 ZCL level on EP1, outlet 2 `c4.dm.tv 01`; both report `c4.dm.tc` | Probe mode | A new "outlet dimmer" family, below |
+| LSZ-102 | LSZ-102 / LSZ-101 | Gen1 unit: a switch (wmariz) or a dimmer (defjam903) | Gen1 `c4.dm` dialect, ZCL on EP1 | Probe mode | Its check-in, fingerprint and button frames. 2010-era units may run Embernet and never join |
+| LSZ-3W1 | LSZ-3W1-x | Gen1 three-way unit; "doesn't control the load" (pstuart) | Gen1 `c4.dm`? | Probe mode | As the LSZ-102 |
+| SR-150 | C4-SR150B-Z-B (bharat's list) | Remote without an LCD | Unknown | Probe mode | Its button frames: every key once, to build its button map |
 
 **Not from the thread.** One of the houses this already runs in has a **C4-KP2-Z** (2-button keypad) that nothing handles
-yet. By generation it should be the `Keypad` class with two buttons, but which button ids it sends is unknown. Probe
-mode logs them the first time someone presses it.
+yet. A 2014 SmartThings capture shows it checks in as `c4:control4_keypad:C4-KP2-Z` (firmware 03.22.41) and sends the
+KP3/KP6's `c4.kp.bb` / `bc` / `cc` frames, on button ids 00 and 02 (top and bottom, most likely). It is a `Keypad` with
+two buttons on those ids, once someone confirms them with probe mode.
 
 ## Probe mode
 
@@ -102,35 +104,80 @@ behaviour.
 The KD120's entities are:
 
 - a light (ZCL level on EP1, as the APD120), the fades, the tv parameters and cold start
-- the KC120277's buttons, LEDs, backlight and ambient light
+- the KC120277's buttons, LEDs, backlight and ambient light, and an auxiliary keypad's presses (wires 07 / 08) as
+  `aux_top` / `aux_bottom`
 - power and energy from `c4.dmx.ls`, plus the dimming phase, fault, reset reason and TX power
 - **`button_position_N_behaviour`**: what each fitted button does to the load (toggle, load_on, load_off, momentary,
   event_only), written with `c4.dmx.btn <wire> 01 <code>`. Code `05` is never written. Out of the box every button
   toggles the load, so to make one a pure scene button, set it to `event_only`.
 
-Taken on trust from bharat's KD120 work, and to check on a real one:
+Each assumption, what other projects found (2026-11-26), and how to check it on a real one:
 
-| Assumption | How to check |
-|---|---|
-| It checks in as `C4-KD120`, `C4-KD277`, `C4-KD120/277` or `C4-KD240`, with a colour suffix allowed | The learned-model log line. A different string leaves it in probe mode, with the string in the log |
-| Its buttons report on wires 0-6 like a KC120277, and the default "pairs" numbering fits | Press each button and read the `action` |
-| Its load reports `c4.dmx.ls` like an APD120's, with the power fields | Switch it and read the state and power |
-| `c4.dm.is` is the APD120's tv table in slot order | The settings read's log line |
-| Its LED slots follow the KC120277's: one per position, beside its button | Set an LED colour and look |
-| A load button in toggle mode switches the load in firmware, and a held load button sends only a press | Tap and hold one, then read the actions and the state |
+| Assumption | What others found | How to check |
+|---|---|---|
+| It checks in as `C4-KD120` (`C4-KD277`, `C4-KD240` too) | **Confirmed for C4-KD120**: `c4:control4_light:C4-KD120`, five units on 5.1.1. KD277 is in bharat's converter but unseen; KD240 is a guess | The learned-model log line |
+| Its buttons report wires 00-05 by their top slot, as a KC120277 | **Confirmed**: `bp 00` to `05`, a tall button by its top slot. A tap is `bp`, `sc`, `cc 00 01`; a hold `bp`, `hc`, `he` | Press each button and read the `action` |
+| An auxiliary keypad reports on wires 07 / 08 | **Found**: `bp 07` / `08` from an aux keypad wired to a KD120. Named `aux_top` / `aux_bottom` here | Press an aux keypad |
+| The split up/down button's ids | **Not found.** On the dual-load SDAPD240 it is 05 up / 06 down | Press it |
+| Its load is ZCL level on EP1, its state `c4.dmx.ls` with the power fields | **Confirmed**: no ZCL reports; `c4.dmx.ls` is the state | Switch it and read the state and power |
+| `c4.dm.is` is the APD120's tv table in slot order | **Not found**: bharat reads `c4.dm.tv 00 <slot>` one at a time. A reply of another shape is skipped | The settings read's log line |
+| Cold start: `tv` 09 level, 0a time | bharat has them the other way round. Our DIM1-Z and APD120 measurements say 09 level, 0a time. Unsettled for the KD120 | Set a cold start and watch |
+| LED N is beside button wire N | **Confirmed** by bharat's integration. Whether `led <n> 00` links an LED to a button is disputed (royceybaby: no) | Set an LED colour and look |
+| Every button toggles the load from the factory, in firmware | **Confirmed**: Control4's guide says click any button to turn the light on; bharat removed his software toggle for it | Tap one with no controller |
+| Backlight `c4.dmx.blc 00 05 <rgb>`, black = off | **Confirmed** on a KD120 (5.1.1). Its factory colour `0080ff` isn't in our palette, so it reads as unknown | Read the backlight entity |
+
+## What other projects found (2026-11-26)
+
+A search of the other public Control4 Zigbee projects on GitHub: bharat's `homeassistant-control4-zigbee` (once
+`homeassistant-control4-dimmers`) and his zigbee-herdsman-converters fork (branch `control4-26.125.0`), royceybaby's
+`ha-c4-keypads`, wmariz's and pvanbaren's zha-device-handlers (branch `control4`), lights0123's and pstuart's
+SmartThings drivers, and the forum threads they link. Koenkk's upstream converters have no Control4 device.
+
+**C4-KD120.** The table above. The main outside evidence is one owner's five KD120s on firmware 5.1.1 (bharat's
+converter PR #1; his integration's issues #117 and #242 and PRs #193, #225, #226 and #252).
+
+**C4-FPD120.** `"C4-FPD120"` in bharat's converter, on the APD120's definition (ZCL light on EP1, the text protocol
+on EP197). His README calls it the APD120's twin, top and bottom paddle. No frames published. Control4's driver
+files are named `C4-V-FPD120`, `C4-V-ROSW120` and `C4-V-SW120277`, so "V-" names a driver line, not always the model.
+
+**C4-V-ROSW120** (bharat's issue #2; converter lines 553-578). It checks in as `c4:control4_light:C4-V-ROSW120`
+(firmware 1.1.59). EP1 is HA but lists only Basic and Power Configuration. ZCL on/off on EP1 works anyway, with no
+default response, no reports and no binds, so its state has to be read back after each command. It answers
+`c4.dm.tv` but not `c4.dmx.dim`, `ls` or `amb`. Its one button sends `c4.dmx.bp 00`, `sc 00`, `tc 00 <level>` and
+`cc 00 <n>`. No controllable LEDs. Which outlet the button switches isn't confirmed.
+
+**LOZ-5D1-W** (wmariz's `control4_outlet_dimmer.py`, lights0123's SmartThings driver). Manufacturer code 0x1040.
+Outlet 1 is ZCL Move to Level with On/Off on EP1. Outlet 2 is `0s<seq> c4.dm.tv 01 00 <pct>` on the text profile,
+per wmariz (no endpoint of its own); lights0123 sees an EP2 for it instead. Both report `sa c4.dm.tc <outlet>
+<pct>`, with intermediate values while ramping. A fade is `0i<seq> c4.dm.rtl <outlet> <pct2> <ms8>`. Its button
+ids aren't captured.
+
+**LDZ / LSZ (Gen1).** Snap One's docs give the check-in `c4:light_ip_control4:ldz-101-w:`. Manufacturer code 0xABCD,
+standard clusters on EP1 plus an EP198 on 0xC25E. ZCL level on EP1. Reports are the old `c4.dm` dialect: level
+`c4.dm.t0c <pct>`, clicks `c4.dm.cc <btn> <n>` (0 top, 1 bottom), press and hold `c4.dm.b<btn><c|b|e>`, LEDs
+`c4.dm.l0o` / `l0f` / `l1o` / `l1f <rgb>`. wmariz treats the LSZ as a switch, defjam903 (with four LSZ-101s) as a
+dimmer. An HA thread never got an LSZ-102 to pair, and suspects 2010-era units run Embernet.
+
+**C4-SR150, LSZ-3W1, "C4-SW120".** Nothing usable.
+
+**Also seen.** The dual-load C4-SDAPD240 (royceybaby, on hardware): load 2 by `c4.dm.tv 01 00 <pct>`, buttons 00-04
+plus a rocker on 05 up / 06 down, `btn` codes 10 / 11 / 12 for load 2, and LED mode `0b` to follow load 2. An
+auxiliary keypad (C4-KA) on a Gen3 load device reports as wires 07 / 08, and on a `c4.dm` device as 0 / 1. That
+holds for the APD120 and SW120277 as well, which don't name those wires yet.
 
 ## Next steps
 
-1. **Get the build to Rowch and jtela0.** Rowch's LOZ-5S1, ZIO and KD120 and jtela0's SR260 and Z2IO all run on code
-   that has never met a real device. The rest of Rowch's devices are in probe mode and give us their logs.
-2. **From each log, add the model.** A Gen3 fingerprint with a known shape (FPD120, SW120, maybe ROSW120) is an
-   alias in `MODELS` plus a test. A new shape is a family.
-3. **The LOZ-5D1 outlet dimmer** needs a family. What we know comes from a Control4 HC-300 log: `0s c4.dm.tv <ch>
-   00 <pct>` sets a channel's level and is answered `sa c4.dm.tc 00 <level>`, and a fade is `0i c4.dm.rtl 00 32
-   000003e8` (50 % over 1 s). It would be two light endpoints (`l1` / `l2`, as the LOZ-5S1's switches), each driven
-   by its channel. Still unknown: whether channel 01 is the second outlet, whether it reports on 0xC25E like the 5S1,
-   and what its buttons send.
-4. **The Gen1 LSZ switches and SR-150 remote** need their button frames before anything else. Their fingerprints
+1. **Get the build to Rowch and jtela0.** Rowch's LOZ-5S1, ZIO, KD120 and FPD120 and jtela0's SR260 and Z2IO all run
+   on code that has never met a real device. The rest of Rowch's devices are in probe mode and give us their logs.
+2. **From each log, add the model.** A Gen3 fingerprint with a known shape (the "Essential" V-FPD120, a V-SW120277)
+   is an alias in `MODELS` plus a test. A new shape is a family.
+3. **The LOZ-5D1 outlet dimmer** needs a family: two light endpoints (`l1` / `l2`, as the LOZ-5S1's switches),
+   outlet 1 by ZCL level on EP1 and outlet 2 by `c4.dm.tv 01 00 <pct>`, state from `c4.dm.tc`. Still unknown:
+   whether outlet 2 has an EP2 (the two sources disagree), and what its buttons send.
+4. **The ROSW120 and KP2-Z** are small additions now that their check-ins and frames are known (above). Each needs one
+   log from a real device to confirm before it ships.
+5. **The Gen1 LSZ switches and SR-150 remote** need their button frames before anything else. Their fingerprints
    may well come back empty.
-5. **Blueprints and tools.** The `c4_device` blueprint's model picker, `gen-c4-device.mjs` and `c4-scenarios.mjs`
+6. **Aux keypads on the APD120 / SW120277** (wires 07 / 08) need names there too, as the KD120 has.
+7. **Blueprints and tools.** The `c4_device` blueprint's model picker, `gen-c4-device.mjs` and `c4-scenarios.mjs`
    don't list the KD120 yet. Add it once a real one has confirmed its buttons.

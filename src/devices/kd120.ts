@@ -12,7 +12,7 @@
  * load's own c4.dmx.ls report does.
  */
 
-import {type ButtonBehaviour, BUTTON_BEHAVIOUR_NAMES, KC_POSITIONS} from "../core/constants";
+import {AUX_BUTTONS, type ButtonBehaviour, BUTTON_BEHAVIOUR_NAMES, KC_POSITIONS} from "../core/constants";
 import type {LoadControl, TvParams} from "./dimming";
 import {C4Device, type Payload, type SetMeta} from "./base";
 import {behaviourRead, DimmerLoad, type SettingRead, writeBehaviour} from "./gen3";
@@ -54,6 +54,11 @@ export class Kd120 extends Kc120277 {
     behaviour(wire: number): ButtonBehaviour {
         const stored = this.setting<string>(positionBehaviourKey(wire));
         return stored && (BUTTON_BEHAVIOUR_NAMES as string[]).includes(stored) ? (stored as ButtonBehaviour) : KD_FACTORY_BEHAVIOUR;
+    }
+
+    /** Wires 07 / 08 are an auxiliary keypad wired to it, not a fitted button (the KC numbering would call 07 button_4). */
+    protected override buttonName(id: number): string {
+        return AUX_BUTTONS[id] ?? super.buttonName(id);
     }
 
     protected override settingReads(): SettingRead[] {

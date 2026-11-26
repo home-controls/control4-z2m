@@ -102,13 +102,20 @@ export const MODELS: ModelInfo[] = [
         description: "Configurable keypad",
     },
     {
-        // Not yet seen on a real one: the strings it checks in with are a guess from the
-        // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
-        // unsupported, with its check-in logged, until it is added here.
+        // C4-KD120 is what one checks in as (bharat's converter, five units on 5.1.1).
+        // C4-KD277 is in that converter too, unseen; C4-KD240 is a guess from its part
+        // number. One that differs stays unsupported, with its check-in logged.
         family: "kd120",
         model: "C4-KD120",
-        aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+        aliases: ["C4-KD120", "C4-KD277", "C4-KD240"],
         description: "Keypad dimmer (untested)",
+    },
+    {
+        // Forward-phase dimmer: bharat's converter runs it on the APD120's definition.
+        family: "apd120",
+        model: "C4-FPD120",
+        aliases: ["C4-FPD120"],
+        description: "Forward phase dimmer (as the APD120; untested)",
     },
     {
         family: "kp3",
@@ -265,6 +272,11 @@ export function buttonNumberOf(name: string): number | undefined {
 
 /** KC120277: seven positions; a button reports the first LED slot of its pair. */
 export const KC_POSITIONS = 7;
+/**
+ * An auxiliary keypad (C4-KA, no radio of its own) wired to a load device reports
+ * through it, on wires 07 / 08 (bharat's converter; seen on a KD120).
+ */
+export const AUX_BUTTONS: Record<number, string> = {0x07: "aux_top", 0x08: "aux_bottom"};
 export const KC_LED_SLOTS = 12;
 /**
  * KC120277 device option: how buttons are numbered. "pairs" (default): every

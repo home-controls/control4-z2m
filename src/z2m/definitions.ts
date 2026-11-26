@@ -11,6 +11,7 @@ import * as exposesModule from "zigbee-herdsman-converters/lib/exposes";
 import {
     APD120_TV_PARAMS,
     AUTO_REBOOT_OPTION,
+    AUX_BUTTONS,
     BMC_DEFAULTS,
     BUTTON_BEHAVIOUR_NAMES,
     DEFAULT_TAP_WINDOW_MS,
@@ -654,7 +655,7 @@ export function kdExposes(layout: KcLayout): Expose[] {
         e.light_brightness(),
         ...transitions(),
         ...tvParams(APD120_TV_PARAMS),
-        ...kcKeypadExposes(layout),
+        ...kcKeypadExposes(layout, names(AUX_BUTTONS)),
         ...wires.map((w) =>
             e
                 .enum(`button_position_${w + 1}_behaviour`, ea.STATE_SET, [...BUTTON_BEHAVIOUR_NAMES])
@@ -675,7 +676,7 @@ export function kdExposes(layout: KcLayout): Expose[] {
  * from presses or set), only they get actions and only their LEDs get entities, each
  * LED named for the button it lights; before that, every position and LED slot.
  */
-function kcKeypadExposes(layout: KcLayout): Expose[] {
+function kcKeypadExposes(layout: KcLayout, extraButtons: string[] = []): Expose[] {
     const wires = layout.wires;
     const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({length: KC_POSITIONS}, (_, i) => `button_${i + 1}`);
     // A button lights the LED slots of the positions it covers: from its own wire down to the
@@ -693,7 +694,7 @@ function kcKeypadExposes(layout: KcLayout): Expose[] {
         for (let slot = 0; slot < KC_LED_SLOTS; slot++) add(slot, `LED ${slot + 1}`);
     }
     return [
-        actions(buttonNames, [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+        actions([...buttonNames, ...extraButtons], [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
         ledBrightness(),
         ledTransition(),
         ...leds,

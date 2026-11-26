@@ -65,13 +65,20 @@ var MODELS = [
     description: "Configurable keypad"
   },
   {
-    // Not yet seen on a real one: the strings it checks in with are a guess from the
-    // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
-    // unsupported, with its check-in logged, until it is added here.
+    // C4-KD120 is what one checks in as (bharat's converter, five units on 5.1.1).
+    // C4-KD277 is in that converter too, unseen; C4-KD240 is a guess from its part
+    // number. One that differs stays unsupported, with its check-in logged.
     family: "kd120",
     model: "C4-KD120",
-    aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+    aliases: ["C4-KD120", "C4-KD277", "C4-KD240"],
     description: "Keypad dimmer (untested)"
+  },
+  {
+    // Forward-phase dimmer: bharat's converter runs it on the APD120's definition.
+    family: "apd120",
+    model: "C4-FPD120",
+    aliases: ["C4-FPD120"],
+    description: "Forward phase dimmer (as the APD120; untested)"
   },
   {
     family: "kp3",
@@ -176,6 +183,7 @@ function buttonNumberOf(name) {
   return m ? Number(m[1]) : void 0;
 }
 var KC_POSITIONS = 7;
+var AUX_BUTTONS = { 7: "aux_top", 8: "aux_bottom" };
 var KC_LED_SLOTS = 12;
 var KC_NUMBERING_OPTION = "button_numbering";
 var KC_LAYOUT_OPTION = "button_layout";
@@ -5211,6 +5219,10 @@ var Kd120 = class extends Kc120277 {
   behaviour(wire) {
     const stored = this.setting(positionBehaviourKey(wire));
     return stored && BUTTON_BEHAVIOUR_NAMES.includes(stored) ? stored : KD_FACTORY_BEHAVIOUR;
+  }
+  /** Wires 07 / 08 are an auxiliary keypad wired to it, not a fitted button (the KC numbering would call 07 button_4). */
+  buttonName(id) {
+    return AUX_BUTTONS[id] ?? super.buttonName(id);
   }
   settingReads() {
     return [
