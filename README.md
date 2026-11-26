@@ -117,6 +117,9 @@ build supports it, the device is adopted with no re-pairing.
 
 ## Supported devices
 
+Models marked **untested** run on code written from notes, with no unit to try it on. To test one, or a model
+that isn't listed, follow `docs/TESTING.md`: it says what to do and what to send back.
+
 | Model (also matches) | Kind | Highlights |
 |---|---|---|
 | C4-APD120 (-B, -W) | Adaptive phase dimmer | light, on/off fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, settings read from the dimmer, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power |
