@@ -46,7 +46,9 @@ import {Fan, FAN_PROVISIONED_KEY} from "../devices/dmx";
 import {Apd120, Sw120277} from "../devices/gen3";
 import {Kd120} from "../devices/kd120";
 import {Kc120277, Keypad} from "../devices/keypad";
+import {OutletDimmer} from "../devices/outlet-dimmer";
 import {Remote, Sr260} from "../devices/remote";
+import {Rosw120} from "../devices/rosw120";
 import {Unsupported} from "../devices/unsupported";
 import {Z2io} from "../devices/z2io";
 
@@ -145,6 +147,11 @@ export function createDevice(ctx: DeviceContext, ieee: string, model: string, fa
             return new Fs1z(ctx, ieee, model, family);
         case "outlet":
             return new Outlet(ctx, ieee, model, family);
+        case "outlet_dimmer":
+            return new OutletDimmer(ctx, ieee, model, family);
+        case "rosw120":
+            return new Rosw120(ctx, ieee, model, family);
+        case "kp2":
         case "kp3":
         case "kp6":
             return new Keypad(ctx, ieee, model, family);

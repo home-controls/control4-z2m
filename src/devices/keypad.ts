@@ -15,7 +15,8 @@ import {
     kcButtonNumber,
     kcNumbering,
     kcWireOf,
-    keypadButtons,
+    KP_BUTTON_IDS,
+    keypadButtonsOf,
     PALETTE_HEX,
     type PaletteName,
 } from "../core/constants";
@@ -38,12 +39,13 @@ function storedHex(dev: C4Device, key: string): string {
 // KP3-Z / KP6-Z
 // ---------------------------------------------------------------------------
 
-export function kpLedSelects(count: number): LedSelect[] {
+/** button_N's LED is the slot of its id (the Nth id, top to bottom). */
+export function kpLedSelects(ids: number[]): LedSelect[] {
     const out: LedSelect[] = [];
-    for (let i = 0; i < count; i++) {
-        out.push({key: `button_${i + 1}_idle_color`, slots: [i], verb: "idle"});
-        out.push({key: `button_${i + 1}_pressed_color`, slots: [i], verb: "active"});
-    }
+    ids.forEach((id, i) => {
+        out.push({key: `button_${i + 1}_idle_color`, slots: [id], verb: "idle"});
+        out.push({key: `button_${i + 1}_pressed_color`, slots: [id], verb: "active"});
+    });
     return out;
 }
 
@@ -55,13 +57,13 @@ export class Keypad extends DmxDevice {
         ctx: ConstructorParameters<typeof C4Device>[0],
         ieee: string,
         model: string,
-        family: "kp3" | "kp6",
+        family: "kp2" | "kp3" | "kp6",
     ) {
         super(ctx, ieee, model, family);
-        const count = family === "kp3" ? 3 : 6;
-        this.buttons = keypadButtons(count);
-        this.led = new LedKeys(this, new LedWriter(this, "kp"), kpLedSelects(count));
-        const ids = Array.from({length: count}, (_, i) => i);
+        const ids = KP_BUTTON_IDS[family];
+        const count = ids.length;
+        this.buttons = keypadButtonsOf(ids);
+        this.led = new LedKeys(this, new LedWriter(this, "kp"), kpLedSelects(ids));
         this.anim = new AnimationKeys(
             this,
             {
@@ -69,10 +71,10 @@ export class Keypad extends DmxDevice {
                 dmStored: () => ["000000", "000000"],
                 loadOn: () => undefined,
                 verifyDm: () => undefined,
-                // button_N is LED N.
+                // button_N's LED is its id's slot.
                 ledsOf: (name) => {
                     const n = buttonNumberOf(name);
-                    return n !== undefined && n <= count ? [n - 1] : undefined;
+                    return n !== undefined && n <= count ? [ids[n - 1]] : undefined;
                 },
             },
             ids,

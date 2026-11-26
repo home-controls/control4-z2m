@@ -58,6 +58,10 @@ var MODELS = [
   { family: "fs1z", model: "C4-FS1-Z", aliases: ["C4-FS1-Z"], description: "Fireplace switch" },
   { family: "fan", model: "C4-4SF120", aliases: ["C4-4SF120"], description: "4-speed fan controller" },
   { family: "outlet", model: "LOZ-5S1-W", aliases: ["loz-5s1-w", "LOZ-5S1-W"], description: "Dual switched outlet" },
+  // From wmariz's quirk and lights0123's SmartThings driver; untested here.
+  { family: "outlet_dimmer", model: "LOZ-5D1-W", aliases: ["loz-5d1-w", "LOZ-5D1-W"], description: "Dual dimmable outlet (untested)" },
+  // Checks in as c4:control4_light:C4-V-ROSW120 (bharat's converter, fw 1.1.59); untested here.
+  { family: "rosw120", model: "C4-V-ROSW120", aliases: ["C4-V-ROSW120"], description: "Receptacle outlet switch (untested)" },
   {
     family: "kc120277",
     model: "C4-KC120277",
@@ -79,6 +83,13 @@ var MODELS = [
     model: "C4-FPD120",
     aliases: ["C4-FPD120"],
     description: "Forward phase dimmer (as the APD120; untested)"
+  },
+  {
+    // Checks in as c4:control4_keypad:C4-KP2-Z (fw 03.22.41, a 2014 SmartThings capture). Untested here.
+    family: "kp2",
+    model: "C4-KP2-Z",
+    aliases: ["C4-KP2-Z"],
+    description: "2-button keypad (untested)"
   },
   {
     family: "kp3",
@@ -173,10 +184,9 @@ var FAN_BUTTONS = {
 };
 var DM_BUTTONS = { 0: "button_1", 1: "button_2" };
 var OUTLET_BUTTONS = { 0: "outlet_1", 1: "outlet_2" };
-function keypadButtons(count2) {
-  const out = {};
-  for (let i = 0; i < count2; i++) out[i] = `button_${i + 1}`;
-  return out;
+var KP_BUTTON_IDS = { kp2: [0, 2], kp3: [0, 1, 2], kp6: [0, 1, 2, 3, 4, 5] };
+function keypadButtonsOf(ids) {
+  return Object.fromEntries(ids.map((id, i) => [id, `button_${i + 1}`]));
 }
 function buttonNumberOf(name) {
   const m = /^button_([1-9]\d*)$/.exec(name);
@@ -4940,12 +4950,12 @@ function storedHex(dev, key) {
   const hex = name ? PALETTE_HEX[name] ?? "000000" : "000000";
   return scaleHex(hex, Number(dev.setting(LED_BRIGHTNESS_KEY, 100)));
 }
-function kpLedSelects(count2) {
+function kpLedSelects(ids) {
   const out = [];
-  for (let i = 0; i < count2; i++) {
-    out.push({ key: `button_${i + 1}_idle_color`, slots: [i], verb: "idle" });
-    out.push({ key: `button_${i + 1}_pressed_color`, slots: [i], verb: "active" });
-  }
+  ids.forEach((id, i) => {
+    out.push({ key: `button_${i + 1}_idle_color`, slots: [id], verb: "idle" });
+    out.push({ key: `button_${i + 1}_pressed_color`, slots: [id], verb: "active" });
+  });
   return out;
 }
 var Keypad = class extends DmxDevice {
@@ -4953,10 +4963,10 @@ var Keypad = class extends DmxDevice {
   anim;
   constructor(ctx, ieee, model, family) {
     super(ctx, ieee, model, family);
-    const count2 = family === "kp3" ? 3 : 6;
-    this.buttons = keypadButtons(count2);
-    this.led = new LedKeys(this, new LedWriter(this, "kp"), kpLedSelects(count2));
-    const ids = Array.from({ length: count2 }, (_, i) => i);
+    const ids = KP_BUTTON_IDS[family];
+    const count2 = ids.length;
+    this.buttons = keypadButtonsOf(ids);
+    this.led = new LedKeys(this, new LedWriter(this, "kp"), kpLedSelects(ids));
     this.anim = new AnimationKeys(
       this,
       {
@@ -4964,10 +4974,10 @@ var Keypad = class extends DmxDevice {
         dmStored: () => ["000000", "000000"],
         loadOn: () => void 0,
         verifyDm: () => void 0,
-        // button_N is LED N.
+        // button_N's LED is its id's slot.
         ledsOf: (name) => {
           const n = buttonNumberOf(name);
-          return n !== void 0 && n <= count2 ? [n - 1] : void 0;
+          return n !== void 0 && n <= count2 ? [ids[n - 1]] : void 0;
         }
       },
       ids,
@@ -5250,6 +5260,69 @@ var Kd120 = class extends Kc120277 {
     const out = { ...super.initialState(), ...this.dimmer.initialState() };
     for (const w of this.behaviourWires()) out[positionBehaviourKey(w)] = this.behaviour(w);
     return out;
+  }
+};
+
+// src/devices/outlet-dimmer.ts
+var ENDPOINT_OF = { 0: "l1", 1: "l2" };
+var LIGHT_KEYS = /* @__PURE__ */ new Set(["state", "brightness", "transition"]);
+var MAX_TRANSITION_S = 3600;
+var lastLevelKey = (ep) => `last_level_${ep}`;
+var OutletDimmer = class extends DmxDevice {
+  buttons = OUTLET_BUTTONS;
+  onAnnounce(ns, data) {
+    if (ns === "c4.dm.tc") {
+      const ch = parseHex(data[0]);
+      const pct = parseHex(data[1]);
+      if (ch !== void 0 && pct !== void 0) this.applyLevel(ch, pct);
+      return;
+    }
+    super.onAnnounce(ns, data);
+  }
+  /** An outlet's level (%) as its light state; a level above 0 is remembered for a plain turn-on. */
+  applyLevel(ch, pct) {
+    const ep = ENDPOINT_OF[ch];
+    if (!ep) return;
+    const level = pctToBrightness(Math.min(100, pct));
+    if (level > 0) this.saveSetting(lastLevelKey(ep), level);
+    this.publish(level > 0 ? { [`state_${ep}`]: "ON", [`brightness_${ep}`]: level } : { [`state_${ep}`]: "OFF" });
+  }
+  /** Each outlet's level, read with `0g c4.dm.tv <ch> 00` (its reply carries the level last). */
+  async readLevels() {
+    for (const ch of [0, 1]) {
+      const reply = await this.get(`c4.dm.tv ${hex2(ch)} 00`);
+      if (this.stopped) return "skipped";
+      if (!reply) return "failed";
+      const pct = parseHex(lastValue(reply.values));
+      if (reply.status === "000" && pct !== void 0) this.applyLevel(ch, pct);
+    }
+    return "read";
+  }
+  stateReader() {
+    return () => this.readLevels();
+  }
+  async getValue(key) {
+    if (key === "state" || key === "brightness") await this.readLevels();
+  }
+  async setValue(key, value, meta) {
+    if (!LIGHT_KEYS.has(key)) return super.setValue(key, value, meta);
+    const ep = meta.endpoint ?? "l1";
+    const ch = OUTLET_ENDPOINTS[ep];
+    if (ch === void 0) throw new Error(`unknown outlet '${ep}'`);
+    const msg = meta.message;
+    let state = msg.state === void 0 ? void 0 : String(msg.state).toUpperCase();
+    if (state === "TOGGLE") state = String(this.state()[`state_${ep}`] ?? "OFF").toUpperCase() === "ON" ? "OFF" : "ON";
+    let level;
+    if (state === "OFF") level = 0;
+    else if (msg.brightness !== void 0) level = Math.round(toNumber(msg.brightness, 0, 254));
+    else level = Number(this.setting(lastLevelKey(ep), 254)) || 254;
+    const pct = level <= 0 ? 0 : Math.max(1, Math.min(100, Math.round(level * 100 / 254)));
+    const seconds = msg.transition === void 0 ? 0 : toNumber(msg.transition, 0, MAX_TRANSITION_S);
+    const ms = Math.round(seconds * 1e3);
+    const send = ms > 0 ? () => this.sendText(`0i${hex4(this.nextSeq())} c4.dm.rtl ${hex2(ch)} ${hex2(pct)} ${ms.toString(16).padStart(8, "0")}`) : () => this.set(`c4.dm.tv ${hex2(ch)} 00 ${hex2(pct)}`);
+    await this.ctx.link.sendWithRecovery(this.ieee, send, "outlet command");
+    if (level > 0) this.saveSetting(lastLevelKey(ep), level);
+    return level > 0 ? { state: "ON", brightness: level } : { state: "OFF" };
   }
 };
 
@@ -5713,6 +5786,71 @@ var Sr260 = class extends Remote {
   }
 };
 
+// src/devices/rosw120.ts
+var ROSW_READBACK_DELAY = 1e3;
+var Rosw120 = class extends DmxDevice {
+  buttons = { 0: "button_1" };
+  reading;
+  readback;
+  onAnnounce(ns, data) {
+    if (ns === "c4.dmx.tc") {
+      const level = parseHex(data[1]);
+      if (level !== void 0) this.publish({ state: level > 0 ? "ON" : "OFF" });
+      return;
+    }
+    super.onAnnounce(ns, data);
+  }
+  /** A tap may have switched the outlet (its tc says so, but a lost one must not leave the state wrong). */
+  syncClick(_id, count2) {
+    if (count2 >= 1) this.readSoon();
+  }
+  /** Read its on/off back once the last command or tap has settled. */
+  readSoon() {
+    if (this.readback) clearTimeout(this.readback);
+    this.readback = this.after(ROSW_READBACK_DELAY, () => {
+      this.readback = void 0;
+      void this.readState();
+    });
+  }
+  /** genOnOff onOff on EP1, published as its state. One read at a time. */
+  readState() {
+    this.reading ??= (async () => {
+      try {
+        const onOff = (await this.zclRead(1, "genOnOff", ["onOff"])).onOff;
+        if (this.stopped) return "skipped";
+        if (typeof onOff !== "number" && typeof onOff !== "boolean") return "failed";
+        this.publish({ state: onOff ? "ON" : "OFF" });
+        return "read";
+      } catch (error) {
+        this.log.debug(`Control4 ${this.name}: on/off read failed: ${error}`);
+        return "failed";
+      }
+    })().finally(() => {
+      this.reading = void 0;
+    });
+    return this.reading;
+  }
+  stateReader() {
+    return () => this.readState();
+  }
+  async getValue(key) {
+    if (key === "state") await this.readState();
+  }
+  async setValue(key, value, meta) {
+    if (key !== "state") return super.setValue(key, value, meta);
+    let s = String(value).toUpperCase();
+    if (s === "TOGGLE") s = this.isOn() ? "OFF" : "ON";
+    const on = s === "ON";
+    await this.ctx.link.sendWithRecovery(
+      this.ieee,
+      () => this.sendFrame({ profile: HA_PROFILE, cluster: CLUSTER_ON_OFF, srcEp: 1, dstEp: 1, data: buildZclCommand(this.nextTsn(), on ? 1 : 0) }),
+      "on/off command"
+    );
+    this.readSoon();
+    return { state: on ? "ON" : "OFF" };
+  }
+};
+
 // src/devices/unsupported.ts
 var REPORTED_MODEL_KEY = "reported_model";
 var FINGERPRINT_KEY = "fingerprint";
@@ -6065,6 +6203,11 @@ function createDevice(ctx, ieee, model, family) {
       return new Fs1z(ctx, ieee, model, family);
     case "outlet":
       return new Outlet(ctx, ieee, model, family);
+    case "outlet_dimmer":
+      return new OutletDimmer(ctx, ieee, model, family);
+    case "rosw120":
+      return new Rosw120(ctx, ieee, model, family);
+    case "kp2":
     case "kp3":
     case "kp6":
       return new Keypad(ctx, ieee, model, family);
@@ -6925,7 +7068,8 @@ function stampModel(zh, model) {
   return changed;
 }
 function addOutletEndpoints(zh) {
-  if (modelInfo(zh.modelID)?.family !== "outlet") return;
+  const family = modelInfo(zh.modelID)?.family;
+  if (family !== "outlet" && family !== "outlet_dimmer") return;
   if (!zh.getEndpoint(1)) zh.createEndpoint(1);
   if (!zh.getEndpoint(OUTLET_SECOND_EP)) zh.createEndpoint(OUTLET_SECOND_EP);
 }

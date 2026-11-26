@@ -35,27 +35,27 @@ describe("a check-in naming a model this build doesn't support", () => {
     it("keeps the device ours and generic: the identity answered, the model learned, the record left generic", async () => {
         rig.add(UNK, GENERIC_MODEL);
         rig.start();
-        expect(rig.checkin(UNK, "c4:outlet_dimmer:LOZ-5D1-W")).toBe(true);
+        expect(rig.checkin(UNK, "c4:light_ip_control4:LSZ-102")).toBe(true);
         await tick(10);
         expect(rig.transport.sent.some((s) => s.frame.profile === PROFILE_NETWORK)).toBe(true);
-        expect(rig.store.model(UNK)).toBe("LOZ-5D1-W");
+        expect(rig.store.model(UNK)).toBe("LSZ-102");
         expect(rig.devices.get(UNK)?.modelID).toBe(GENERIC_MODEL);
         expect(rig.runtime.get(UNK)?.family).toBe("unsupported");
-        expect(rig.last(UNK)[REPORTED_MODEL_KEY]).toBe("LOZ-5D1-W");
-        expect(rig.log.lines.some((l) => l.startsWith("warning:") && l.includes("LOZ-5D1-W, which this build doesn't support yet"))).toBe(true);
+        expect(rig.last(UNK)[REPORTED_MODEL_KEY]).toBe("LSZ-102");
+        expect(rig.log.lines.some((l) => l.startsWith("warning:") && l.includes("LSZ-102, which this build doesn't support yet"))).toBe(true);
     });
 
     it("puts back the generic record on a device an older build stamped with the unsupported model", async () => {
-        rig.add(UNK, "LOZ-5D1-W");
+        rig.add(UNK, "LSZ-102");
         rig.start();
-        rig.checkin(UNK, "c4:outlet_dimmer:LOZ-5D1-W");
+        rig.checkin(UNK, "c4:light_ip_control4:LSZ-102");
         await tick(10);
         expect(rig.devices.get(UNK)?.modelID).toBe(GENERIC_MODEL);
     });
 
     it("takes the generic record's c4_get and c4_send", async () => {
         rig.add(UNK, GENERIC_MODEL);
-        rig.store.setModel(UNK, "LOZ-5D1-W");
+        rig.store.setModel(UNK, "LSZ-102");
         rig.start();
         const get = rig.runtime.set(UNK, "c4_get", "c4.dmx.led 00 03", {message: {}});
         await tick(100);
@@ -68,17 +68,17 @@ describe("a check-in naming a model this build doesn't support", () => {
 
     it("logs every frame it sends at info, up to a limit a run", () => {
         rig.add(UNK, GENERIC_MODEL);
-        rig.store.setModel(UNK, "LOZ-5D1-W");
+        rig.store.setModel(UNK, "LSZ-102");
         rig.start();
         rig.ascii(UNK, "0t1234 sa c4.dmx.bp 02");
-        expect(rig.log.lines).toContain("info: Control4 UNSUPPORTED dev0 (LOZ-5D1-W) <- 0t1234 sa c4.dmx.bp 02");
+        expect(rig.log.lines).toContain("info: Control4 UNSUPPORTED dev0 (LSZ-102) <- 0t1234 sa c4.dmx.bp 02");
         for (let i = 0; i < FRAME_LOG_LIMIT + 5; i++) rig.ascii(UNK, "0t1234 sa c4.dmx.sc 02");
         expect(rig.log.lines.filter((l) => l.startsWith("info: Control4 UNSUPPORTED"))).toHaveLength(FRAME_LOG_LIMIT);
     });
 
     it("becomes the supported model's handler once a build knows it", async () => {
         rig.add(UNK, GENERIC_MODEL);
-        rig.store.setModel(UNK, "LOZ-5D1-W");
+        rig.store.setModel(UNK, "LSZ-102");
         rig.start();
         expect(rig.runtime.get(UNK)?.family).toBe("unsupported");
         rig.checkin(UNK, "c4:control4_keypad:C4-KC120277");
@@ -91,7 +91,7 @@ describe("a check-in naming a model this build doesn't support", () => {
 describe("the fingerprint read", () => {
     const fresh = () => {
         rig.add(UNK, GENERIC_MODEL);
-        rig.store.setModel(UNK, "LOZ-5D1-W");
+        rig.store.setModel(UNK, "LSZ-102");
         rig.start();
     };
 
@@ -163,7 +163,7 @@ describe("fingerprintHint", () => {
 describe("definitions", () => {
     it("records a supported model as itself and any other as the generic one", () => {
         expect(definitionModel("C4-KC120277-W")).toBe("C4-KC120277-W");
-        expect(definitionModel("LOZ-5D1-W")).toBe(GENERIC_MODEL);
+        expect(definitionModel("LSZ-102")).toBe(GENERIC_MODEL);
     });
 
     it("shows the reported model on the generic definition", () => {

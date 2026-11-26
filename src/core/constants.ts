@@ -55,8 +55,11 @@ export type Family =
     | "outlet"
     | "kc120277"
     | "kd120"
+    | "kp2"
     | "kp3"
     | "kp6"
+    | "outlet_dimmer"
+    | "rosw120"
     | "z2io"
     | "sr250"
     | "sr260";
@@ -95,6 +98,10 @@ export const MODELS: ModelInfo[] = [
     {family: "fs1z", model: "C4-FS1-Z", aliases: ["C4-FS1-Z"], description: "Fireplace switch"},
     {family: "fan", model: "C4-4SF120", aliases: ["C4-4SF120"], description: "4-speed fan controller"},
     {family: "outlet", model: "LOZ-5S1-W", aliases: ["loz-5s1-w", "LOZ-5S1-W"], description: "Dual switched outlet"},
+    // From wmariz's quirk and lights0123's SmartThings driver; untested here.
+    {family: "outlet_dimmer", model: "LOZ-5D1-W", aliases: ["loz-5d1-w", "LOZ-5D1-W"], description: "Dual dimmable outlet (untested)"},
+    // Checks in as c4:control4_light:C4-V-ROSW120 (bharat's converter, fw 1.1.59); untested here.
+    {family: "rosw120", model: "C4-V-ROSW120", aliases: ["C4-V-ROSW120"], description: "Receptacle outlet switch (untested)"},
     {
         family: "kc120277",
         model: "C4-KC120277",
@@ -116,6 +123,13 @@ export const MODELS: ModelInfo[] = [
         model: "C4-FPD120",
         aliases: ["C4-FPD120"],
         description: "Forward phase dimmer (as the APD120; untested)",
+    },
+    {
+        // Checks in as c4:control4_keypad:C4-KP2-Z (fw 03.22.41, a 2014 SmartThings capture). Untested here.
+        family: "kp2",
+        model: "C4-KP2-Z",
+        aliases: ["C4-KP2-Z"],
+        description: "2-button keypad (untested)",
     },
     {
         family: "kp3",
@@ -258,10 +272,15 @@ export const DM_BUTTONS: Record<number, string> = {0x00: "button_1", 0x01: "butt
 /** LOZ-5S1-W: the button id is the outlet index. */
 export const OUTLET_BUTTONS: Record<number, string> = {0x00: "outlet_1", 0x01: "outlet_2"};
 
-export function keypadButtons(count: number): Record<number, string> {
-    const out: Record<number, string> = {};
-    for (let i = 0; i < count; i++) out[i] = `button_${i + 1}`;
-    return out;
+/**
+ * The button ids a KP-generation keypad sends, top to bottom. The KP2-Z's two are 00
+ * and 02 (a 2014 SmartThings capture of one: the three-position board, middle left out).
+ */
+export const KP_BUTTON_IDS: Record<"kp2" | "kp3" | "kp6", number[]> = {kp2: [0, 2], kp3: [0, 1, 2], kp6: [0, 1, 2, 3, 4, 5]};
+
+/** button_N for the Nth id, top to bottom. */
+export function keypadButtonsOf(ids: number[]): Record<number, string> {
+    return Object.fromEntries(ids.map((id, i) => [id, `button_${i + 1}`]));
 }
 
 /** N of a button name `button_N`; undefined for any other name. */

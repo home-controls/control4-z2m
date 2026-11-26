@@ -43,6 +43,10 @@ var MODELS = [
   { family: "fs1z", model: "C4-FS1-Z", aliases: ["C4-FS1-Z"], description: "Fireplace switch" },
   { family: "fan", model: "C4-4SF120", aliases: ["C4-4SF120"], description: "4-speed fan controller" },
   { family: "outlet", model: "LOZ-5S1-W", aliases: ["loz-5s1-w", "LOZ-5S1-W"], description: "Dual switched outlet" },
+  // From wmariz's quirk and lights0123's SmartThings driver; untested here.
+  { family: "outlet_dimmer", model: "LOZ-5D1-W", aliases: ["loz-5d1-w", "LOZ-5D1-W"], description: "Dual dimmable outlet (untested)" },
+  // Checks in as c4:control4_light:C4-V-ROSW120 (bharat's converter, fw 1.1.59); untested here.
+  { family: "rosw120", model: "C4-V-ROSW120", aliases: ["C4-V-ROSW120"], description: "Receptacle outlet switch (untested)" },
   {
     family: "kc120277",
     model: "C4-KC120277",
@@ -64,6 +68,13 @@ var MODELS = [
     model: "C4-FPD120",
     aliases: ["C4-FPD120"],
     description: "Forward phase dimmer (as the APD120; untested)"
+  },
+  {
+    // Checks in as c4:control4_keypad:C4-KP2-Z (fw 03.22.41, a 2014 SmartThings capture). Untested here.
+    family: "kp2",
+    model: "C4-KP2-Z",
+    aliases: ["C4-KP2-Z"],
+    description: "2-button keypad (untested)"
   },
   {
     family: "kp3",
@@ -625,6 +636,23 @@ var FAMILIES = {
     multiEndpoint: true,
     options: [tapWindowOption()]
   },
+  outlet_dimmer: {
+    exposes: [
+      e.light_brightness().withEndpoint("l1"),
+      e.light_brightness().withEndpoint("l2"),
+      actions(["outlet_1", "outlet_2"], [...TAP_GESTURES, ...COUNTER_GESTURES])
+    ],
+    keys: LIGHT_KEYS,
+    grouped: [LIGHT_KEYS],
+    endpoint: () => ({ l1: 1, l2: 11 }),
+    multiEndpoint: true,
+    options: [tapWindowOption()]
+  },
+  rosw120: {
+    exposes: [e.switch().withDescription("The switched outlet"), actions(["button_1"], [...TAP_GESTURES, ...COUNTER_GESTURES])],
+    keys: ["state"],
+    options: [tapWindowOption()]
+  },
   kc120277: {
     exposes: (device) => kcExposes(kcLayoutOf(device)),
     keys: KC_KEYS,
@@ -645,6 +673,7 @@ var FAMILIES = {
     grouped: [LIGHT_KEYS],
     options: [...pollOptions(true), tapWindowOption(), kcNumberingOption(), kcLayoutOption()]
   },
+  kp2: keypadFamily(2),
   kp3: keypadFamily(3),
   kp6: keypadFamily(6),
   z2io: {

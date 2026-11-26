@@ -31,6 +31,9 @@ const ALL: [string, string][] = [
     ["C4-SR250B", "0x000fff0000700009"],
     ["C4-SR260", "0x000fff000070000a"],
     ["C4-KD120", "0x000fff000070000b"],
+    ["C4-KP2-Z", "0x000fff000070000c"],
+    ["C4-V-ROSW120", "0x000fff000070000d"],
+    ["LOZ-5D1-W", "0x000fff000070000e"],
 ].map(([m, i]) => [i, m] as [string, string]);
 
 // biome-ignore lint/suspicious/noExplicitAny: test fakes
@@ -160,6 +163,10 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         expect(topics).toContain(`homeassistant/select/${id("C4-KC120277")}/led_12_mode/config`);
         expect(topics).toContain(`homeassistant/light/${id("C4-KD120")}/light/config`);
         expect(topics).toContain(`homeassistant/select/${id("C4-KD120")}/button_position_1_behaviour/config`);
+        expect(topics).toContain(`homeassistant/select/${id("C4-KP2-Z")}/button_2_idle_color/config`);
+        expect(topics).toContain(`homeassistant/switch/${id("C4-V-ROSW120")}/switch/config`);
+        expect(topics).toContain(`homeassistant/light/${id("LOZ-5D1-W")}/light_l1/config`);
+        expect(topics).toContain(`homeassistant/light/${id("LOZ-5D1-W")}/light_l2/config`);
         expect(topics).toContain(`homeassistant/select/${id("C4-Z2IO-ZP")}/io_mode/config`);
         expect(topics).toContain(`homeassistant/text/${id("C4-SR260")}/display_message/config`);
         expect(topics).toContain(`homeassistant/sensor/${id("C4-SR250B")}/battery/config`);
@@ -178,6 +185,16 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         expect(texts).toContain("c4.dm.tv 01 00 64");
         expect(JSON.parse(published(`zigbee2mqtt/${id("loz-5s1-w")}`).at(-1) as string)).toMatchObject({state_l2: "ON"});
         expect(JSON.parse(published(`zigbee2mqtt/${id("C4-4SF120")}`).at(-1) as string)).toMatchObject({state: "ON", speed: 3});
+    });
+
+    it("dims each of the outlet dimmer's outlets by its own endpoint", async () => {
+        const id = (m: string) => (ALL.find(([, x]) => x === m) as [string, string])[0];
+        const before = sent.length;
+        await mockMQTTEvents.message(`zigbee2mqtt/${id("LOZ-5D1-W")}/set`, stringify({state_l2: "ON", brightness_l2: 127}));
+        await vi.advanceTimersByTimeAsync(300);
+        const texts = sent.slice(before).map((s) => s.text.trim().replace(/^0s[0-9a-f]{4} /, ""));
+        expect(texts).toContain("c4.dm.tv 01 00 32");
+        expect(JSON.parse(published(`zigbee2mqtt/${id("LOZ-5D1-W")}`).at(-1) as string)).toMatchObject({state_l2: "ON", brightness_l2: 127});
     });
 
     it("turns a keypad frame into an action and a device trigger", async () => {

@@ -588,6 +588,23 @@ const FAMILIES: Record<Family, FamilyDef> = {
         multiEndpoint: true,
         options: [tapWindowOption()],
     },
+    outlet_dimmer: {
+        exposes: [
+            e.light_brightness().withEndpoint("l1"),
+            e.light_brightness().withEndpoint("l2"),
+            actions(["outlet_1", "outlet_2"], [...TAP_GESTURES, ...COUNTER_GESTURES]),
+        ],
+        keys: LIGHT_KEYS,
+        grouped: [LIGHT_KEYS],
+        endpoint: () => ({l1: 1, l2: 11}),
+        multiEndpoint: true,
+        options: [tapWindowOption()],
+    },
+    rosw120: {
+        exposes: [e.switch().withDescription("The switched outlet"), actions(["button_1"], [...TAP_GESTURES, ...COUNTER_GESTURES])],
+        keys: ["state"],
+        options: [tapWindowOption()],
+    },
     kc120277: {
         exposes: (device: unknown) => kcExposes(kcLayoutOf(device)),
         keys: KC_KEYS,
@@ -608,6 +625,7 @@ const FAMILIES: Record<Family, FamilyDef> = {
         grouped: [LIGHT_KEYS],
         options: [...pollOptions(true), tapWindowOption(), kcNumberingOption(), kcLayoutOption()],
     },
+    kp2: keypadFamily(2),
     kp3: keypadFamily(3),
     kp6: keypadFamily(6),
     z2io: {

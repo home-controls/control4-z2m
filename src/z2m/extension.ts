@@ -160,9 +160,10 @@ function stampModel(zh: Any, model: string): boolean {
     return changed;
 }
 
-/** An outlet's definition maps endpoints 1 and 11; the device never answers the Simple_Desc reads that would tell herdsman. */
+/** An outlet's (or outlet dimmer's) definition maps endpoints 1 and 11; the device never answers the Simple_Desc reads that would tell herdsman. */
 function addOutletEndpoints(zh: Any): void {
-    if (modelInfo(zh.modelID)?.family !== "outlet") return;
+    const family = modelInfo(zh.modelID)?.family;
+    if (family !== "outlet" && family !== "outlet_dimmer") return;
     if (!zh.getEndpoint(1)) zh.createEndpoint(1);
     if (!zh.getEndpoint(OUTLET_SECOND_EP)) zh.createEndpoint(OUTLET_SECOND_EP);
 }

@@ -125,10 +125,13 @@ build supports it, the device is adopted with no re-pairing.
 | C4-FS1-Z | Switch | on/off |
 | C4-4SF120 | Fan speed controller | fan on/off + speed 1–4 |
 | LOZ-5S1-W | Dual outlet | `state_l1` / `state_l2` |
+| LOZ-5D1-W | Dual dimmable outlet | a light per outlet (`state_l1` / `brightness_l1`, `state_l2` / `brightness_l2`), fades for a `transition`, outlet buttons. **Untested**: built from other projects' notes |
+| C4-V-ROSW120 | Receptacle outlet switch | on/off (read back after each command: it never reports), its button. **Untested** |
 | C4-KC120277 (-B, -W), KPZ-6B1-C | Configurable keypad | the fitted buttons only (learned, or the `button_layout` option), per-button idle/pressed colours and LED mode, LED engine, backlight colour and brightness, multi-click times, ambient light, reset reason, TX power |
 | C4-KD120, C4-KD277, C4-KD240 | Keypad dimmer | the APD120's light and settings plus the KC120277's keypad, each button's behaviour toward the load (`button_position_N_behaviour`; every button toggles from the factory), and a wired auxiliary keypad as `aux_top` / `aux_bottom`. **Untested**: built from other projects' notes, no unit to verify on |
 | C4-FPD120 | Forward phase dimmer | as the APD120 (another project runs it on the same definition). **Untested** |
 | KPZ-3B1 / C4-KP3-Z, KPZ-6B1 / C4-KP6-Z | Keypads | per-button idle/pressed colours, LED engine |
+| C4-KP2-Z | Keypad | as the KP3-Z, two buttons. **Untested** |
 | C4-Z2IO-ZP | Contact / relay I/O | io_mode, relays, pulses, contacts, temperatures, humidity |
 | C4-SR250B (C4-SR250) | LCD remote | buttons, battery, room name / active source on the LCD, list menus, display messages |
 | C4-SR260 | LCD remote | as SR250 plus glyphs and `show_message` |
