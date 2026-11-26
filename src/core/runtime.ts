@@ -14,7 +14,8 @@ import {
     ATTR_MODEL,
     C4_CLUSTER,
     canonicalModel,
-    type Family,
+    definitionModel,
+    type DeviceFamily,
     isC4Ieee,
     isValidModel,
     type KcLayout,
@@ -43,8 +44,10 @@ import {LED_DEFAULT_COLOUR, LED_DEFAULTS_KEY, LED_DEFAULTS_MIGRATION} from "./le
 import {Dim1z, Fs1z, Outlet, SETTINGS_READ_KEY} from "../devices/dm";
 import {Fan, FAN_PROVISIONED_KEY} from "../devices/dmx";
 import {Apd120, Sw120277} from "../devices/gen3";
+import {Kd120} from "../devices/kd120";
 import {Kc120277, Keypad} from "../devices/keypad";
 import {Remote, Sr260} from "../devices/remote";
+import {Unsupported} from "../devices/unsupported";
 import {Z2io} from "../devices/z2io";
 
 export interface DeviceInfo {
@@ -126,9 +129,9 @@ const sleep = (ms: number) =>
     });
 
 /** Families whose EP2 attribute 0x0000 is a constant status, not a level. */
-const PADDLE_STREAM: ReadonlySet<Family> = new Set(["apd120", "sw120277", "dim1z", "fs1z"]);
+const PADDLE_STREAM: ReadonlySet<DeviceFamily> = new Set(["apd120", "kd120", "sw120277", "dim1z", "fs1z"]);
 
-export function createDevice(ctx: DeviceContext, ieee: string, model: string, family: Family): C4Device {
+export function createDevice(ctx: DeviceContext, ieee: string, model: string, family: DeviceFamily): C4Device {
     switch (family) {
         case "apd120":
             return new Apd120(ctx, ieee, model, family);
@@ -147,12 +150,16 @@ export function createDevice(ctx: DeviceContext, ieee: string, model: string, fa
             return new Keypad(ctx, ieee, model, family);
         case "kc120277":
             return new Kc120277(ctx, ieee, model, family);
+        case "kd120":
+            return new Kd120(ctx, ieee, model, family);
         case "z2io":
             return new Z2io(ctx, ieee, model, family);
         case "sr250":
             return new Remote(ctx, ieee, model, family);
         case "sr260":
             return new Sr260(ctx, ieee, model, family);
+        case "unsupported":
+            return new Unsupported(ctx, ieee, model, family);
     }
 }
 
@@ -278,8 +285,10 @@ export class Runtime {
         const model = this.modelOf(id);
         const info = modelInfo(model);
         const existing = this.devices.get(id);
-        if (!info || !model) return existing;
-        if (existing && existing.family === info.family) {
+        if (!model) return existing;
+        const family: DeviceFamily = info?.family ?? "unsupported";
+        // An unsupported device that names another model is made again: what it reports is what it shows.
+        if (existing && existing.family === family && (family !== "unsupported" || existing.model === model)) {
             existing.model = model;
             return existing;
         }
@@ -287,7 +296,7 @@ export class Runtime {
             existing.stop();
             this.anim.unregister(id);
         }
-        const dev = createDevice(this.ctx, id, model, info.family);
+        const dev = createDevice(this.ctx, id, model, family);
         this.devices.set(id, dev);
         this.bare.delete(id);
         dev.start(hotLoad);
@@ -295,7 +304,11 @@ export class Runtime {
         if (Object.keys(initial).length) this.host.publish(id, initial);
         this.scheduleLedDefaults(dev);
         if (!hotLoad) this.requestStateRead(id);
-        this.log.info(`Control4: ${this.host.friendlyName(id)} is a ${model} (${info.family})`);
+        if (info) this.log.info(`Control4: ${this.host.friendlyName(id)} is a ${model} (${family})`);
+        else
+            this.log.warning(
+                `Control4: ${this.host.friendlyName(id)} (${id}) reports model ${model}, which this build doesn't support yet. It stays a generic Control4 device: its check-ins are answered, its frames are logged at info, and c4_get / c4_send reach it`,
+            );
         return dev;
     }
 
@@ -710,7 +723,9 @@ export class Runtime {
             this.host.store.setModel(ieee, model);
             this.log.info(`Control4: learned model ${model} for ${this.host.friendlyName(ieee)}`);
         }
-        if (this.host.deviceInfo(ieee)?.modelID !== model) this.host.setModel(ieee, model);
+        // A model this build doesn't support keeps the generic record: its definition still serves c4_get / c4_send.
+        const record = definitionModel(model);
+        if (this.host.deviceInfo(ieee)?.modelID !== record) this.host.setModel(ieee, record);
         const dev = this.devices.get(ieee);
         if (!dev || dev.model !== model) this.ensureDevice(ieee);
     }

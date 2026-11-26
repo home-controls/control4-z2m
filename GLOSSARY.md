@@ -146,6 +146,14 @@ _Avoid_: Reboot
 A device's real model, taken from its own check-in because it never answers the standard interview. Until it is known the device is generic C4-Zigbee.
 _Avoid_: Detected model
 
+**Unsupported model**:
+A learned model this build has no family for. The device stays generic C4-Zigbee (its check-ins answered, `c4_get` / `c4_send` still reaching it), shows the model as its reported model, and has its frames logged and its fingerprint read, so it can be added.
+_Avoid_: Unknown model (that is a device whose model isn't learned yet)
+
+**Fingerprint**:
+The one read-only run of Gets an unsupported model gets, asking which protocol namespaces (`c4.dmx`, `c4.dm`, `c4.kp`, `c4.sy`) its firmware answers: what says which family it is closest to.
+_Avoid_: Probe (that is any hand-sent Get)
+
 **Saved settings**:
 What an instance keeps for a Control4 device that the device does not report on its own: its learned model, the values written to it from Zigbee2MQTT (a DIM1-Z's dimmer parameters as read back from it, too), and memories such as its last level or a remote's room.
 _Avoid_: Device settings, store entry

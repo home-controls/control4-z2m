@@ -50,6 +50,15 @@ var MODELS = [
     description: "Configurable keypad"
   },
   {
+    // Not yet seen on a real one: the strings it checks in with are a guess from the
+    // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
+    // unsupported, with its check-in logged, until it is added here.
+    family: "kd120",
+    model: "C4-KD120",
+    aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+    description: "Keypad dimmer (untested)"
+  },
+  {
     family: "kp3",
     model: "C4-KP3-Z",
     aliases: ["KPZ-3B1", "C4-KP3-Z", "C4-KP3-Z-B", "C4-KP3-Z-W", "C4-KP3-Z-AL", "C4-KP3-Z-BL", "C4-KP3-Z-x"],
@@ -481,6 +490,22 @@ function z2ioExposes(mode) {
   );
   return out;
 }
+function dimmingPhase() {
+  return e.enum("dimming_phase", ea.STATE, ["forward", "reverse", "none", "other"]).withLabel("Dimming phase").withDescription("The dimming phase in use (c4.dmx.dim): forward or reverse, as the dimmer detected for its load").withCategory("diagnostic");
+}
+var KC_KEYS = [
+  "led_brightness",
+  "led_transition",
+  // led_N_bound stays as a key: on = push_release, off = programmed.
+  ...Array.from({ length: KC_LED_SLOTS }, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
+  "backlight_color",
+  "backlight_brightness",
+  "ambient_light",
+  ...LED_ENGINE_KEYS,
+  ...LED_CLUSTER_KEYS,
+  ...GEN3_KEYS
+];
+var POSITION_BEHAVIOUR_KEYS = Array.from({ length: KC_POSITIONS }, (_, i) => `button_position_${i + 1}_behaviour`);
 var FAMILIES = {
   apd120: {
     exposes: [
@@ -496,7 +521,7 @@ var FAMILIES = {
       ledNotification(),
       ambient(),
       ...powerSensors(),
-      e.enum("dimming_phase", ea.STATE, ["forward", "reverse", "none", "other"]).withLabel("Dimming phase").withDescription("The dimming phase in use (c4.dmx.dim): forward or reverse, as the dimmer detected for its load").withCategory("diagnostic"),
+      dimmingPhase(),
       ...gen3Health(true)
     ],
     keys: [
@@ -593,29 +618,24 @@ var FAMILIES = {
     options: [tapWindowOption()]
   },
   kc120277: {
-    exposes: (device) => {
-      const ieee = device?.ieeeAddr;
-      let layout;
-      try {
-        layout = ieee ? runtime().kcLayout?.(ieee.toLowerCase()) : void 0;
-      } catch {
-        layout = void 0;
-      }
-      return kcExposes(layout ?? { wires: void 0, numbering: "pairs" });
-    },
-    keys: [
-      "led_brightness",
-      "led_transition",
-      // led_N_bound stays as a key: on = push_release, off = programmed.
-      ...Array.from({ length: KC_LED_SLOTS }, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
-      "backlight_color",
-      "backlight_brightness",
-      "ambient_light",
-      ...LED_ENGINE_KEYS,
-      ...LED_CLUSTER_KEYS,
-      ...GEN3_KEYS
-    ],
+    exposes: (device) => kcExposes(kcLayoutOf(device)),
+    keys: KC_KEYS,
     options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption()]
+  },
+  kd120: {
+    exposes: (device) => kdExposes(kcLayoutOf(device)),
+    keys: [
+      ...LIGHT_KEYS,
+      "on_transition",
+      "off_transition",
+      ...RAMP_KEYS,
+      ...APD120_TV_PARAMS.map((p) => p.key),
+      ...KC_KEYS,
+      ...POSITION_BEHAVIOUR_KEYS,
+      ...POWER_KEYS
+    ],
+    grouped: [LIGHT_KEYS],
+    options: [...pollOptions(true), tapWindowOption(), kcNumberingOption(), kcLayoutOption()]
   },
   kp3: keypadFamily(3),
   kp6: keypadFamily(6),
@@ -635,7 +655,37 @@ var FAMILIES = {
   sr250: remoteFamily(SR250_BUTTONS, false),
   sr260: remoteFamily(SR260_BUTTONS, true)
 };
+function kcLayoutOf(device) {
+  const ieee = device?.ieeeAddr;
+  let layout;
+  try {
+    layout = ieee ? runtime().kcLayout?.(ieee.toLowerCase()) : void 0;
+  } catch {
+    layout = void 0;
+  }
+  return layout ?? { wires: void 0, numbering: "pairs" };
+}
 function kcExposes(layout) {
+  return [...kcKeypadExposes(layout), ...gen3Health(false)];
+}
+function kdExposes(layout) {
+  const wires = layout.wires ?? Array.from({ length: KC_POSITIONS }, (_, i) => i);
+  return [
+    e.light_brightness(),
+    ...transitions(),
+    ...tvParams(APD120_TV_PARAMS),
+    ...kcKeypadExposes(layout),
+    ...wires.map(
+      (w) => e.enum(`button_position_${w + 1}_behaviour`, ea.STATE_SET, [...BUTTON_BEHAVIOUR_NAMES]).withLabel(`Position ${w + 1} button behaviour`).withDescription(
+        `What the button at position ${w + 1} from the top does to the load: load_on, load_off, toggle, momentary (dims while held, back on release) or event_only (only sends its taps). Factory: toggle`
+      ).withCategory("config")
+    ),
+    ...powerSensors(),
+    dimmingPhase(),
+    ...gen3Health(true)
+  ];
+}
+function kcKeypadExposes(layout) {
   const wires = layout.wires;
   const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({ length: KC_POSITIONS }, (_, i) => `button_${i + 1}`);
   const leds = [];
@@ -658,8 +708,7 @@ function kcExposes(layout) {
     e.numeric("backlight_brightness", ea.STATE_SET).withValueMin(0).withValueMax(100).withValueStep(1).withUnit("%").withLabel("Backlight brightness").withDescription("Brightness of the light behind the buttons' engraving (c4.dmx.blc)").withCategory("config"),
     ...multiclickTimes(),
     ambient(),
-    ledNotification(),
-    ...gen3Health(false)
+    ledNotification()
   ];
 }
 function keypadFamily(n) {
@@ -688,7 +737,10 @@ function remoteFamily(buttons, sr260) {
 }
 function definition(model, zigbeeModel, description, fam) {
   const keys = [...fam?.keys ?? [], ...COMMON_KEYS];
-  const exposes = fam?.exposes ?? [e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in")];
+  const exposes = fam?.exposes ?? [
+    e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in"),
+    e.text("reported_model", ea.STATE).withLabel("Reported model").withDescription("The model the device's check-in named, when this build doesn't support it yet (its frames are logged at info)").withCategory("diagnostic")
+  ];
   const def = {
     zigbeeModel,
     model,

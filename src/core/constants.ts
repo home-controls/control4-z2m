@@ -54,11 +54,15 @@ export type Family =
     | "fan"
     | "outlet"
     | "kc120277"
+    | "kd120"
     | "kp3"
     | "kp6"
     | "z2io"
     | "sr250"
     | "sr260";
+
+/** A handler's family: a supported one, or "unsupported" for a check-in naming a model this build doesn't know. */
+export type DeviceFamily = Family | "unsupported";
 
 export interface ModelInfo {
     family: Family;
@@ -96,6 +100,15 @@ export const MODELS: ModelInfo[] = [
         model: "C4-KC120277",
         aliases: ["C4-KC120277", "C4-KC120277-B", "C4-KC120277-W", "KPZ-6B1-C"],
         description: "Configurable keypad",
+    },
+    {
+        // Not yet seen on a real one: the strings it checks in with are a guess from the
+        // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
+        // unsupported, with its check-in logged, until it is added here.
+        family: "kd120",
+        model: "C4-KD120",
+        aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+        description: "Keypad dimmer (untested)",
     },
     {
         family: "kp3",
@@ -145,6 +158,14 @@ export function canonicalModel(raw: string): string {
         }
     }
     return best ?? text;
+}
+
+/**
+ * The model a Control4 device's Zigbee2MQTT record carries: its own when this build
+ * supports it, else the generic one, whose definition still serves c4_get / c4_send.
+ */
+export function definitionModel(model: string): string {
+    return modelInfo(model) ? model : GENERIC_MODEL;
 }
 
 export function modelInfo(model: string | undefined | null): ModelInfo | undefined {

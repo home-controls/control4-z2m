@@ -65,6 +65,15 @@ var MODELS = [
     description: "Configurable keypad"
   },
   {
+    // Not yet seen on a real one: the strings it checks in with are a guess from the
+    // part numbers (C4-KD120-xx, C4-KD277-xx, C4-KD240-xx). One that differs stays
+    // unsupported, with its check-in logged, until it is added here.
+    family: "kd120",
+    model: "C4-KD120",
+    aliases: ["C4-KD120", "C4-KD277", "C4-KD120/277", "C4-KD240"],
+    description: "Keypad dimmer (untested)"
+  },
+  {
     family: "kp3",
     model: "C4-KP3-Z",
     aliases: ["KPZ-3B1", "C4-KP3-Z", "C4-KP3-Z-B", "C4-KP3-Z-W", "C4-KP3-Z-AL", "C4-KP3-Z-BL", "C4-KP3-Z-x"],
@@ -103,6 +112,9 @@ function canonicalModel(raw) {
     }
   }
   return best ?? text;
+}
+function definitionModel(model) {
+  return modelInfo(model) ? model : GENERIC_MODEL;
 }
 function modelInfo(model) {
   if (!model) return void 0;
@@ -4371,6 +4383,30 @@ function behaviourFromCode(hex) {
   const code = parseHex(hex);
   return BUTTON_BEHAVIOUR_NAMES.find((b) => BUTTON_BEHAVIOURS[b] === code);
 }
+function behaviourRead(dev, wire, key, what) {
+  return {
+    prop: `c4.dmx.btn ${hex2(wire)} 01`,
+    parse: (v) => {
+      const b = behaviourFromCode(lastValue(v));
+      if (!b) dev.log.info(`Control4 ${dev.name}: ${what} has a button behaviour the extension doesn't name (${lastValue(v)}); left as it is`);
+      return b ? { [key]: b } : void 0;
+    }
+  };
+}
+async function writeBehaviour(dev, wire, key, value) {
+  const behaviour = behaviourOf(value);
+  const code = hex2(BUTTON_BEHAVIOURS[behaviour]);
+  const cmd = `c4.dmx.btn ${hex2(wire)} 01 ${code}`;
+  await dev.set(cmd);
+  dev.saveSetting(key, behaviour);
+  void dev.ctx.link.scheduleVerify(dev, `dmx btn ${hex2(wire)}`, `c4.dmx.btn ${hex2(wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => dev.trySet(cmd), 500, (v) => {
+    const actual = behaviourFromCode(lastValue(v));
+    if (!actual) return;
+    dev.saveSetting(key, actual);
+    dev.publish({ [key]: actual });
+  });
+  return { [key]: behaviour };
+}
 function modeFromCode(hex) {
   const code = parseHex(hex);
   return LED_MODE_NAMES.find((m) => LED_MODES[m] === code);
@@ -4662,35 +4698,12 @@ var PaddleDevice = class extends Gen3Device {
     return PADDLE_HALVES.find((h) => h.half === half)?.factory ?? "event_only";
   }
   settingReads() {
-    const reads = super.settingReads();
-    for (const h of PADDLE_HALVES) {
-      reads.push({
-        prop: `c4.dmx.btn ${hex2(h.wire)} 01`,
-        parse: (v) => {
-          const b = behaviourFromCode(lastValue(v));
-          if (!b) this.log.info(`Control4 ${this.name}: its ${h.half} half has a button behaviour the extension doesn't name (${lastValue(v)}); left as it is`);
-          return b ? { [behaviourKey(h.half)]: b } : void 0;
-        }
-      });
-    }
-    return reads;
+    return [...super.settingReads(), ...PADDLE_HALVES.map((h) => behaviourRead(this, h.wire, behaviourKey(h.half), `its ${h.half} half`))];
   }
   /** A half's button behaviour: `c4.dmx.btn <wire> 01 <code>` (never 05), read back after. */
-  async setBehaviour(half, value) {
-    const behaviour = behaviourOf(value);
+  setBehaviour(half, value) {
     const h = PADDLE_HALVES.find((x) => x.half === half);
-    const code = hex2(BUTTON_BEHAVIOURS[behaviour]);
-    const cmd = `c4.dmx.btn ${hex2(h.wire)} 01 ${code}`;
-    await this.set(cmd);
-    const key = behaviourKey(half);
-    this.saveSetting(key, behaviour);
-    void this.ctx.link.scheduleVerify(this, `dmx btn ${hex2(h.wire)}`, `c4.dmx.btn ${hex2(h.wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => this.trySet(cmd), 500, (v) => {
-      const actual = behaviourFromCode(lastValue(v));
-      if (!actual) return;
-      this.saveSetting(key, actual);
-      this.publish({ [key]: actual });
-    });
-    return { [key]: behaviour };
+    return writeBehaviour(this, h.wire, behaviourKey(half), value);
   }
   /** The SW120277's old paddle_local_control, as button behaviours: on = top on / bottom off, off = both event-only. */
   async setLocalControl(value) {
@@ -4714,103 +4727,150 @@ var PaddleDevice = class extends Gen3Device {
 };
 var APD_FADE_SETTLE = 2e3;
 var PHASES = { 0: "none", 1: "forward", 2: "reverse" };
-var Apd120 = class extends PaddleDevice {
-  /**
-   * The APD120's mid-fade c4.dmx.ls reports. It reports to the end of the
-   * ramp, so one that stops short (a max-brightness trim) is where the load is.
-   */
-  hold = new FadeHold(this, APD_FADE_SETTLE, {
-    apply: (level) => this.applyLevel(level),
-    stoppedShort: (held) => this.applyLevel(held)
-  });
-  tv = new TvParams(this, APD120_TV_PARAMS);
-  load = new LoadControl(this, {
-    onMove: (s, level) => this.hold.begin(level, s),
-    onSent: (delivered) => void this.hold.sent(delivered),
-    // Its `rtl` time is this move's own length (tested 2026-11-07).
-    hardwareFade: "move",
-    clampPct: (pct) => this.tv.clampPct(pct),
-    liveLevel: () => this.hold.current(),
-    // A turn-on from off with a cold start set keeps the cold start (as on the DIM1-Z).
-    fadeAllowed: (level) => level <= 0 || this.isOn() || this.tv.value("cold_start_level") <= 0
-  });
-  settingReads() {
-    return [
-      {
-        // Its `c4.dm.is` is the tv table in slot order (00-0a).
-        prop: "c4.dm.is",
-        parse: (v) => {
-          if (v.length < 11) return void 0;
-          const n = v.map((x) => parseHex(x));
-          const out = {};
-          const pct = (x) => x !== void 0 && x <= 100 ? x : void 0;
-          const put = (key, x) => {
-            if (x !== void 0) out[key] = x;
-          };
-          put("default_on_brightness", pct(n[1]));
-          put(ON_TRANSITION_KEY, n[2] === void 0 ? void 0 : Math.round(n[2] / 100) / 10);
-          put(OFF_TRANSITION_KEY, n[3] === void 0 ? void 0 : Math.round(n[3] / 100) / 10);
-          put("hold_ramp_up", n[4]);
-          put("hold_ramp_down", n[5]);
-          put("max_brightness", pct(n[6]));
-          put("min_brightness", pct(n[8]));
-          put("cold_start_level", pct(n[9]));
-          put("cold_start_time", n[10]);
-          return out;
-        }
-      },
-      ...super.settingReads(),
-      {
-        prop: "c4.dmx.dim",
-        parse: (v) => {
-          const phase = this.phaseName(lastValue(v));
-          return phase ? { [DIMMING_PHASE_KEY]: phase } : void 0;
-        }
-      }
-    ];
+function phaseName(hex) {
+  const code = parseHex(hex);
+  if (code === void 0) return void 0;
+  return PHASES[code] ?? "other";
+}
+var LOAD_KEYS = /* @__PURE__ */ new Set([
+  "state",
+  "brightness",
+  "transition",
+  ON_TRANSITION_KEY,
+  OFF_TRANSITION_KEY,
+  "set_ramp_rate",
+  "set_on_ramp",
+  "set_off_ramp",
+  "set_on_off_ramps"
+]);
+var DimmerLoad = class {
+  constructor(dev) {
+    this.dev = dev;
+    this.hold = new FadeHold(dev, APD_FADE_SETTLE, {
+      apply: (level) => this.applyLevel(level),
+      stoppedShort: (held) => this.applyLevel(held)
+    });
+    this.tv = new TvParams(dev, APD120_TV_PARAMS);
+    this.load = new LoadControl(dev, {
+      onMove: (s, level) => this.hold.begin(level, s),
+      onSent: (delivered) => void this.hold.sent(delivered),
+      // Its `rtl` time is this move's own length (tested on the APD120 2026-11-07).
+      hardwareFade: "move",
+      clampPct: (pct) => this.tv.clampPct(pct),
+      liveLevel: () => this.hold.current(),
+      // A turn-on from off with a cold start set keeps the cold start (as on the DIM1-Z).
+      fadeAllowed: (level) => level <= 0 || dev.isOn() || this.tv.value("cold_start_level") <= 0
+    });
   }
-  phaseName(hex) {
-    const code = parseHex(hex);
-    if (code === void 0) return void 0;
-    return PHASES[code] ?? "other";
+  dev;
+  /**
+   * The dimmer's mid-fade c4.dmx.ls reports. It reports to the end of the ramp,
+   * so one that stops short (a max-brightness trim) is where the load is.
+   */
+  hold;
+  tv;
+  load;
+  /** Its `c4.dm.is`: the tv table in slot order (00-0a), one Get for the lot. */
+  tableRead() {
+    return {
+      prop: "c4.dm.is",
+      parse: (v) => {
+        if (v.length < 11) return void 0;
+        const n = v.map((x) => parseHex(x));
+        const out = {};
+        const pct = (x) => x !== void 0 && x <= 100 ? x : void 0;
+        const put = (key, x) => {
+          if (x !== void 0) out[key] = x;
+        };
+        put("default_on_brightness", pct(n[1]));
+        put(ON_TRANSITION_KEY, n[2] === void 0 ? void 0 : Math.round(n[2] / 100) / 10);
+        put(OFF_TRANSITION_KEY, n[3] === void 0 ? void 0 : Math.round(n[3] / 100) / 10);
+        put("hold_ramp_up", n[4]);
+        put("hold_ramp_down", n[5]);
+        put("max_brightness", pct(n[6]));
+        put("min_brightness", pct(n[8]));
+        put("cold_start_level", pct(n[9]));
+        put("cold_start_time", n[10]);
+        return out;
+      }
+    };
+  }
+  /** `c4.dmx.dim`: the phase it dims in. */
+  phaseRead() {
+    return {
+      prop: "c4.dmx.dim",
+      parse: (v) => {
+        const phase = phaseName(lastValue(v));
+        return phase ? { [DIMMING_PHASE_KEY]: phase } : void 0;
+      }
+    };
   }
   onPhase(hex) {
-    const phase = this.phaseName(hex);
+    const phase = phaseName(hex);
     if (!phase) return;
-    this.saveSetting(DIMMING_PHASE_KEY, phase);
-    this.publish({ [DIMMING_PHASE_KEY]: phase });
+    this.dev.saveSetting(DIMMING_PHASE_KEY, phase);
+    this.dev.publish({ [DIMMING_PHASE_KEY]: phase });
   }
-  /** `c4.dmx.ls 00 00 <level %> <V> <mA> <W> <VA> <PF x 1000> <energy> 0000`: the level, then a power reading. */
+  /**
+   * `c4.dmx.ls 00 00 <level %> <V> <mA> <W> <VA> <PF x 1000> <energy> 0000`: the
+   * level, published as the light's state. False when it carried none.
+   */
   onLightState(fields) {
     const pct = parseHex(fields[2]);
-    if (pct === void 0) return;
+    if (pct === void 0) return false;
     const level = this.hold.report(pctToBrightness(pct));
     if (level !== void 0) this.applyLevel(level);
-    if (!this.pwr?.publishReading(fields.slice(3))) this.pwr?.pollSoon();
+    return true;
   }
   applyLevel(level) {
     this.load.noteLevel(level);
-    this.publish(level > 0 ? { state: "ON", brightness: level } : { state: "OFF" });
+    this.dev.publish(level > 0 ? { state: "ON", brightness: level } : { state: "OFF" });
   }
-  // Its light state comes from its own c4.dmx.ls reports alone, within a second of a
-  // tap. A tap says nothing sure about the load: an event-only half doesn't move it,
-  // and a toggling one may turn it either way (syncClick stays the base's no-op).
-  async setValue(key, value, meta) {
+  handles(key) {
+    return LOAD_KEYS.has(key) || this.tv.find(key) !== void 0;
+  }
+  async set(key, value, meta) {
     if (key === "state" || key === "brightness" || key === "transition") return this.load.set(meta, true);
     if (key === ON_TRANSITION_KEY || key === OFF_TRANSITION_KEY) return this.load.setTransition(key, value);
     if (key === "set_ramp_rate") return this.load.setRampRate(value);
     if (key === "set_on_ramp" || key === "set_off_ramp" || key === "set_on_off_ramps") return this.load.rampCommand(key, value);
-    if (this.tv.find(key)) return this.tv.set(key, value);
-    return super.setValue(key, value, meta);
+    return this.tv.set(key, value);
   }
   initialState() {
     return {
-      ...super.initialState(),
       ...this.tv.initialState(),
       [ON_TRANSITION_KEY]: this.load.onTransition(),
       [OFF_TRANSITION_KEY]: this.load.offTransition(),
-      [DIMMING_PHASE_KEY]: this.setting(DIMMING_PHASE_KEY) ?? null
+      [DIMMING_PHASE_KEY]: this.dev.setting(DIMMING_PHASE_KEY) ?? null
     };
+  }
+};
+var Apd120 = class extends PaddleDevice {
+  dimmer = new DimmerLoad(this);
+  get load() {
+    return this.dimmer.load;
+  }
+  get tv() {
+    return this.dimmer.tv;
+  }
+  settingReads() {
+    return [this.dimmer.tableRead(), ...super.settingReads(), this.dimmer.phaseRead()];
+  }
+  onPhase(hex) {
+    this.dimmer.onPhase(hex);
+  }
+  /** The level, then a power reading (`c4.dmx.ls` fields 3 on). */
+  onLightState(fields) {
+    if (!this.dimmer.onLightState(fields)) return;
+    if (!this.pwr?.publishReading(fields.slice(3))) this.pwr?.pollSoon();
+  }
+  // A tap moves no state here: syncClick stays the base's no-op (DimmerLoad says why).
+  async setValue(key, value, meta) {
+    if (this.dimmer.handles(key)) return this.dimmer.set(key, value, meta);
+    return super.setValue(key, value, meta);
+  }
+  initialState() {
+    return { ...super.initialState(), ...this.dimmer.initialState() };
   }
 };
 var DECOUPLE_FLAG = "sw_decoupled";
@@ -5122,6 +5182,62 @@ var Kc120277 = class extends Gen3Device {
       [BACKLIGHT_COLOR_KEY]: this.setting(BACKLIGHT_COLOR_KEY) ?? null,
       [BACKLIGHT_BRIGHTNESS_KEY]: this.setting(BACKLIGHT_BRIGHTNESS_KEY) ?? null
     };
+  }
+};
+
+// src/devices/kd120.ts
+var KD_FACTORY_BEHAVIOUR = "toggle";
+var positionBehaviourKey = (wire) => `button_position_${wire + 1}_behaviour`;
+var POSITION_BEHAVIOUR = /^button_position_([1-7])_behaviour$/;
+var Kd120 = class extends Kc120277 {
+  hasFault = true;
+  dimmer;
+  constructor(...args) {
+    super(...args);
+    this.pwr = new PowerSensor(this);
+    this.dimmer = new DimmerLoad(this);
+  }
+  get load() {
+    return this.dimmer.load;
+  }
+  get tv() {
+    return this.dimmer.tv;
+  }
+  /** The wires whose behaviour is read and shown: the fitted buttons', or every position while those aren't known. */
+  behaviourWires() {
+    return this.fittedWires() ?? Array.from({ length: KC_POSITIONS }, (_, i) => i);
+  }
+  /** A position's button behaviour as last read or set (its factory behaviour until then). */
+  behaviour(wire) {
+    const stored = this.setting(positionBehaviourKey(wire));
+    return stored && BUTTON_BEHAVIOUR_NAMES.includes(stored) ? stored : KD_FACTORY_BEHAVIOUR;
+  }
+  settingReads() {
+    return [
+      this.dimmer.tableRead(),
+      ...super.settingReads(),
+      ...this.behaviourWires().map((w) => behaviourRead(this, w, positionBehaviourKey(w), `its button at position ${w + 1}`)),
+      this.dimmer.phaseRead()
+    ];
+  }
+  onPhase(hex) {
+    this.dimmer.onPhase(hex);
+  }
+  /** The level, then a power reading (`c4.dmx.ls` fields 3 on), as on the APD120. */
+  onLightState(fields) {
+    if (!this.dimmer.onLightState(fields)) return;
+    if (!this.pwr?.publishReading(fields.slice(3))) this.pwr?.pollSoon();
+  }
+  async setValue(key, value, meta) {
+    if (this.dimmer.handles(key)) return this.dimmer.set(key, value, meta);
+    const m = POSITION_BEHAVIOUR.exec(key);
+    if (m) return writeBehaviour(this, Number(m[1]) - 1, key, value);
+    return super.setValue(key, value, meta);
+  }
+  initialState() {
+    const out = { ...super.initialState(), ...this.dimmer.initialState() };
+    for (const w of this.behaviourWires()) out[positionBehaviourKey(w)] = this.behaviour(w);
+    return out;
   }
 };
 
@@ -5585,6 +5701,92 @@ var Sr260 = class extends Remote {
   }
 };
 
+// src/devices/unsupported.ts
+var REPORTED_MODEL_KEY = "reported_model";
+var FINGERPRINT_KEY = "fingerprint";
+var FRAME_LOG_LIMIT = 500;
+var FINGERPRINT_PROPS = [
+  "c4.sy.fwv",
+  // firmware (Gen2 / Gen3 boards)
+  "c4.sy.ri",
+  // why it last restarted
+  "c4.dmx.bmc 00",
+  // the Gen3 board (APD120 / SW120277 / KC120277 / keypad dimmer)
+  "c4.dmx.btn 00 01",
+  // a Gen3 button wire's behaviour
+  "c4.dmx.led 00 01",
+  // a Gen3 LED slot's mode
+  "c4.dmx.amb 00",
+  // an ambient light sensor
+  "c4.dm.is",
+  // a dimmer's settings (DIM1-Z, APD120)
+  "c4.dm.tv 00 00",
+  // load 1's live level
+  "c4.dm.tv 01 00",
+  // load 2's live level (dual outlet, dual-load dimmer)
+  "c4.kp.bhp"
+  // the KP-generation keypads' hold threshold
+];
+var FINGERPRINT_GIVE_UP = 2;
+var Unsupported = class extends C4Device {
+  framesLogged = 0;
+  get fingerprintKey() {
+    return `${this.ieee}:fingerprint`;
+  }
+  start(hotLoad = false) {
+    super.start(hotLoad);
+    this.saveSetting(REPORTED_MODEL_KEY, this.model);
+    if (this.setting(FINGERPRINT_KEY) === void 0) this.ctx.link.queueStateRead(this.fingerprintKey, () => this.readFingerprint(), SETTINGS_READ_DELAY);
+  }
+  stop() {
+    this.ctx.link.cancelStateRead(this.fingerprintKey);
+    super.stop();
+  }
+  handleAscii(frame2) {
+    if (this.framesLogged < FRAME_LOG_LIMIT) {
+      this.framesLogged++;
+      this.log.info(`Control4 UNSUPPORTED ${this.name} (${this.model}) <- ${frame2.text}`);
+      if (this.framesLogged === FRAME_LOG_LIMIT) this.log.info(`Control4 ${this.name}: ${FRAME_LOG_LIMIT} frames logged; the rest of this run's go to debug`);
+    }
+    super.handleAscii(frame2);
+  }
+  /** Once per device: which namespaces it answers, logged and saved. Read-only: it changes nothing on the device. */
+  async readFingerprint() {
+    if (this.stopped || this.setting(FINGERPRINT_KEY) !== void 0) return "skipped";
+    const found = {};
+    let unanswered = 0;
+    for (const prop of FINGERPRINT_PROPS) {
+      const reply = await this.get(prop);
+      if (this.stopped) return "skipped";
+      if (!reply) {
+        found[prop] = "no reply";
+        if (++unanswered >= FINGERPRINT_GIVE_UP) break;
+        continue;
+      }
+      unanswered = 0;
+      found[prop] = [reply.status, ...reply.values].join(" ").trim();
+    }
+    this.saveSetting(FINGERPRINT_KEY, found);
+    const lines = Object.entries(found).map(([prop, r]) => `${prop} -> ${r}`);
+    this.log.info(`Control4 ${this.name} (${this.model}) fingerprint: ${lines.join("; ")}`);
+    this.log.info(`Control4 ${this.name} (${this.model}): ${fingerprintHint(found)}`);
+    return "read";
+  }
+  initialState() {
+    return { [REPORTED_MODEL_KEY]: this.model };
+  }
+};
+var answered = (found, prefix) => Object.entries(found).some(([prop, r]) => prop.startsWith(prefix) && r.startsWith("000"));
+function fingerprintHint(found) {
+  if (Object.values(found).every((r) => r === "no reply")) return "it answered no Get: an older model, or out of reach. Its button and check-in frames above are what there is to go on";
+  const parts = [];
+  if (answered(found, "c4.dmx.")) parts.push("it speaks c4.dmx, the Gen3 board of the APD120 / SW120277 / KC120277");
+  if (answered(found, "c4.dm.")) parts.push(`it has a c4.dm load${found["c4.dm.tv 01 00"]?.startsWith("000") ? " (two channels answer)" : ""}`);
+  if (answered(found, "c4.kp.")) parts.push("it speaks c4.kp, as the KP3-Z / KP6-Z keypads");
+  if (!parts.length) parts.push("it answered, but none of the namespaces asked");
+  return `${parts.join("; ")}. Send this log to the project to have the model added`;
+}
+
 // src/devices/z2io.ts
 var Z2IO_EP = 197;
 var TEMP_NO_PROBE = 23315;
@@ -5836,7 +6038,7 @@ var sleep3 = (ms) => new Promise((resolve) => {
   const t = setTimeout(resolve, ms);
   t.unref?.();
 });
-var PADDLE_STREAM = /* @__PURE__ */ new Set(["apd120", "sw120277", "dim1z", "fs1z"]);
+var PADDLE_STREAM = /* @__PURE__ */ new Set(["apd120", "kd120", "sw120277", "dim1z", "fs1z"]);
 function createDevice(ctx, ieee, model, family) {
   switch (family) {
     case "apd120":
@@ -5856,12 +6058,16 @@ function createDevice(ctx, ieee, model, family) {
       return new Keypad(ctx, ieee, model, family);
     case "kc120277":
       return new Kc120277(ctx, ieee, model, family);
+    case "kd120":
+      return new Kd120(ctx, ieee, model, family);
     case "z2io":
       return new Z2io(ctx, ieee, model, family);
     case "sr250":
       return new Remote(ctx, ieee, model, family);
     case "sr260":
       return new Sr260(ctx, ieee, model, family);
+    case "unsupported":
+      return new Unsupported(ctx, ieee, model, family);
   }
 }
 function messageSentOf(error) {
@@ -5979,8 +6185,9 @@ var Runtime = class {
     const model = this.modelOf(id);
     const info = modelInfo(model);
     const existing = this.devices.get(id);
-    if (!info || !model) return existing;
-    if (existing && existing.family === info.family) {
+    if (!model) return existing;
+    const family = info?.family ?? "unsupported";
+    if (existing && existing.family === family && (family !== "unsupported" || existing.model === model)) {
       existing.model = model;
       return existing;
     }
@@ -5988,7 +6195,7 @@ var Runtime = class {
       existing.stop();
       this.anim.unregister(id);
     }
-    const dev = createDevice(this.ctx, id, model, info.family);
+    const dev = createDevice(this.ctx, id, model, family);
     this.devices.set(id, dev);
     this.bare.delete(id);
     dev.start(hotLoad);
@@ -5996,7 +6203,11 @@ var Runtime = class {
     if (Object.keys(initial).length) this.host.publish(id, initial);
     this.scheduleLedDefaults(dev);
     if (!hotLoad) this.requestStateRead(id);
-    this.log.info(`Control4: ${this.host.friendlyName(id)} is a ${model} (${info.family})`);
+    if (info) this.log.info(`Control4: ${this.host.friendlyName(id)} is a ${model} (${family})`);
+    else
+      this.log.warning(
+        `Control4: ${this.host.friendlyName(id)} (${id}) reports model ${model}, which this build doesn't support yet. It stays a generic Control4 device: its check-ins are answered, its frames are logged at info, and c4_get / c4_send reach it`
+      );
     return dev;
   }
   /**
@@ -6373,7 +6584,8 @@ var Runtime = class {
       this.host.store.setModel(ieee, model);
       this.log.info(`Control4: learned model ${model} for ${this.host.friendlyName(ieee)}`);
     }
-    if (this.host.deviceInfo(ieee)?.modelID !== model) this.host.setModel(ieee, model);
+    const record2 = definitionModel(model);
+    if (this.host.deviceInfo(ieee)?.modelID !== record2) this.host.setModel(ieee, record2);
     const dev = this.devices.get(ieee);
     if (!dev || dev.model !== model) this.ensureDevice(ieee);
   }
@@ -6685,7 +6897,7 @@ function powerSourceOf(zh) {
   return family === "sr250" || family === "sr260" || zh.type === "EndDevice" ? "Battery" : "Mains (single phase)";
 }
 function knownModel(learned, own) {
-  if (isValidModel(learned)) return learned;
+  if (isValidModel(learned)) return definitionModel(learned);
   return isValidModel(own) ? own : GENERIC_MODEL;
 }
 function stampModel(zh, model) {

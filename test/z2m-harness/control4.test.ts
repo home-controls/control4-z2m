@@ -30,6 +30,7 @@ const ALL: [string, string][] = [
     ["C4-Z2IO-ZP", "0x000fff0000700008"],
     ["C4-SR250B", "0x000fff0000700009"],
     ["C4-SR260", "0x000fff000070000a"],
+    ["C4-KD120", "0x000fff000070000b"],
 ].map(([m, i]) => [i, m] as [string, string]);
 
 // biome-ignore lint/suspicious/noExplicitAny: test fakes
@@ -156,7 +157,9 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         expect(topics).toContain(`homeassistant/switch/${id("loz-5s1-w")}/switch_l2/config`);
         expect(topics).toContain(`homeassistant/switch/${id("C4-FS1-Z")}/switch/config`);
         expect(topics).toContain(`homeassistant/sensor/${id("C4-APD120")}/power/config`);
-        expect(topics).toContain(`homeassistant/switch/${id("C4-KC120277")}/switch_led_12_bound/config`);
+        expect(topics).toContain(`homeassistant/select/${id("C4-KC120277")}/led_12_mode/config`);
+        expect(topics).toContain(`homeassistant/light/${id("C4-KD120")}/light/config`);
+        expect(topics).toContain(`homeassistant/select/${id("C4-KD120")}/button_position_1_behaviour/config`);
         expect(topics).toContain(`homeassistant/select/${id("C4-Z2IO-ZP")}/io_mode/config`);
         expect(topics).toContain(`homeassistant/text/${id("C4-SR260")}/display_message/config`);
         expect(topics).toContain(`homeassistant/sensor/${id("C4-SR250B")}/battery/config`);

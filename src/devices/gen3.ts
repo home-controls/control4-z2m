@@ -133,9 +133,37 @@ export function behaviourOf(value: unknown): ButtonBehaviour {
     throw new Error(`unknown button behaviour '${value}' (use one of ${BUTTON_BEHAVIOUR_NAMES.join(", ")})`);
 }
 
-function behaviourFromCode(hex: string | undefined): ButtonBehaviour | undefined {
+export function behaviourFromCode(hex: string | undefined): ButtonBehaviour | undefined {
     const code = parseHex(hex);
     return BUTTON_BEHAVIOUR_NAMES.find((b) => BUTTON_BEHAVIOURS[b] === code);
+}
+
+/** The Get that reads a button wire's behaviour, saved and shown as `key`. */
+export function behaviourRead(dev: C4Device, wire: number, key: string, what: string): SettingRead {
+    return {
+        prop: `c4.dmx.btn ${hex2(wire)} 01`,
+        parse: (v) => {
+            const b = behaviourFromCode(lastValue(v));
+            if (!b) dev.log.info(`Control4 ${dev.name}: ${what} has a button behaviour the extension doesn't name (${lastValue(v)}); left as it is`);
+            return b ? {[key]: b} : undefined;
+        },
+    };
+}
+
+/** A button wire's behaviour: `c4.dmx.btn <wire> 01 <code>` (never 05), saved as `key` and read back after. */
+export async function writeBehaviour(dev: C4Device, wire: number, key: string, value: unknown): Promise<Payload> {
+    const behaviour = behaviourOf(value);
+    const code = hex2(BUTTON_BEHAVIOURS[behaviour]);
+    const cmd = `c4.dmx.btn ${hex2(wire)} 01 ${code}`;
+    await dev.set(cmd);
+    dev.saveSetting(key, behaviour);
+    void dev.ctx.link.scheduleVerify(dev, `dmx btn ${hex2(wire)}`, `c4.dmx.btn ${hex2(wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => dev.trySet(cmd), 500, (v) => {
+        const actual = behaviourFromCode(lastValue(v));
+        if (!actual) return;
+        dev.saveSetting(key, actual);
+        dev.publish({[key]: actual});
+    });
+    return {[key]: behaviour};
 }
 
 function modeFromCode(hex: string | undefined): LedMode | undefined {
@@ -490,36 +518,13 @@ export abstract class PaddleDevice extends Gen3Device {
     }
 
     protected override settingReads(): SettingRead[] {
-        const reads = super.settingReads();
-        for (const h of PADDLE_HALVES) {
-            reads.push({
-                prop: `c4.dmx.btn ${hex2(h.wire)} 01`,
-                parse: (v) => {
-                    const b = behaviourFromCode(lastValue(v));
-                    if (!b) this.log.info(`Control4 ${this.name}: its ${h.half} half has a button behaviour the extension doesn't name (${lastValue(v)}); left as it is`);
-                    return b ? {[behaviourKey(h.half)]: b} : undefined;
-                },
-            });
-        }
-        return reads;
+        return [...super.settingReads(), ...PADDLE_HALVES.map((h) => behaviourRead(this, h.wire, behaviourKey(h.half), `its ${h.half} half`))];
     }
 
     /** A half's button behaviour: `c4.dmx.btn <wire> 01 <code>` (never 05), read back after. */
-    protected async setBehaviour(half: PaddleHalf, value: unknown): Promise<Payload> {
-        const behaviour = behaviourOf(value);
+    protected setBehaviour(half: PaddleHalf, value: unknown): Promise<Payload> {
         const h = PADDLE_HALVES.find((x) => x.half === half) as (typeof PADDLE_HALVES)[number];
-        const code = hex2(BUTTON_BEHAVIOURS[behaviour]);
-        const cmd = `c4.dmx.btn ${hex2(h.wire)} 01 ${code}`;
-        await this.set(cmd);
-        const key = behaviourKey(half);
-        this.saveSetting(key, behaviour);
-        void this.ctx.link.scheduleVerify(this, `dmx btn ${hex2(h.wire)}`, `c4.dmx.btn ${hex2(h.wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => this.trySet(cmd), 500, (v) => {
-            const actual = behaviourFromCode(lastValue(v));
-            if (!actual) return;
-            this.saveSetting(key, actual);
-            this.publish({[key]: actual});
-        });
-        return {[key]: behaviour};
+        return writeBehaviour(this, h.wire, behaviourKey(half), value);
     }
 
     /** The SW120277's old paddle_local_control, as button behaviours: on = top on / bottom off, off = both event-only. */
@@ -547,7 +552,7 @@ export abstract class PaddleDevice extends Gen3Device {
 }
 
 // ---------------------------------------------------------------------------
-// C4-APD120
+// The dimmer on the board: the APD120's load, and the keypad dimmer's
 // ---------------------------------------------------------------------------
 
 /**
@@ -560,111 +565,179 @@ const APD_FADE_SETTLE = 2_000;
 /** `c4.dmx.dim`: the dimming phase in use (01 forward, 02 reverse, 00 a relay), most likely. */
 const PHASES: Record<number, string> = {0x00: "none", 0x01: "forward", 0x02: "reverse"};
 
-export class Apd120 extends PaddleDevice {
+function phaseName(hex: string | undefined): string | undefined {
+    const code = parseHex(hex);
+    if (code === undefined) return undefined;
+    return PHASES[code] ?? "other";
+}
+
+/** The keys a Gen3 dimmer's load answers, beside its tv parameters. */
+const LOAD_KEYS: ReadonlySet<string> = new Set([
+    "state",
+    "brightness",
+    "transition",
+    ON_TRANSITION_KEY,
+    OFF_TRANSITION_KEY,
+    "set_ramp_rate",
+    "set_on_ramp",
+    "set_off_ramp",
+    "set_on_off_ramps",
+]);
+
+/**
+ * The dimmer a Gen3 board drives: the APD120's, and the keypad dimmer's (an APD120
+ * and a KC120277 in one device). Its light state comes from its own c4.dmx.ls
+ * reports alone, within a second of a tap. A tap says nothing sure about the load:
+ * an event-only button doesn't move it, and a toggling one may turn it either way.
+ */
+export class DimmerLoad {
     /**
-     * The APD120's mid-fade c4.dmx.ls reports. It reports to the end of the
-     * ramp, so one that stops short (a max-brightness trim) is where the load is.
+     * The dimmer's mid-fade c4.dmx.ls reports. It reports to the end of the ramp,
+     * so one that stops short (a max-brightness trim) is where the load is.
      */
-    private readonly hold = new FadeHold(this, APD_FADE_SETTLE, {
-        apply: (level) => this.applyLevel(level),
-        stoppedShort: (held) => this.applyLevel(held),
-    });
-    readonly tv = new TvParams(this, APD120_TV_PARAMS);
-    readonly load = new LoadControl(this, {
-        onMove: (s, level) => this.hold.begin(level, s),
-        onSent: (delivered) => void this.hold.sent(delivered),
-        // Its `rtl` time is this move's own length (tested 2026-11-07).
-        hardwareFade: "move",
-        clampPct: (pct) => this.tv.clampPct(pct),
-        liveLevel: () => this.hold.current(),
-        // A turn-on from off with a cold start set keeps the cold start (as on the DIM1-Z).
-        fadeAllowed: (level) => level <= 0 || this.isOn() || this.tv.value("cold_start_level") <= 0,
-    });
+    private readonly hold: FadeHold;
+    readonly tv: TvParams;
+    readonly load: LoadControl;
 
-    protected override settingReads(): SettingRead[] {
-        return [
-            {
-                // Its `c4.dm.is` is the tv table in slot order (00-0a).
-                prop: "c4.dm.is",
-                parse: (v) => {
-                    if (v.length < 11) return undefined;
-                    const n = v.map((x) => parseHex(x));
-                    const out: Payload = {};
-                    const pct = (x: number | undefined) => (x !== undefined && x <= 100 ? x : undefined);
-                    const put = (key: string, x: number | undefined) => {
-                        if (x !== undefined) out[key] = x;
-                    };
-                    put("default_on_brightness", pct(n[1]));
-                    put(ON_TRANSITION_KEY, n[2] === undefined ? undefined : Math.round(n[2] / 100) / 10);
-                    put(OFF_TRANSITION_KEY, n[3] === undefined ? undefined : Math.round(n[3] / 100) / 10);
-                    put("hold_ramp_up", n[4]);
-                    put("hold_ramp_down", n[5]);
-                    put("max_brightness", pct(n[6]));
-                    put("min_brightness", pct(n[8]));
-                    put("cold_start_level", pct(n[9]));
-                    put("cold_start_time", n[10]);
-                    return out;
-                },
-            },
-            ...super.settingReads(),
-            {
-                prop: "c4.dmx.dim",
-                parse: (v) => {
-                    const phase = this.phaseName(lastValue(v));
-                    return phase ? {[DIMMING_PHASE_KEY]: phase} : undefined;
-                },
-            },
-        ];
+    constructor(private readonly dev: Gen3Device) {
+        this.hold = new FadeHold(dev, APD_FADE_SETTLE, {
+            apply: (level) => this.applyLevel(level),
+            stoppedShort: (held) => this.applyLevel(held),
+        });
+        this.tv = new TvParams(dev, APD120_TV_PARAMS);
+        this.load = new LoadControl(dev, {
+            onMove: (s, level) => this.hold.begin(level, s),
+            onSent: (delivered) => void this.hold.sent(delivered),
+            // Its `rtl` time is this move's own length (tested on the APD120 2026-11-07).
+            hardwareFade: "move",
+            clampPct: (pct) => this.tv.clampPct(pct),
+            liveLevel: () => this.hold.current(),
+            // A turn-on from off with a cold start set keeps the cold start (as on the DIM1-Z).
+            fadeAllowed: (level) => level <= 0 || dev.isOn() || this.tv.value("cold_start_level") <= 0,
+        });
     }
 
-    private phaseName(hex: string | undefined): string | undefined {
-        const code = parseHex(hex);
-        if (code === undefined) return undefined;
-        return PHASES[code] ?? "other";
+    /** Its `c4.dm.is`: the tv table in slot order (00-0a), one Get for the lot. */
+    tableRead(): SettingRead {
+        return {
+            prop: "c4.dm.is",
+            parse: (v) => {
+                if (v.length < 11) return undefined;
+                const n = v.map((x) => parseHex(x));
+                const out: Payload = {};
+                const pct = (x: number | undefined) => (x !== undefined && x <= 100 ? x : undefined);
+                const put = (key: string, x: number | undefined) => {
+                    if (x !== undefined) out[key] = x;
+                };
+                put("default_on_brightness", pct(n[1]));
+                put(ON_TRANSITION_KEY, n[2] === undefined ? undefined : Math.round(n[2] / 100) / 10);
+                put(OFF_TRANSITION_KEY, n[3] === undefined ? undefined : Math.round(n[3] / 100) / 10);
+                put("hold_ramp_up", n[4]);
+                put("hold_ramp_down", n[5]);
+                put("max_brightness", pct(n[6]));
+                put("min_brightness", pct(n[8]));
+                put("cold_start_level", pct(n[9]));
+                put("cold_start_time", n[10]);
+                return out;
+            },
+        };
     }
 
-    protected override onPhase(hex: string | undefined): void {
-        const phase = this.phaseName(hex);
+    /** `c4.dmx.dim`: the phase it dims in. */
+    phaseRead(): SettingRead {
+        return {
+            prop: "c4.dmx.dim",
+            parse: (v) => {
+                const phase = phaseName(lastValue(v));
+                return phase ? {[DIMMING_PHASE_KEY]: phase} : undefined;
+            },
+        };
+    }
+
+    onPhase(hex: string | undefined): void {
+        const phase = phaseName(hex);
         if (!phase) return;
-        this.saveSetting(DIMMING_PHASE_KEY, phase);
-        this.publish({[DIMMING_PHASE_KEY]: phase});
+        this.dev.saveSetting(DIMMING_PHASE_KEY, phase);
+        this.dev.publish({[DIMMING_PHASE_KEY]: phase});
     }
 
-    /** `c4.dmx.ls 00 00 <level %> <V> <mA> <W> <VA> <PF x 1000> <energy> 0000`: the level, then a power reading. */
-    protected override onLightState(fields: string[]): void {
+    /**
+     * `c4.dmx.ls 00 00 <level %> <V> <mA> <W> <VA> <PF x 1000> <energy> 0000`: the
+     * level, published as the light's state. False when it carried none.
+     */
+    onLightState(fields: string[]): boolean {
         const pct = parseHex(fields[2]);
-        if (pct === undefined) return;
+        if (pct === undefined) return false;
         const level = this.hold.report(pctToBrightness(pct));
         if (level !== undefined) this.applyLevel(level);
-        if (!this.pwr?.publishReading(fields.slice(3))) this.pwr?.pollSoon();
+        return true;
     }
 
     private applyLevel(level: number): void {
         this.load.noteLevel(level);
-        this.publish(level > 0 ? {state: "ON", brightness: level} : {state: "OFF"});
+        this.dev.publish(level > 0 ? {state: "ON", brightness: level} : {state: "OFF"});
     }
 
-    // Its light state comes from its own c4.dmx.ls reports alone, within a second of a
-    // tap. A tap says nothing sure about the load: an event-only half doesn't move it,
-    // and a toggling one may turn it either way (syncClick stays the base's no-op).
+    handles(key: string): boolean {
+        return LOAD_KEYS.has(key) || this.tv.find(key) !== undefined;
+    }
 
-    override async setValue(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {
+    async set(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {
         if (key === "state" || key === "brightness" || key === "transition") return this.load.set(meta, true);
         if (key === ON_TRANSITION_KEY || key === OFF_TRANSITION_KEY) return this.load.setTransition(key, value);
         if (key === "set_ramp_rate") return this.load.setRampRate(value);
         if (key === "set_on_ramp" || key === "set_off_ramp" || key === "set_on_off_ramps") return this.load.rampCommand(key, value);
-        if (this.tv.find(key)) return this.tv.set(key, value);
+        return this.tv.set(key, value);
+    }
+
+    initialState(): Payload {
+        return {
+            ...this.tv.initialState(),
+            [ON_TRANSITION_KEY]: this.load.onTransition(),
+            [OFF_TRANSITION_KEY]: this.load.offTransition(),
+            [DIMMING_PHASE_KEY]: this.dev.setting<string>(DIMMING_PHASE_KEY) ?? null,
+        };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// C4-APD120
+// ---------------------------------------------------------------------------
+
+export class Apd120 extends PaddleDevice {
+    readonly dimmer = new DimmerLoad(this);
+
+    get load(): LoadControl {
+        return this.dimmer.load;
+    }
+
+    get tv(): TvParams {
+        return this.dimmer.tv;
+    }
+
+    protected override settingReads(): SettingRead[] {
+        return [this.dimmer.tableRead(), ...super.settingReads(), this.dimmer.phaseRead()];
+    }
+
+    protected override onPhase(hex: string | undefined): void {
+        this.dimmer.onPhase(hex);
+    }
+
+    /** The level, then a power reading (`c4.dmx.ls` fields 3 on). */
+    protected override onLightState(fields: string[]): void {
+        if (!this.dimmer.onLightState(fields)) return;
+        if (!this.pwr?.publishReading(fields.slice(3))) this.pwr?.pollSoon();
+    }
+
+    // A tap moves no state here: syncClick stays the base's no-op (DimmerLoad says why).
+
+    override async setValue(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {
+        if (this.dimmer.handles(key)) return this.dimmer.set(key, value, meta);
         return super.setValue(key, value, meta);
     }
 
     override initialState(): Payload {
-        return {
-            ...super.initialState(),
-            ...this.tv.initialState(),
-            [ON_TRANSITION_KEY]: this.load.onTransition(),
-            [OFF_TRANSITION_KEY]: this.load.offTransition(),
-            [DIMMING_PHASE_KEY]: this.setting<string>(DIMMING_PHASE_KEY) ?? null,
-        };
+        return {...super.initialState(), ...this.dimmer.initialState()};
     }
 }
 

@@ -99,6 +99,14 @@ definition automatically. To skip the wait, set it by hand:
 `<base>/<device>/set` (or `control4/<ieee>/set`) `{"c4_model": "C4-DIM1-Z"}` (or the bridge request
 `set_model`, below).
 
+**A model not in the table below** stays **C4-Zigbee**, and its **Reported model**
+entity names what it checked in as. It is still kept on the network (its check-ins
+are answered), `c4_get` / `c4_send` still reach it, every frame it sends is logged
+at info (`Control4 UNSUPPORTED …`), and about 30 s after it appears a one-time,
+read-only fingerprint read logs which protocol it speaks. Those log lines are what
+adding the model takes (`docs/research/2026-11-25-unsupported-models.md`). Once a
+build supports it, the device is adopted with no re-pairing.
+
 ## Supported devices
 
 | Model (also matches) | Kind | Highlights |
@@ -110,6 +118,7 @@ definition automatically. To skip the wait, set it by hand:
 | C4-4SF120 | Fan speed controller | fan on/off + speed 1–4 |
 | LOZ-5S1-W | Dual outlet | `state_l1` / `state_l2` |
 | C4-KC120277 (-B, -W), KPZ-6B1-C | Configurable keypad | the fitted buttons only (learned, or the `button_layout` option), per-button idle/pressed colours and LED mode, LED engine, backlight colour and brightness, multi-click times, ambient light, reset reason, TX power |
+| C4-KD120, C4-KD277, C4-KD240 | Keypad dimmer | the APD120's light and settings plus the KC120277's keypad, and each button's behaviour toward the load (`button_position_N_behaviour`; every button toggles from the factory). **Untested**: built from community notes, no unit to verify on |
 | KPZ-3B1 / C4-KP3-Z, KPZ-6B1 / C4-KP6-Z | Keypads | per-button idle/pressed colours, LED engine |
 | C4-Z2IO-ZP | Contact / relay I/O | io_mode, relays, pulses, contacts, temperatures, humidity |
 | C4-SR250B (C4-SR250) | LCD remote | buttons, battery, room name / active source on the LCD, list menus, display messages |

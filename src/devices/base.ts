@@ -7,7 +7,7 @@
  */
 
 import type {FastTaps} from "../core/fasttap";
-import type {Family, Gesture} from "../core/constants";
+import type {DeviceFamily, Gesture} from "../core/constants";
 import {DEFAULT_TAP_WINDOW_MS, GESTURES, MAX_TAP_WINDOW_MS, MIN_TAP_WINDOW_MS, TAP_WINDOW_OPTION, PROFILE_BUTTON, C4_CLUSTER} from "../core/constants";
 import type {Link, LinkDevice, StateReadResult} from "../core/link";
 import type {Logger} from "../core/log";
@@ -71,7 +71,7 @@ export abstract class C4Device implements LinkDevice {
         readonly ctx: DeviceContext,
         readonly ieee: string,
         public model: string,
-        readonly family: Family,
+        readonly family: DeviceFamily,
     ) {
         for (const button of this.releasingButtons()) ctx.fast.releasers.add(this.tapKey(button));
     }

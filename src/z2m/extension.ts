@@ -39,7 +39,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 
 import {buildIdOf, fileHash} from "../core/build";
-import {CONTRACT, type Family, GENERIC_MODEL, GESTURES, type Gesture, isC4Ieee, isValidModel, MANUFACTURER, modelInfo, REMOTE_COMMANDS} from "../core/constants";
+import {CONTRACT, definitionModel, type Family, GENERIC_MODEL, GESTURES, type Gesture, isC4Ieee, isValidModel, MANUFACTURER, modelInfo, REMOTE_COMMANDS} from "../core/constants";
 import {ledEffect, ledStatus} from "../core/animation";
 import {Handoff, type HandoffHost, type HandoffStep} from "../core/handoff";
 import {type Logger, wrapZ2mLogger} from "../core/log";
@@ -131,9 +131,13 @@ function powerSourceOf(zh: Any): string {
     return family === "sr250" || family === "sr260" || zh.type === "EndDevice" ? "Battery" : "Mains (single phase)";
 }
 
-/** The model a Control4 device's record should carry: the learned one, else its own, else the generic one. */
+/**
+ * The model a Control4 device's record should carry: the learned one, else its own,
+ * else the generic one. A learned model this build doesn't support is recorded as the
+ * generic one, whose definition still serves c4_get / c4_send.
+ */
 function knownModel(learned: string | undefined, own: string | undefined): string {
-    if (isValidModel(learned)) return learned;
+    if (isValidModel(learned)) return definitionModel(learned);
     return isValidModel(own) ? own : GENERIC_MODEL;
 }
 

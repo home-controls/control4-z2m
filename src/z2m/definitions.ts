@@ -453,6 +453,29 @@ function z2ioExposes(mode: number): Expose[] {
     return out;
 }
 
+function dimmingPhase(): Expose {
+    return e
+        .enum("dimming_phase", ea.STATE, ["forward", "reverse", "none", "other"])
+        .withLabel("Dimming phase")
+        .withDescription("The dimming phase in use (c4.dmx.dim): forward or reverse, as the dimmer detected for its load")
+        .withCategory("diagnostic");
+}
+
+/** The KC120277's keys, which the keypad dimmer has too. */
+const KC_KEYS = [
+    "led_brightness",
+    "led_transition",
+    // led_N_bound stays as a key: on = push_release, off = programmed.
+    ...Array.from({length: KC_LED_SLOTS}, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
+    "backlight_color",
+    "backlight_brightness",
+    "ambient_light",
+    ...LED_ENGINE_KEYS,
+    ...LED_CLUSTER_KEYS,
+    ...GEN3_KEYS,
+];
+const POSITION_BEHAVIOUR_KEYS = Array.from({length: KC_POSITIONS}, (_, i) => `button_position_${i + 1}_behaviour`);
+
 const FAMILIES: Record<Family, FamilyDef> = {
     apd120: {
         exposes: [
@@ -468,7 +491,7 @@ const FAMILIES: Record<Family, FamilyDef> = {
             ledNotification(),
             ambient(),
             ...powerSensors(),
-            e.enum("dimming_phase", ea.STATE, ["forward", "reverse", "none", "other"]).withLabel("Dimming phase").withDescription("The dimming phase in use (c4.dmx.dim): forward or reverse, as the dimmer detected for its load").withCategory("diagnostic"),
+            dimmingPhase(),
             ...gen3Health(true),
         ],
         keys: [
@@ -565,29 +588,24 @@ const FAMILIES: Record<Family, FamilyDef> = {
         options: [tapWindowOption()],
     },
     kc120277: {
-        exposes: (device: unknown) => {
-            const ieee = (device as {ieeeAddr?: string})?.ieeeAddr;
-            let layout: KcLayout | undefined;
-            try {
-                layout = ieee ? runtime().kcLayout?.(ieee.toLowerCase()) : undefined;
-            } catch {
-                layout = undefined;
-            }
-            return kcExposes(layout ?? {wires: undefined, numbering: "pairs"});
-        },
-        keys: [
-            "led_brightness",
-            "led_transition",
-            // led_N_bound stays as a key: on = push_release, off = programmed.
-            ...Array.from({length: KC_LED_SLOTS}, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
-            "backlight_color",
-            "backlight_brightness",
-            "ambient_light",
-            ...LED_ENGINE_KEYS,
-            ...LED_CLUSTER_KEYS,
-            ...GEN3_KEYS,
-        ],
+        exposes: (device: unknown) => kcExposes(kcLayoutOf(device)),
+        keys: KC_KEYS,
         options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption()],
+    },
+    kd120: {
+        exposes: (device: unknown) => kdExposes(kcLayoutOf(device)),
+        keys: [
+            ...LIGHT_KEYS,
+            "on_transition",
+            "off_transition",
+            ...RAMP_KEYS,
+            ...APD120_TV_PARAMS.map((p) => p.key),
+            ...KC_KEYS,
+            ...POSITION_BEHAVIOUR_KEYS,
+            ...POWER_KEYS,
+        ],
+        grouped: [LIGHT_KEYS],
+        options: [...pollOptions(true), tapWindowOption(), kcNumberingOption(), kcLayoutOption()],
     },
     kp3: keypadFamily(3),
     kp6: keypadFamily(6),
@@ -608,12 +626,56 @@ const FAMILIES: Record<Family, FamilyDef> = {
     sr260: remoteFamily(SR260_BUTTONS, true),
 };
 
-/**
- * A KC120277's exposes. With its fitted buttons known (learned from presses or set),
- * only they get actions and only their LEDs get entities, each LED named for the
- * button it lights; before that, every position and LED slot.
- */
+/** A KC120277's (or keypad dimmer's) button layout as the runtime knows it; every position while it doesn't. */
+function kcLayoutOf(device: unknown): KcLayout {
+    const ieee = (device as {ieeeAddr?: string})?.ieeeAddr;
+    let layout: KcLayout | undefined;
+    try {
+        layout = ieee ? runtime().kcLayout?.(ieee.toLowerCase()) : undefined;
+    } catch {
+        layout = undefined;
+    }
+    return layout ?? {wires: undefined, numbering: "pairs"};
+}
+
+/** A KC120277's exposes: its keypad, and what the Gen3 board tells about itself. */
 export function kcExposes(layout: KcLayout): Expose[] {
+    return [...kcKeypadExposes(layout), ...gen3Health(false)];
+}
+
+/**
+ * A keypad dimmer's exposes (C4-KD120: an APD120 and a KC120277 in one device): the
+ * APD120's light and settings, the KC120277's keypad, and each fitted button's
+ * behaviour toward the load (every position's while the buttons aren't known).
+ */
+export function kdExposes(layout: KcLayout): Expose[] {
+    const wires = layout.wires ?? Array.from({length: KC_POSITIONS}, (_, i) => i);
+    return [
+        e.light_brightness(),
+        ...transitions(),
+        ...tvParams(APD120_TV_PARAMS),
+        ...kcKeypadExposes(layout),
+        ...wires.map((w) =>
+            e
+                .enum(`button_position_${w + 1}_behaviour`, ea.STATE_SET, [...BUTTON_BEHAVIOUR_NAMES])
+                .withLabel(`Position ${w + 1} button behaviour`)
+                .withDescription(
+                    `What the button at position ${w + 1} from the top does to the load: load_on, load_off, toggle, momentary (dims while held, back on release) or event_only (only sends its taps). Factory: toggle`,
+                )
+                .withCategory("config"),
+        ),
+        ...powerSensors(),
+        dimmingPhase(),
+        ...gen3Health(true),
+    ];
+}
+
+/**
+ * The keypad of a KC120277 or keypad dimmer. With its fitted buttons known (learned
+ * from presses or set), only they get actions and only their LEDs get entities, each
+ * LED named for the button it lights; before that, every position and LED slot.
+ */
+function kcKeypadExposes(layout: KcLayout): Expose[] {
     const wires = layout.wires;
     const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({length: KC_POSITIONS}, (_, i) => `button_${i + 1}`);
     // A button lights the LED slots of the positions it covers: from its own wire down to the
@@ -648,7 +710,6 @@ export function kcExposes(layout: KcLayout): Expose[] {
         ...multiclickTimes(),
         ambient(),
         ledNotification(),
-        ...gen3Health(false),
     ];
 }
 
@@ -684,7 +745,14 @@ function remoteFamily(buttons: Record<number, string>, sr260: boolean): FamilyDe
 
 function definition(model: string, zigbeeModel: string[], description: string, fam: FamilyDef | undefined) {
     const keys = [...(fam?.keys ?? []), ...COMMON_KEYS];
-    const exposes = fam?.exposes ?? [e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in")];
+    const exposes = fam?.exposes ?? [
+        e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in"),
+        e
+            .text("reported_model", ea.STATE)
+            .withLabel("Reported model")
+            .withDescription("The model the device's check-in named, when this build doesn't support it yet (its frames are logged at info)")
+            .withCategory("diagnostic"),
+    ];
     // biome-ignore lint/suspicious/noExplicitAny: Z2M definition shape
     const def: any = {
         zigbeeModel,
