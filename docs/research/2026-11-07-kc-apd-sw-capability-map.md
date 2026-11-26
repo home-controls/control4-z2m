@@ -55,11 +55,11 @@ sequences use the top-most and bottom-most buttons.
 
 | Taps | Does |
 |---|---|
-| 4 | Identify |
+| 4 | Identify. On a device that has just left its network (13-4-13), pairing mode: it joins the open network |
 | 7 | Show the Zigbee channel (community: the LED blinks it out; older posts say 7-4-7) |
 | 15 | Reboot |
 | 9-4-9 | Factory reset |
-| 13-4-13 | Leave the mesh and reset |
+| 13-4-13 | Leave the mesh and reset: the usual way to move a device, then 4 taps to pair it |
 
 All status LEDs light green at first power-up. The air gap turns every LED off.
 

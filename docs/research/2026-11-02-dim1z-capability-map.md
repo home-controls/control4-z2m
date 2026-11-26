@@ -219,15 +219,16 @@ builds, and no release notes for 03.22.41 are public. One DIM1-Z reported 03.06.
 |---|---|---|
 | 15 on top | Reboot; keeps programming | Control4 Composer help, "Troubleshooting dimmers, switches, and keypads" |
 | 5 top, 5 bottom, 5 top | "Clears all your network connections"; re-identify the device after | Same page |
-| 4 on top | Identify (green / white flash) | Community |
+| 4 on top | Identify (green / white flash). On a device that has just left its network (13-4-13), pairing mode: it joins the open network | Community; the owner, on every model |
 | 9-9-9 | Factory reset | Community, 2008 |
 | 7-4-7 | Show the Zigbee channel | Community, 2008 |
-| 13-4-13 | Leave the mesh | Community, on an LSZ-102 |
+| 13-4-13 | Reset and leave the network it was on: the usual first step to re-pair, then 4 on top | Community, on an LSZ-102; the owner, on every model |
 
 The newer models' install guides (APD120, SW120277, KC120277) print 4 identify, 7 channel, 15 reboot, 9-4-9
-factory reset and 13-4-13 leave-and-reset. This house uses 15 (reboot) and 9-4-9 (reset to re-pair) on its
-DIM1-Zs, so 9-4-9 works on them. 5-5-5 is the only reset Control4 documents for this generation. 5-5-5 and
-13-4-13 are untried on a DIM1-Z.
+factory reset and 13-4-13 leave-and-reset. The sequences are common across the devices: 13-4-13 is the one to use
+to move a device, resetting it and taking it off its old network, and 4 more taps on top then put it in pairing
+mode. 15 (reboot) and 9-4-9 (reset to re-pair) work on this house's DIM1-Zs too. 5-5-5 is the only reset Control4
+documents for this generation, and it is untried on a DIM1-Z.
 
 ### Hardware
 
@@ -382,7 +383,7 @@ for `lt` or slot 07.
     does it cure a dimmer that is stuck re-joining, or whose Control4 side has gone deaf while ZDO still
     answers? A deaf firmware may not act on the frame at all; the ZDO leave-and-rejoin stays the fallback there.
     Does `rb` take an argument on this model (`0i c4.dm.rb 00` / `01`)? Untried, and not needed.
-- **5-5-5 and 13-4-13** taps: what each does on a DIM1-Z. Try them on one that has to be re-paired anyway.
+- **5-5-5** taps: what they do on a DIM1-Z. Try them on one that has to be re-paired anyway.
 
 ## What this means for the extension
 

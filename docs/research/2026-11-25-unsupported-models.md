@@ -78,7 +78,9 @@ namespaces the firmware has.
 
 ### What to ask a tester for
 
-1. Install the build and pair the device as usual. It shows up as **C4-Zigbee**, and its **Reported model** entity
+1. Install the build, permit join, and pair the device: **13-4-13** (13 taps on the top button, 4 on the bottom,
+   13 on top) resets it and takes it off its old network, then **4 taps on top** put it in pairing mode. The
+   sequences are the same on every Control4 Zigbee wall device. It shows up as **C4-Zigbee**, and its **Reported model** entity
    names what it said.
 2. Leave it a minute for the fingerprint read.
 3. Press each button once, then double-tap one and hold one. On a load device, also switch the load from the device

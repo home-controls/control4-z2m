@@ -91,8 +91,16 @@ prints for that checkout's `dist/`.
 
 ## Pairing
 
-Permit join in Zigbee2MQTT and put the device in join mode the usual Control4
-way. A Control4 device never answers the standard Zigbee interview, so it
+Permit join in Zigbee2MQTT, then pair the device with its buttons. The tap
+sequences are the same on every Control4 Zigbee wall device ("top" is the top
+paddle or top-most button, "bottom" the bottom-most):
+
+1. **13-4-13** (13 taps on top, 4 on the bottom, 13 on top) resets the device
+   and takes it off the network it was on.
+2. **4 taps on top** then put it in pairing mode, and it joins the network that
+   is open.
+
+A Control4 device never answers the standard Zigbee interview, so it
 first shows up as **C4-Zigbee** (generic); its next check-in (seconds to a few
 minutes) carries the real model and the device is re-resolved to its full
 definition automatically. To skip the wait, set it by hand:
@@ -148,10 +156,11 @@ on and 2 s off. Those two were never measured: the dimmers read here hold
 **DIM1-Z tap sequences and radio.**
 - **15 taps on the top paddle** reboot it, keeping its settings, as its Reboot
   button does.
-- **9-4-9** resets it to pair: 9 top, 4 bottom, 9 top.
+- **13-4-13**, then 4 taps on top, resets it and pairs it again, as on every
+  model (Pairing, above). **9-4-9** (9 top, 4 bottom, 9 top) also resets it to
+  pair.
 - **5-5-5** is the only reset Control4 documents for this generation (it
-  "clears all your network connections"). It is untried here, as is 13-4-13,
-  the newer models' "leave the mesh and reset".
+  "clears all your network connections"). It is untried here.
 - **Antenna:** a DIM1-Z has a whip antenna coiled under its button. Pulling it
   out is worth trying on one that keeps dropping off, before moving routers.
 - **Zigbee scenes don't work** on a DIM1-Z: it answers the Scenes cluster but
