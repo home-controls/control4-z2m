@@ -244,3 +244,146 @@ export class EmberTransport implements Transport {
         }
     }
 }
+// Legacy EmberZNet status codes (zigbee-herdsman src/adapter/ezsp/driver/types/named.ts).
+const EMBER_SUCCESS = 0x00;
+const EMBER_NO_BUFFERS = 0x18;
+const EMBER_NETWORK_DOWN = 0x90;
+const EMBER_MAX_MESSAGE_LIMIT_REACHED = 0x72;
+const EMBER_NETWORK_BUSY = 0xa1;
+
+/**
+ * The same tap for herdsman's deprecated `ezsp` driver (EmberZNet before 7.4,
+ * e.g. EM35x NCPs on EZSP 8). That driver emits every incoming frame as an
+ * `incomingMessage` event and its adapter drops the Control4 profiles, so the
+ * hook sits on the driver's `emit`. Sends go out with `sendUnicast`, and the
+ * NCP's messageSentHandler confirms them by message tag.
+ */
+export class EzspTransport implements Transport {
+    readonly name = "ezsp";
+    private readonly driver: Any;
+    private originalEmit: Any;
+    private pending = new Map<number, {nwk: number; resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout}>();
+    private readonly onEzspFrame = (frameName: string, f: Any) => {
+        if (frameName !== "messageSentHandler" || !C4_PROFILES.has(f?.apsFrame?.profileId)) return;
+        const p = this.pending.get(f.messageTag);
+        if (!p || p.nwk !== f.indexOrDestination) return;
+        this.pending.delete(f.messageTag);
+        clearTimeout(p.timer);
+        if (f.status === EMBER_SUCCESS) p.resolve();
+        else p.reject(new DeliveryError(`delivery failed (status 0x${Number(f.status).toString(16)})`, "failed"));
+    };
+
+    constructor(
+        private readonly adapter: Any,
+        private readonly log: Logger,
+    ) {
+        this.driver = adapter.driver;
+    }
+
+    static supports(adapter: Any): boolean {
+        return typeof adapter?.driver?.emit === "function" && typeof adapter?.driver?.ezsp?.sendUnicast === "function";
+    }
+
+    start(onFrame: (frame: InFrame) => boolean): void {
+        if (this.originalEmit) return;
+        const original = this.driver.emit;
+        this.originalEmit = original;
+        const log = this.log;
+        this.driver.emit = function (event: string, frame: Any, ...rest: unknown[]) {
+            if (event === "incomingMessage" && C4_PROFILES.has(frame?.apsFrame?.profileId)) {
+                try {
+                    const consumed = onFrame({
+                        nwk: frame.sender,
+                        profile: frame.apsFrame.profileId,
+                        cluster: frame.apsFrame.clusterId,
+                        srcEp: frame.apsFrame.sourceEndpoint,
+                        dstEp: frame.apsFrame.destinationEndpoint,
+                        data: Buffer.from(frame.message),
+                        lqi: frame.lqi,
+                        rssi: frame.rssi,
+                        unicast: frame.messageType === INCOMING_UNICAST || frame.messageType === INCOMING_UNICAST_REPLY,
+                    });
+                    if (consumed) return true;
+                } catch (error) {
+                    log.warning(`Control4 receive hook failed: ${(error as Error).stack ?? error}`);
+                }
+            }
+            return original.call(this, event, frame, ...rest);
+        };
+        this.driver.ezsp.on("frame", this.onEzspFrame);
+    }
+
+    stop(): void {
+        if (this.originalEmit) {
+            this.driver.emit = this.originalEmit;
+            this.originalEmit = undefined;
+        }
+        this.driver.ezsp.off?.("frame", this.onEzspFrame);
+        for (const [tag, p] of this.pending) {
+            clearTimeout(p.timer);
+            p.reject(new DeliveryError("transport stopped", "stopped"));
+            this.pending.delete(tag);
+        }
+    }
+
+    async send(nwk: number, frame: OutFrame, options: {ack?: boolean} = {}): Promise<void> {
+        const ack = options.ack !== false;
+        let sent: Promise<void> | undefined;
+        const run = async () => {
+            for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+                // makeApsFrame takes the driver's own sequence, so the tag never repeats one in flight.
+                const aps = this.driver.makeApsFrame(frame.cluster, !ack);
+                aps.profileId = frame.profile;
+                aps.sourceEndpoint = frame.srcEp;
+                aps.destinationEndpoint = frame.dstEp;
+                // No APS retry: EmberZNet 6.x gives up on the APS ack from a sleeping
+                // end device (DELIVERY_FAILED, 0x66) before it next polls, and the
+                // remote then counts its controller as lost. herdsman's own ezsp
+                // sends use route discovery only; messageSent still confirms the
+                // (indirect) delivery.
+                aps.options = APS_ENABLE_ROUTE_DISCOVERY;
+                const tag = aps.sequence & 0xff;
+                let status = -1;
+                try {
+                    status = (await this.driver.ezsp.sendUnicast(OUTGOING_DIRECT, nwk, aps, tag, frame.data)).status;
+                } catch (error) {
+                    this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
+                }
+                if (status === EMBER_SUCCESS) {
+                    if (ack) sent = this.waitSent(tag, nwk);
+                    return;
+                }
+                if (attempt === SEND_ATTEMPTS) break;
+                if ([EMBER_NO_BUFFERS, EMBER_MAX_MESSAGE_LIMIT_REACHED, EMBER_NETWORK_BUSY, -1].includes(status)) await wait(BUSY_DEFER_MS);
+                else if (status === EMBER_NETWORK_DOWN) await wait(NETWORK_DOWN_DEFER_MS);
+                else break;
+            }
+            throw new DeliveryError(`could not queue frame to 0x${nwk.toString(16)}`, "unqueued");
+        };
+        const queue = this.adapter.queue;
+        if (queue && typeof queue.execute === "function") await queue.execute(run, nwk);
+        else await run();
+        if (sent) await sent;
+    }
+
+    private waitSent(tag: number, nwk: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.pending.delete(tag);
+                reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
+            }, SENT_TIMEOUT_MS);
+            timer.unref?.();
+            this.pending.set(tag, {nwk, resolve, reject, timer});
+        });
+    }
+
+    async mtorr(radius: number): Promise<boolean> {
+        try {
+            const res = await this.driver.ezsp.execCommand("sendManyToOneRouteRequest", {concentratorType: HIGH_RAM_CONCENTRATOR, radius});
+            return res?.status === EMBER_SUCCESS;
+        } catch (error) {
+            this.log.warning(`Control4 route refresh failed: ${error}`);
+            return false;
+        }
+    }
+}

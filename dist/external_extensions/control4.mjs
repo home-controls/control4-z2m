@@ -2159,6 +2159,128 @@ var EmberTransport = class {
     }
   }
 };
+var EMBER_SUCCESS = 0;
+var EMBER_NO_BUFFERS = 24;
+var EMBER_NETWORK_DOWN = 144;
+var EMBER_MAX_MESSAGE_LIMIT_REACHED = 114;
+var EMBER_NETWORK_BUSY = 161;
+var EzspTransport = class {
+  constructor(adapter, log) {
+    this.adapter = adapter;
+    this.log = log;
+    this.driver = adapter.driver;
+  }
+  adapter;
+  log;
+  name = "ezsp";
+  driver;
+  originalEmit;
+  pending = /* @__PURE__ */ new Map();
+  onEzspFrame = (frameName, f) => {
+    if (frameName !== "messageSentHandler" || !C4_PROFILES.has(f?.apsFrame?.profileId)) return;
+    const p = this.pending.get(f.messageTag);
+    if (!p || p.nwk !== f.indexOrDestination) return;
+    this.pending.delete(f.messageTag);
+    clearTimeout(p.timer);
+    if (f.status === EMBER_SUCCESS) p.resolve();
+    else p.reject(new DeliveryError(`delivery failed (status 0x${Number(f.status).toString(16)})`, "failed"));
+  };
+  static supports(adapter) {
+    return typeof adapter?.driver?.emit === "function" && typeof adapter?.driver?.ezsp?.sendUnicast === "function";
+  }
+  start(onFrame) {
+    if (this.originalEmit) return;
+    const original = this.driver.emit;
+    this.originalEmit = original;
+    const log = this.log;
+    this.driver.emit = function(event, frame2, ...rest) {
+      if (event === "incomingMessage" && C4_PROFILES.has(frame2?.apsFrame?.profileId)) {
+        try {
+          const consumed = onFrame({
+            nwk: frame2.sender,
+            profile: frame2.apsFrame.profileId,
+            cluster: frame2.apsFrame.clusterId,
+            srcEp: frame2.apsFrame.sourceEndpoint,
+            dstEp: frame2.apsFrame.destinationEndpoint,
+            data: Buffer.from(frame2.message),
+            lqi: frame2.lqi,
+            rssi: frame2.rssi,
+            unicast: frame2.messageType === INCOMING_UNICAST || frame2.messageType === INCOMING_UNICAST_REPLY
+          });
+          if (consumed) return true;
+        } catch (error) {
+          log.warning(`Control4 receive hook failed: ${error.stack ?? error}`);
+        }
+      }
+      return original.call(this, event, frame2, ...rest);
+    };
+    this.driver.ezsp.on("frame", this.onEzspFrame);
+  }
+  stop() {
+    if (this.originalEmit) {
+      this.driver.emit = this.originalEmit;
+      this.originalEmit = void 0;
+    }
+    this.driver.ezsp.off?.("frame", this.onEzspFrame);
+    for (const [tag, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new DeliveryError("transport stopped", "stopped"));
+      this.pending.delete(tag);
+    }
+  }
+  async send(nwk, frame2, options = {}) {
+    const ack = options.ack !== false;
+    let sent;
+    const run = async () => {
+      for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+        const aps = this.driver.makeApsFrame(frame2.cluster, !ack);
+        aps.profileId = frame2.profile;
+        aps.sourceEndpoint = frame2.srcEp;
+        aps.destinationEndpoint = frame2.dstEp;
+        aps.options = APS_ENABLE_ROUTE_DISCOVERY;
+        const tag = aps.sequence & 255;
+        let status = -1;
+        try {
+          status = (await this.driver.ezsp.sendUnicast(OUTGOING_DIRECT, nwk, aps, tag, frame2.data)).status;
+        } catch (error) {
+          this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
+        }
+        if (status === EMBER_SUCCESS) {
+          if (ack) sent = this.waitSent(tag, nwk);
+          return;
+        }
+        if (attempt === SEND_ATTEMPTS) break;
+        if ([EMBER_NO_BUFFERS, EMBER_MAX_MESSAGE_LIMIT_REACHED, EMBER_NETWORK_BUSY, -1].includes(status)) await wait(BUSY_DEFER_MS);
+        else if (status === EMBER_NETWORK_DOWN) await wait(NETWORK_DOWN_DEFER_MS);
+        else break;
+      }
+      throw new DeliveryError(`could not queue frame to 0x${nwk.toString(16)}`, "unqueued");
+    };
+    const queue = this.adapter.queue;
+    if (queue && typeof queue.execute === "function") await queue.execute(run, nwk);
+    else await run();
+    if (sent) await sent;
+  }
+  waitSent(tag, nwk) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(tag);
+        reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
+      }, SENT_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(tag, { nwk, resolve, reject, timer });
+    });
+  }
+  async mtorr(radius) {
+    try {
+      const res = await this.driver.ezsp.execCommand("sendManyToOneRouteRequest", { concentratorType: HIGH_RAM_CONCENTRATOR, radius });
+      return res?.status === EMBER_SUCCESS;
+    } catch (error) {
+      this.log.warning(`Control4 route refresh failed: ${error}`);
+      return false;
+    }
+  }
+};
 
 // src/core/link.ts
 var SEND_GAP_DEVICE = 40;
@@ -7121,9 +7243,11 @@ var Control4Extension = class {
     let transport;
     if (EmberTransport.supports(adapter)) {
       transport = new EmberTransport(adapter, this.log);
+    } else if (EzspTransport.supports(adapter)) {
+      transport = new EzspTransport(adapter, this.log);
     } else {
       this.log.error(
-        "Control4: this coordinator is not driven by the 'ember' adapter. Control4 devices need an Ember (Silicon Labs EFR32) coordinator with `adapter: ember` - the frames on profiles 0xC25C/D/E cannot be received otherwise."
+        "Control4: this coordinator is not driven by the 'ember' or 'ezsp' adapter. Control4 devices need an Ember (Silicon Labs) coordinator with `adapter: ember` (or `adapter: ezsp` for EmberZNet before 7.4) - the frames on profiles 0xC25C/D/E cannot be received otherwise."
       );
     }
     this.radio = transport !== void 0;
@@ -7201,7 +7325,7 @@ var Control4Extension = class {
       (error) => this.log.warning(`Control4: could not subscribe to ${SHARED_TOPIC}/#: ${error}`)
     );
     const kind = hotLoad ? "hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap" : "first start since Zigbee2MQTT started";
-    this.log.info(`Control4: extension started: ${kind} (${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`);
+    this.log.info(`Control4: extension started: ${kind} (${transport ? transport.name : "no radio access"}, ${runtime.devices.size} devices, store ${file})`);
     this.publishDiscovery();
     this.publishStatus();
     this.statusTimer = setInterval(() => this.publishStatus(), STATUS_INTERVAL);
