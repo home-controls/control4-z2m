@@ -1,0 +1,105 @@
+name: CI
+
+# GitHub only: Gitea runs .gitea/workflows and ignores this folder while that one exists.
+#
+# Every push and pull request: typecheck, tests and build, and dist/ must match the build.
+# A push to main whose dist/ holds a build with no release yet publishes one, named after
+# the build id the extension reports in its status (tools/build-id.mjs). A push that leaves
+# dist/ unchanged (docs, tests, blueprints) makes no release.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # typecheck + vitest + build, as `npm run check` does locally
+      - run: npm run check
+      # dist/ is committed and released as-is, so it must match a fresh build of src/
+      - name: dist matches src
+        run: git diff --exit-code -- dist
+
+  release:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Find the build
+        id: build
+        run: |
+          id=$(node tools/build-id.mjs)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          if gh release view "build-$id" > /dev/null 2>&1; then
+            echo "Build $id already has a release, so there is nothing to publish."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package
+        if: steps.build.outputs.new == 'true'
+        run: |
+          mkdir -p out
+          cp dist/external_extensions/control4.mjs out/control4-extension.mjs
+          cp dist/external_converters/control4.mjs out/control4-converter.mjs
+          (cd dist && zip -X -q ../out/control4-z2m.zip external_extensions/control4.mjs external_converters/control4.mjs)
+          (cd out && sha256sum control4-z2m.zip control4-extension.mjs control4-converter.mjs > SHA256SUMS)
+
+      - name: Publish
+        if: steps.build.outputs.new == 'true'
+        env:
+          ID: ${{ steps.build.outputs.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          prev=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+          cat > notes.md <<EOF
+          Build \`$ID\`. Once Zigbee2MQTT loads these files, the extension's status reports this build (see "Instance status" in the README).
+
+          ## Install
+
+          Unzip \`control4-z2m.zip\` into the Zigbee2MQTT data folder, the one holding \`configuration.yaml\` (\`/config/zigbee2mqtt\` in the Home Assistant add-on). It holds
+
+              external_extensions/control4.mjs
+              external_converters/control4.mjs
+
+          Or download \`control4-extension.mjs\` and \`control4-converter.mjs\` and save them as those two files. Both must be named \`control4.mjs\`.
+
+          \`configuration.yaml\` needs \`serial.adapter: ember\` and \`advanced.enable_external_js: true\`. Then restart Zigbee2MQTT. The README covers the rest, including the Home Assistant blueprints and packages.
+
+          The newest build is always at https://github.com/$REPO/releases/latest/download/control4-z2m.zip
+
+          ## Changes
+
+          EOF
+          if [ -n "$prev" ]; then
+            git log --no-merges --format='- %s' "$prev..HEAD" >> notes.md
+          else
+            echo "- First release." >> notes.md
+          fi
+          gh release create "build-$ID" out/* --target "$GITHUB_SHA" --title "Build $ID" --notes-file notes.md --latest
