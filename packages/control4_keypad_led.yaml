@@ -1,0 +1,194 @@
+# Control4 keypad LED animations / status — HA-side glue for control4-z2m
+# (installed as a package). Port of the ZHA quirks' control4_keypad_led.yaml.
+#
+# The engine lives in the control4-z2m Zigbee2MQTT extension and is driven by
+# requests on the shared control4/ namespace (the ZHA quirks registered HA
+# services for this). Every Zigbee2MQTT instance with the extension acts on
+# its own keypads, so one request covers every coordinator:
+#
+#   control4/request/led_effect   — push an animation (notification)
+#   control4/request/led_status   — bind button LEDs to a status colour
+#   control4/request/led_stop     — cancel a running animation
+#   control4/request/led_refresh  — re-send the status colours
+#
+# Every one takes `devices` (IEEEs), or no `devices` at all to mean "every
+# Control4 keypad". Buttons are 1-based, top first, and accept "all", 3, "1,3"
+# or [1, 3]. Each instance answers on control4/response/<request>.
+
+script:
+  c4_keypad_led_notify:
+    alias: "C4 Keypad LED: notify"
+    icon: mdi:led-on
+    mode: queued
+    max: 10
+    description: >
+      Flash a notification on one or more Control4 keypads. Thin wrapper over
+      the control4/request/led_effect request so dashboards, scripts and other
+      automations can call it without remembering the field names.
+    fields:
+      keypads:
+        name: Keypads
+        description: Keypad device(s). Omit for every Control4 keypad.
+        required: false
+        selector:
+          device:
+            multiple: true
+            filter:
+              - integration: mqtt
+                manufacturer: Control4
+      effect:
+        name: Effect
+        default: blink
+        selector:
+          select:
+            options: [blink, pulse, chase, bounce, fill, alternate, rainbow, strobe, solid]
+      color:
+        name: Colour
+        description: "Palette name or hex (#ff8800)."
+        default: white
+        selector:
+          text:
+      buttons:
+        name: Buttons
+        description: '"all", or 1-based numbers like "1,3".'
+        default: all
+        selector:
+          text:
+      speed:
+        name: Step time (ms)
+        default: 400
+        selector:
+          number:
+            min: 150
+            max: 3000
+            step: 50
+            unit_of_measurement: ms
+      count:
+        name: Cycles
+        default: 3
+        selector:
+          number:
+            min: 0
+            max: 60
+      brightness:
+        name: Brightness (%)
+        default: 100
+        selector:
+          number:
+            min: 5
+            max: 100
+            step: 5
+      priority:
+        name: Priority
+        default: 10
+        selector:
+          number:
+            min: 0
+            max: 100
+    sequence:
+      - variables:
+          kp_list: "{{ [] if keypads is not defined or keypads in (none, '') else (keypads if keypads is list else [keypads]) }}"
+          kp_ieees: >-
+            {% set ns = namespace(l=[]) %}
+            {% for d in kp_list %}
+              {% set i = ((device_attr(d, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x') | first | default('')) | replace('zigbee2mqtt_', '') %}
+              {% if i %}{% set ns.l = ns.l + [i] %}{% endif %}
+            {% endfor %}
+            {{ ns.l }}
+          payload: >
+            {% set p = {
+                 'effect': effect | default('blink'),
+                 'color': color | default('white'),
+                 'buttons': buttons | default('all'),
+                 'speed': speed | default(400) | int,
+                 'count': count | default(3) | int,
+                 'brightness': brightness | default(100) | int,
+                 'priority': priority | default(10) | int,
+               } %}
+            {{ p if (kp_list | count) == 0 else dict(p, devices=kp_ieees) }}
+      # Keypads were picked but none is a Zigbee2MQTT device: do nothing
+      # (sending without `devices` would flash every keypad).
+      - condition: "{{ (kp_list | count) == 0 or (kp_ieees | count) > 0 }}"
+      - action: mqtt.publish
+        data:
+          topic: control4/request/led_effect
+          payload: "{{ payload | to_json }}"
+
+  c4_keypad_led_selftest:
+    alias: "C4 Keypad LED: self-test"
+    icon: mdi:test-tube
+    mode: single
+    description: >
+      Walk one keypad through every effect so you can confirm the LEDs, the
+      colours and the button order on real hardware. Watch the Zigbee2MQTT log
+      (namespace z2m:control4 at debug) for dropped frames.
+    fields:
+      keypad:
+        name: Keypad
+        required: true
+        selector:
+          device:
+            filter:
+              - integration: mqtt
+                manufacturer: Control4
+    variables:
+      ieee: "{{ ((device_attr(keypad, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x') | first | default('')) | replace('zigbee2mqtt_', '') }}"
+    sequence:
+      - if: "{{ not ieee }}"
+        then:
+          - stop: "Not a Zigbee2MQTT device: {{ keypad }}"
+            error: true
+      - repeat:
+          for_each:
+            - { effect: chase,     color: blue,    count: 2 }
+            - { effect: bounce,    color: cyan,    count: 2 }
+            - { effect: fill,      color: green,   count: 1 }
+            - { effect: alternate, color: amber,   count: 3 }
+            - { effect: blink,     color: red,     count: 3 }
+            - { effect: pulse,     color: magenta, count: 2 }
+            - { effect: rainbow,   color: white,   count: 2 }
+            - { effect: strobe,    color: white,   count: 2 }
+          sequence:
+            - action: mqtt.publish
+              data:
+                topic: control4/request/led_effect
+                payload: >-
+                  {{ {'devices': [ieee], 'effect': repeat.item.effect, 'color': repeat.item.color,
+                      'count': repeat.item.count, 'speed': 250, 'priority': 90} | to_json }}
+            - delay:
+                seconds: 6
+      # Identify each button in turn — confirms 1 = top.
+      - repeat:
+          count: 6
+          sequence:
+            - action: mqtt.publish
+              data:
+                topic: control4/request/led_effect
+                payload: >-
+                  {{ {'devices': [ieee], 'buttons': repeat.index, 'effect': 'blink', 'color': 'white',
+                      'count': 2, 'speed': 300, 'priority': 90} | to_json }}
+            - delay:
+                seconds: 3
+      - action: mqtt.publish
+        data:
+          topic: control4/request/led_stop
+          payload: "{{ {'devices': [ieee]} | to_json }}"
+
+  c4_keypad_led_all_clear:
+    alias: "C4 Keypad LED: stop everything"
+    icon: mdi:led-off
+    mode: single
+    description: >
+      Cancel every running animation on every Control4 keypad and re-push the
+      status colours. Use it if an animation misbehaves or the mesh got busy.
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: control4/request/led_stop
+          payload: "{}"
+      - delay:
+          seconds: 2
+      - action: mqtt.publish
+        data:
+          topic: control4/request/led_refresh
+          payload: "{}"

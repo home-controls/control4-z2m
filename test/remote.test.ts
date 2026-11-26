@@ -1,0 +1,239 @@
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+
+import {Rig, tick} from "./rig";
+
+let rig: Rig;
+const R250 = "0x000fff00000000e1";
+const R260 = "0x000fff00000000e2";
+
+beforeEach(() => {
+    vi.useFakeTimers();
+    rig = new Rig();
+    rig.add(R250, "C4-SR250B", {type: "EndDevice"});
+    rig.add(R260, "C4-SR260", {type: "EndDevice"});
+    rig.start();
+});
+
+afterEach(() => {
+    rig.stop();
+    vi.useRealTimers();
+});
+
+const set = async (ieee: string, key: string, value: unknown) => {
+    const p = rig.runtime.set(ieee, key, value, {message: {[key]: value}});
+    await tick(100);
+    return p;
+};
+
+describe("SR250 LCD rows", () => {
+    it("defaults the room and sends rows in one frame", async () => {
+        expect(rig.last(R250)).toMatchObject({room_name: "Home", active_source: ""});
+        await set(R250, "room_name", "Kitchen");
+        expect(rig.cmds().at(-1)).toBe('c4.ln.ri "Kitchen" ""');
+        const from = rig.transport.sent.length;
+        await set(R250, "set_room_info", {room: "Den", source: "Apple TV"});
+        expect(rig.cmds(from)).toEqual(['c4.ln.ri "Den" "Apple TV"']);
+    });
+
+    it("uses the device option as the fallback room", () => {
+        (rig.devices.get(R250) as {options: Record<string, unknown>}).options.lcd_default_room = "Great Room";
+        expect((rig.runtime.get(R250) as unknown as {room(): string}).room()).toBe("Great Room");
+    });
+
+    it("re-sends undelivered rows on the next key press", async () => {
+        rig.transport.failWith = () => Object.assign(new Error("asleep"), {name: "DeliveryError"});
+        await set(R250, "room_name", "Porch");
+        rig.transport.failWith = undefined;
+        const from = rig.transport.sent.length;
+        rig.ascii(R250, "0t0001 sa c4.zr.bb 10 0000 0000 00000000");
+        await tick(100);
+        expect(rig.cmds(from)).toContain('c4.ln.ri "Porch" ""');
+    });
+
+    it("answers a motion wake with the clock then the rows", async () => {
+        await set(R250, "room_name", "Bedroom");
+        const from = rig.transport.sent.length;
+        rig.ascii(R250, "0t0001 sa c4.zr.mot");
+        await tick(1000);
+        const cmds = rig.cmds(from).filter((c) => !c.startsWith("c4.zr.bl"));
+        expect(cmds[0]).toMatch(/^c4\.zr\.tm [0-9a-f]{2} [0-9a-f]{2} [0-9a-f]{2} 0[1-7]$/);
+        expect(cmds[1]).toBe('c4.ln.ri "Bedroom" ""');
+        expect(rig.actions(R250)).toContain("motion_wake");
+        // A second wake inside 5 s refreshes nothing.
+        const n = rig.transport.sent.length;
+        rig.ascii(R250, "0t0002 sa c4.zr.mot");
+        await tick(100);
+        expect(rig.cmds(n).filter((c) => !c.startsWith("c4.zr.bl"))).toEqual([]);
+    });
+
+    it("commissions the remote and binds cluster 0x0001", async () => {
+        await tick(20_000);
+        const cmds = rig.cmds();
+        expect(cmds.some((c) => c.startsWith("c4.zr.tm "))).toBe(true);
+        expect(cmds).toContain('c4.zr.loc 00 0f "en_US"');
+        expect(cmds).toContain('c4.ln.ri "Home" ""');
+        expect(rig.binds.filter((b) => b.ieee === R250)).toEqual([
+            {ieee: R250, ep: 197, cluster: 1},
+            {ieee: R250, ep: 1, cluster: 1},
+        ]);
+    });
+});
+
+describe("SR250 keys and menus", () => {
+    it("maps its own key layout (select = 0x2a)", () => {
+        rig.ascii(R250, "0t0001 sa c4.zr.bb 2a 0000 0000 00000000");
+        rig.ascii(R250, "0t0002 sa c4.zr.bh 0d 0000 0000");
+        rig.ascii(R250, "0t0003 sa c4.zr.be 0d 0000 0000");
+        expect(rig.actions(R250)).toEqual(["select_press", "volume_up_hold", "volume_up_release"]);
+    });
+
+    it("publishes ZHA command names and a control4/event for each key", () => {
+        rig.ascii(R250, "0t0001 sa c4.zr.bb 0d 0000 0000 00000000");
+        rig.ascii(R250, "0t0002 sa c4.zr.bh 0d 0000 0000");
+        rig.ascii(R250, "0t0003 sa c4.zr.be 0d 0000 0000");
+        expect(rig.events.map((e) => e.command)).toEqual(["remote_button_short_press", "remote_button_long_press", "remote_button_short_release"]);
+        expect(rig.events[0]).toMatchObject({ieee: R250, model: "C4-SR250B", action: "volume_up_press", button: "volume_up", gesture: "press", button_id: 0x0d});
+    });
+
+    it("carries the picked item on the menu_select event", async () => {
+        await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix"]});
+        rig.ascii(R250, "0t0001 sa c4.ln.is 0001 0000");
+        await tick(100);
+        expect(rig.events.at(-1)).toMatchObject({action: "menu_select", command: "menu_select", item: "YouTube", title: "Watch", selected_index: 0, list_id: 1});
+    });
+
+    it("shows a list and answers gi with the item count", async () => {
+        await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix", "Plex"]});
+        expect(rig.texts().at(-1)).toMatch(/^0i[0-9a-f]{4} c4\.ln\.sl 0001 0003 0000 "\x81Watch"$/);
+        rig.ascii(R250, "0ic444 c4.ln.gi 0001 0000 0003 00");
+        await tick(100);
+        expect(rig.texts().at(-1)).toBe('0rc444 000 0003 "\x01YouTube" "\x01Netflix" "\x01Plex"');
+    });
+
+    it("lets the gi answer format be changed live", async () => {
+        await set(R250, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await set(R250, "gi_icon", 0x100);
+        await set(R250, "gi_max_items", 1);
+        await set(R250, "gi_reply_ep", 197);
+        rig.ascii(R250, "0ic444 c4.ln.gi 0001 0001 0002 00");
+        await tick(100);
+        expect(rig.texts().at(-1)).toBe('0rc444 000 0001 "Netflix"');
+        expect(rig.transport.sent.at(-1)?.frame.dstEp).toBe(197);
+        await set(R250, "gi_template", "0r{seq} 000 {list} {items}");
+        await set(R250, "gi_item_template", "{index}={label}");
+        rig.ascii(R250, "0ic445 c4.ln.gi 0001 0000 0002 00");
+        await tick(100);
+        expect(rig.texts().at(-1)).toBe("0rc445 000 0001 0000=YouTube");
+    });
+
+    it("keeps the room on row 1 after a pick and closes the list", async () => {
+        await set(R250, "room_name", "Living Room");
+        await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix"]});
+        rig.ascii(R250, "0t0001 sa c4.ln.is 0001 0001");
+        await tick(200);
+        expect(rig.cmds().slice(-2)).toEqual(['c4.ln.ri "Living Room" "Netflix"', "c4.ln.le"]);
+        expect(rig.last(R250).active_source).toBe("Netflix");
+        const ev = rig.published.find((p) => p.payload.action === "menu_select")?.payload;
+        expect(ev).toMatchObject({action_item: "Netflix", action_title: "Watch", action_selected_index: 1});
+    });
+
+    it("reports a cancel and closes the list", async () => {
+        await set(R250, "show_list", {title: "Watch", items: ["A"]});
+        rig.ascii(R250, "0t0001 sa c4.ln.cn 0001 0000");
+        await tick(100);
+        expect(rig.actions(R250)).toContain("menu_cancel");
+        expect(rig.cmds().at(-1)).toBe("c4.ln.le");
+    });
+
+    it("pages the open list by 5 with page up / page down", async () => {
+        await set(R250, "show_list", {title: "T", items: Array.from({length: 12}, (_, i) => `i${i}`)});
+        rig.ascii(R250, "0t0001 sa c4.zr.bb 0a 0000 0000 00000000");
+        await tick(200);
+        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 0005 ");
+        rig.ascii(R250, "0t0002 sa c4.zr.bb 0a 0000 0000 00000000");
+        await tick(200);
+        rig.ascii(R250, "0t0003 sa c4.zr.bb 0a 0000 0000 00000000");
+        await tick(200);
+        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 000b ");
+        rig.ascii(R250, "0t0004 sa c4.zr.bb 04 0000 0000 00000000");
+        await tick(200);
+        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 0006 ");
+    });
+
+    it("reads the battery on wake and caches it", async () => {
+        rig.ascii(R250, "0t0001 sa c4.zr.bb 10 0000 0000 00000000");
+        await tick(100);
+        expect(rig.texts().filter((t) => t.startsWith("0g")).map((t) => t.split(" ")[1])).toEqual(["c4.zr.bl"]);
+        rig.reply(R250, "64");
+        expect(rig.last(R250).battery).toBe(100);
+    });
+
+    it("allows read-only probe Gets and refuses reset-like names", async () => {
+        await set(R250, "c4_get", "c4.sy.fwv");
+        expect(rig.texts().at(-1)).toMatch(/^0g[0-9a-f]{4} c4\.sy\.fwv$/);
+        await expect(rig.runtime.set(R250, "c4_get", "c4.sy.rst", {message: {}})).rejects.toThrow(/refused/);
+        await expect(rig.runtime.set(R250, "c4_send", "c4.zr.x 1", {message: {}})).rejects.toThrow(/disabled/);
+        // The ZHA-named aliases go through the same guards.
+        await expect(rig.runtime.set(R250, "send_raw", {cmd: "c4.zr.x 1", dst_ep: 1}, {message: {}})).rejects.toThrow(/disabled/);
+        await expect(rig.runtime.set(R250, "send_get", {cmd: "c4.sy.rst", dst_ep: 1}, {message: {}})).rejects.toThrow(/refused/);
+    });
+});
+
+describe("LCD text length", () => {
+    it("shortens room / source / message / title to fit one frame", async () => {
+        const long = "A very long now playing title from some album - with a remix name (2024 remaster)";
+        await set(R250, "set_room_info", {room: "The Upstairs Family Room Over The Garage", source: long});
+        await set(R250, "display_message", long);
+        await set(R250, "show_list", {title: long, items: "One|Two"});
+        await tick(500);
+        const frames = rig.transport.sent.filter((s) => s.frame.profile === 0xc25c).slice(-3);
+        for (const f of frames) expect(f.frame.data.length).toBeLessThanOrEqual(70);
+        expect(frames[0].text).toMatch(/^0s[0-9a-f]{4} c4\.ln\.ri "The Upstairs Family Room" "A very long/);
+        // The full text is still what Zigbee2MQTT shows.
+        expect(rig.store.get(R250, "active_source")).toBe(long);
+    });
+});
+
+describe("SR260", () => {
+    it("answers gi without the item count", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix|Plex"});
+        rig.ascii(R260, "0ib572 c4.ln.gi 0001 0000 0003 00");
+        await tick(100);
+        expect(rig.texts().at(-1)).toBe('0rb572 000 "\x01YouTube" "\x01Netflix" "\x01Plex"');
+    });
+
+    it("takes [xx] glyph codes off the title and items", async () => {
+        await set(R260, "show_list", {title: "[a6]Settings", items: "[b1]Lights|Fans|TV"});
+        expect(rig.texts().at(-1)).toMatch(/"\xa6Settings"$/);
+        rig.ascii(R260, "0ib573 c4.ln.gi 0001 0000 0003 00");
+        await tick(100);
+        expect(rig.texts().at(-1)).toBe('0rb573 000 "\xb1Lights" "\x01Fans" "\x01TV"');
+        rig.ascii(R260, "0t0001 sa c4.ln.is 0001 0000");
+        await tick(100);
+        expect(rig.published.find((p) => p.payload.action === "menu_select")?.payload.action_item).toBe("Lights");
+    });
+
+    it("pops a message up and clears it", async () => {
+        await set(R260, "show_message", {message: "Doorbell", seconds: 5});
+        expect(rig.cmds().at(-1)).toBe('c4.ln.dm 5a "Doorbell"');
+        await tick(5500);
+        expect(rig.cmds().at(-1)).toBe("c4.ln.le");
+    });
+
+    it("uses its own key map and page keys", async () => {
+        rig.ascii(R260, "0t0001 sa c4.zr.bb 10 0000 0000 00000000");
+        expect(rig.actions(R260)).toEqual(["select_press"]);
+        await set(R260, "show_list", {title: "T", items: Array.from({length: 8}, (_, i) => `i${i}`)});
+        rig.ascii(R260, "0t0002 sa c4.zr.bb 0a 0000 0000 00000000");
+        await tick(200);
+        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 0008 0005 ");
+        rig.ascii(R260, "0t0003 sa c4.zr.bb 09 0000 0000 00000000");
+        await tick(200);
+        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 0008 0000 ");
+    });
+
+    it("caches the battery it announces", () => {
+        rig.ascii(R260, "0t0001 sa c4.zr.bl 3a");
+        expect(rig.last(R260).battery).toBe(0x3a);
+    });
+});

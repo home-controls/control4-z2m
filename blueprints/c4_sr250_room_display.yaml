@@ -1,0 +1,121 @@
+blueprint:
+  name: Control4 SR250 / SR260 Remote → LCD room from HA area (Zigbee2MQTT)
+  description: >
+    Keeps the C4-SR250B's LCD in step with Home Assistant.
+
+    Row 1 (room title) is the HA area the remote is assigned to, or an override
+    you type. It is re-sent when HA starts, when the remote is moved to another
+    area, and when an area is renamed.
+
+    Row 2 (active source) is handled by the companion blueprint
+    c4_sr250_now_playing.yaml.
+
+    The title is written to the remote's room_name (control4-z2m). The extension caches it and re-sends
+    it whenever the remote wakes, so changes made while it is asleep still
+    arrive.
+
+    Requires the control4-z2m Zigbee2MQTT extension.
+  domain: automation
+  input:
+    remote:
+      name: SR250 remote
+      description: The Control4 C4-SR250B remote device.
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR250B
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR260
+
+    room_helper:
+      name: Current room helper
+      description: >
+        Optional input_text set by the blue-key room menu
+        (c4_sr250_color_menus.yaml). When it names a room, that room is shown.
+      default: []
+      selector:
+        entity:
+          domain: input_text
+
+    room_override:
+      name: Room title override
+      description: Leave empty to use the remote's HA area.
+      default: ""
+      selector:
+        text: {}
+
+    fallback_room:
+      name: Fallback room title
+      description: Used when the remote has no area and no override.
+      default: Home
+      selector:
+        text: {}
+
+    max_length:
+      name: Maximum characters
+      description: >
+        Titles are cut to this length. Measured on a C4-SR250B: the line shows
+        19 characters (longer text is cut off), and a 26-character title leaves
+        it blank.
+      default: 19
+      selector:
+        number:
+          min: 4
+          max: 40
+          mode: box
+
+
+mode: queued
+max: 5
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: event
+    event_type: device_registry_updated
+    event_data:
+      action: update
+      device_id: !input remote
+  - platform: event
+    event_type: area_registry_updated
+  - platform: state
+    entity_id: !input room_helper
+
+variables:
+  c4_dev: !input remote
+  c4_ieee: >-
+    {{ ((device_attr(c4_dev, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x')
+        | first | default('')) | replace('zigbee2mqtt_', '') }}
+  remote: !input remote
+  room_helper: !input room_helper
+  room_override: !input room_override
+  fallback_room: !input fallback_room
+  max_length: !input max_length
+  remote_ieee: "{{ c4_ieee }}"
+  room_title: >-
+    {% set r = room_override | trim %}
+    {% set h = states(room_helper) if room_helper else '' %}
+    {% if not r and h %}{% set r = area_name(h) or '' %}{% endif %}
+    {% if not r %}{% set r = area_name(remote) or '' %}{% endif %}
+    {% if not r %}{% set r = fallback_room %}{% endif %}
+    {{ r[:max_length | int] }}
+
+condition:
+  - condition: template
+    value_template: "{{ remote_ieee != '' }}"
+
+action:
+  # At HA start the automation can run before the remote is known, and
+  # the write then fails with "Device ... not found". Wait until it is.
+  - wait_template: >-
+      {{ device_entities(remote) | map('states')
+         | reject('in', ['unavailable']) | list | count > 0 }}
+    timeout: "00:10:00"
+    continue_on_timeout: false
+  - action: mqtt.publish
+    data:
+      topic: "control4/{{ c4_ieee }}/set/room_name"
+      payload: "{{ room_title }}"

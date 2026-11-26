@@ -1,0 +1,29 @@
+{
+  "name": "control4-z2m",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Control4 Zigbee devices on stock Zigbee2MQTT: one external extension + one external converter, ported from control4-zha-quirks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:z2m": "node tools/z2m-harness.mjs",
+    "canary": "node tools/herdsman-canary.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "minijinja-js": "3.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "yaml": "^2.9.1",
+    "zigbee-herdsman": "10.10.0",
+    "zigbee-herdsman-converters": "26.115.1"
+  }
+}

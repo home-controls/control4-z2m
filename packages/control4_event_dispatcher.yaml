@@ -1,0 +1,102 @@
+# Control4 event dispatcher (control4-z2m) - optional, for your own automations.
+# The c4_device blueprint no longer needs it: it hears each device through that
+# device's Control4 events entity (ADR 0005).
+#
+# Every Zigbee2MQTT instance with the extension publishes each Control4 button
+# event on the shared control4/event topic. One automation here hears that
+# topic and re-fires each message as the Home Assistant event control4_event,
+# with the HA device_id added, so an automation can follow every Control4
+# button in the house as one HA event and filter by device.
+#
+# control4_event carries the button-event contract fields (those of
+# test/fixtures/control4-event.json, which the event_data below must list)
+# plus device_id. Fields only other events have (menu_select's item, a Z2IO's
+# changes ...) are not forwarded: read those from control4/event itself.
+#
+# * sensor.control4_device_map - the IEEE -> HA device map, as the `devices`
+#   attribute (state = how many devices). Rebuilt at HA start and on every
+#   device registry change, so a lookup is a dict read, not a scan per event.
+# * automation "Control4: event dispatcher" - queued, so events keep the order
+#   they arrived in. An event for an IEEE with no HA device is dropped (after
+#   one rebuild of the map, for a device that joined a moment ago).
+#
+# Zigbee2MQTT only: ZHA keypads already reach only their own automation.
+
+template:
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: device_registry_updated
+      # Asked for by the dispatcher when it hears an IEEE the map doesn't know.
+      - trigger: event
+        event_type: control4_device_map_refresh
+    action:
+      - variables:
+          # Z2M names the HA device identifier zigbee2mqtt_<ieee>.
+          c4_map: >-
+            {% set ns = namespace(m={}) %}
+            {% for d in integration_entities('mqtt') | map('device_id') | reject('none') | unique
+               if device_attr(d, 'manufacturer') == 'Control4' %}
+              {% for i in device_attr(d, 'identifiers') | map('last') | select('search', '^zigbee2mqtt_0x') %}
+                {% set ns.m = dict(ns.m, **{i | replace('zigbee2mqtt_', ''): d}) %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.m }}
+    sensor:
+      - name: Control4 Device Map
+        unique_id: control4_z2m_device_map
+        icon: mdi:map-marker-path
+        state: "{{ c4_map | count }}"
+        attributes:
+          devices: "{{ c4_map }}"
+          built: "{{ now().isoformat() }}"
+
+automation:
+  - id: control4_z2m_event_dispatcher
+    alias: "Control4: event dispatcher"
+    description: >-
+      Re-fires every control4/event message as the control4_event HA event
+      with the HA device_id added.
+    mode: queued
+    max: 200
+    triggers:
+      - trigger: mqtt
+        topic: control4/event
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.payload_json is mapping and (trigger.payload_json.ieee | default('')) != '' }}"
+    actions:
+      - variables:
+          evt: "{{ trigger.payload_json }}"
+          ieee: "{{ evt.ieee }}"
+      # A device the map hasn't seen yet (just joined, or HA still starting):
+      # rebuild the map once and look again.
+      - if: "{{ ieee not in (state_attr('sensor.control4_device_map', 'devices') or {}) }}"
+        then:
+          - event: control4_device_map_refresh
+          - wait_for_trigger:
+              - trigger: state
+                entity_id: sensor.control4_device_map
+                attribute: built
+            timeout: 2
+      - variables:
+          device_id: "{{ (state_attr('sensor.control4_device_map', 'devices') or {}).get(ieee, '') }}"
+      # No HA device for this IEEE: drop the event.
+      - condition: template
+        value_template: "{{ device_id != '' }}"
+      - event: control4_event
+        event_data:
+          device_id: "{{ device_id }}"
+          ieee: "{{ evt.get('ieee') }}"
+          device: "{{ evt.get('device') }}"
+          model: "{{ evt.get('model') }}"
+          action: "{{ evt.get('action') }}"
+          button: "{{ evt.get('button') }}"
+          button_id: "{{ evt.get('button_id') }}"
+          gesture: "{{ evt.get('gesture') }}"
+          command: "{{ evt.get('command') }}"
+          # Only a known tap has tap_index; only a fast count has known_taps.
+          tap_index: "{{ evt.get('tap_index') }}"
+          known_taps: "{{ evt.get('known_taps') }}"
+          base: "{{ evt.get('base') }}"

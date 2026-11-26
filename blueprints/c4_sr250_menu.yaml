@@ -1,0 +1,216 @@
+blueprint:
+  name: Control4 SR250 / SR260 Remote → Watch / Listen / List menus (Zigbee2MQTT)
+  description: >
+    Puts on-screen menus behind the C4-SR250B's Watch, Listen and List keys,
+    the way a Control4 system does.
+
+    Watch: the apps or inputs of a media player (its source list, e.g. the
+    apps on an Apple TV). Picking one runs media_player.select_source.
+
+    Listen: the same for a second, audio media player. Leave it empty to
+    turn the Listen menu off.
+
+    List: scenes and scripts you choose. Picking one turns it on.
+
+    The menu opens on the current app or input. Cancel, or no choice within
+    the timeout, closes it without doing anything. Items are matched back by
+    position, so long names that the LCD cuts off still work.
+
+    Requires the control4-z2m Zigbee2MQTT extension. Pair with c4_sr250_media_player.yaml for
+    the other keys; leave its Watch / Listen actions empty.
+
+    Hears the remote through its "Control4 events" entity, which the control4-z2m
+    extension adds with Zigbee2MQTT's Home Assistant integration on: update the
+    extension before this blueprint.
+  domain: automation
+  input:
+    remote:
+      name: SR250 remote
+      description: The Control4 C4-SR250B remote device.
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR250B
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR260
+
+    watch_player:
+      name: Watch media player
+      description: Its source list becomes the Watch menu.
+      default: ""
+      selector:
+        entity:
+          domain: media_player
+    watch_exclude:
+      name: Hide from Watch
+      description: Source names to leave out, separated by |.
+      default: ""
+      selector:
+        text: {}
+
+    listen_player:
+      name: Listen media player
+      description: Its source list becomes the Listen menu. Empty = no Listen menu.
+      default: ""
+      selector:
+        entity:
+          domain: media_player
+    listen_exclude:
+      name: Hide from Listen
+      description: Source names to leave out, separated by |.
+      default: ""
+      selector:
+        text: {}
+
+    list_entities:
+      name: List menu
+      description: Scenes and scripts shown on the List key, in this order.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: [scene, script]
+
+    selection_timeout:
+      name: Selection timeout
+      default: "00:01:00"
+      selector:
+        duration: {}
+
+mode: restart
+
+trigger:
+  - trigger: event.received
+    target:
+      device_id: !input remote
+    options:
+      event_type:
+        - remote_button_short_press
+
+variables:
+  c4_dev: !input remote
+  c4_ieee: >-
+    {{ ((device_attr(c4_dev, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x')
+        | first | default('')) | replace('zigbee2mqtt_', '') }}
+  remote: !input remote
+  watch_player: !input watch_player
+  watch_exclude: !input watch_exclude
+  listen_player: !input listen_player
+  listen_exclude: !input listen_exclude
+  list_entities: !input list_entities
+  button: >-
+    {%- set d = (trigger.to_state.attributes if trigger.to_state is defined else {}) -%}
+    {%- if d is mapping and 'button' in d -%}{{ d.button }}
+    {%- elif d is mapping and 'button' in d -%}{{ d.button }}
+    {%- endif -%}
+  player: >-
+    {{ watch_player if button == 'watch' else listen_player if button == 'listen' else '' }}
+  exclude: >-
+    {%- set raw = watch_exclude if button == 'watch' else listen_exclude -%}
+    {{ raw.split('|') | map('trim') | reject('eq', '') | list }}
+  title: "{{ {'watch': 'Watch', 'listen': 'Listen', 'list': 'List'}.get(button, '') }}"
+  remote_ieee: "{{ c4_ieee }}"
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ title != '' and remote_ieee != ''
+         and (player != '' or list_entities | count > 0) }}
+
+action:
+  # An Apple TV that is asleep reports no source list: wake it and wait for one.
+  - if:
+      - "{{ player != '' and (state_attr(player, 'source_list') or []) | count == 0 }}"
+    then:
+      - action: media_player.turn_on
+        target:
+          entity_id: "{{ player }}"
+      - wait_template: "{{ (state_attr(player, 'source_list') or []) | count > 0 }}"
+        timeout: "00:00:20"
+        continue_on_timeout: true
+
+  - variables:
+      # Real values to act on (source names or entity ids), in menu order.
+      values: >-
+        {%- if button == 'list' -%}
+          {{ list_entities }}
+        {%- elif player -%}
+          {%- set ns = namespace(out=[]) -%}
+          {%- for s in state_attr(player, 'source_list') or [] -%}
+            {%- if s | replace('\xa0', ' ') not in exclude -%}
+              {%- set ns.out = ns.out + [s] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ ns.out }}
+        {%- else -%}[]{%- endif -%}
+      labels: >-
+        {%- if button == 'list' -%}
+          {{ values | map('state_attr', 'friendly_name') | list }}
+        {%- else -%}
+          {{ values | map('replace', '\xa0', ' ') | list }}
+        {%- endif -%}
+      start_index: >-
+        {#- Apple TV reports the open app as app_name, not source. -#}
+        {%- set cur = (state_attr(player, 'source') or state_attr(player, 'app_name')) if player else none -%}
+        {{ values.index(cur) if cur in values else 0 }}
+
+  - condition: template
+    value_template: "{{ values | count > 0 }}"
+
+  - action: mqtt.publish
+    data:
+      topic: "control4/{{ c4_ieee }}/set"
+      payload: >-
+        {{ {'show_list': {'title': (title), 'items': (labels | map('replace', '|', '/') | join('|')), 'selected_index': (start_index | int(0))}} | to_json }}
+
+  - wait_for_trigger:
+      - trigger: event.received
+        target:
+          device_id: !input remote
+        options:
+          event_type:
+            - remote_menu_select
+        id: select
+      - trigger: event.received
+        target:
+          device_id: !input remote
+        options:
+          event_type:
+            - remote_menu_cancel
+        id: cancel
+    timeout: !input selection_timeout
+    continue_on_timeout: true
+
+  - choose:
+      # No choice in time: take the list off the screen.
+      - conditions: "{{ wait.trigger is none }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "control4/{{ c4_ieee }}/set"
+              payload: '{"close_list": true}'
+      - conditions: "{{ wait.trigger.id == 'select' }}"
+        sequence:
+          - variables:
+              picked_index: >-
+                {%- set a = wait.trigger.to_state.attributes -%}
+                {{ (a.selected_index if a is mapping else -1) | int(-1) }}
+              picked: "{{ values[picked_index] if 0 <= picked_index < values | count else '' }}"
+          - condition: template
+            value_template: "{{ picked != '' }}"
+          - if:
+              - "{{ button == 'list' }}"
+            then:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: "{{ picked }}"
+            else:
+              - action: media_player.select_source
+                target:
+                  entity_id: "{{ player }}"
+                data:
+                  source: "{{ picked }}"

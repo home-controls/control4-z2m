@@ -1,0 +1,165 @@
+# Control4 instance checks (control4-z2m) - optional, needs neither the
+# c4_device blueprint nor the event dispatcher.
+#
+# Every Zigbee2MQTT instance with the extension publishes its status, retained,
+# on control4/status/<base> at start and every minute (README, Instance
+# status). This package turns that into one persistent notification per
+# instance while something is wrong there, and clears it once nothing is:
+#
+# * sensor.control4_instances - each instance's latest status, as the
+#   `instances` attribute (base -> {at, build, problems, unreachable}; state =
+#   how many; `unreachable` = the names of the devices it cannot reach),
+#   each one's problems alone as `problems` (base -> codes), and the notices up
+#   now as `raised`. The retained messages give it every instance as soon as HA
+#   starts. An empty retained message on control4/status/<base> forgets that
+#   instance: that is how a retired coordinator is removed.
+# * automation "Control4: instance checks" - every 5 minutes, and at once when
+#   an instance's problems change or an instance comes or goes: raises
+#   control4_instance_<base> while the instance reports a problem (no_frames,
+#   sends_failing, devices_unreachable - naming the devices -, no_radio, a
+#   missing hook, the converter) or its last status
+#   is more than 5 minutes old, and dismisses a notice it raised once neither
+#   holds. For the first 5 minutes after Home Assistant starts, an old status is
+#   no silence: the broker hands over the retained one from before the restart,
+#   and Zigbee2MQTT may still be starting.
+
+template:
+  - trigger:
+      - trigger: mqtt
+        topic: control4/status/+
+        id: status
+      # The instance checks say which notices are up.
+      - trigger: event
+        event_type: control4_instance_notices
+        id: notices
+    action:
+      - variables:
+          known: "{{ state_attr('sensor.control4_instances', 'instances') or {} }}"
+          instances: >-
+            {% if trigger.id == 'status' %}
+              {% set base = trigger.topic.split('/')[-1] %}
+              {% set status = trigger.payload_json if trigger.payload_json is defined and trigger.payload_json is mapping else none %}
+              {% set ns = namespace(m={}) %}
+              {% for b, s in known.items() if b != base %}
+                {% set ns.m = dict(ns.m, **{b: s}) %}
+              {% endfor %}
+              {% if status is mapping %}
+                {% set unreachable = status.get('unreachable') if status.get('unreachable') is list else [] %}
+                {% set ns.m = dict(ns.m, **{base: {'at': status.get('at'), 'build': status.get('build'), 'problems': status.get('problems') or [], 'unreachable': unreachable | map(attribute='name') | list}}) %}
+              {% endif %}
+              {{ ns.m }}
+            {% else %}{{ known }}{% endif %}
+          # None until the checks first say: a notice raised before they tracked it may be up.
+          raised: >-
+            {{ trigger.event.data.raised if trigger.id == 'notices'
+               else state_attr('sensor.control4_instances', 'raised') }}
+    sensor:
+      - name: Control4 Instances
+        unique_id: control4_z2m_instances
+        icon: mdi:server-network
+        state: "{{ instances | count }}"
+        attributes:
+          instances: "{{ instances }}"
+          # Changes only when a problem appears or clears, or an instance comes or goes
+          # (not with every status), so the checks wake for that alone.
+          problems: >-
+            {% set ns = namespace(m={}) %}
+            {% for b, s in instances.items() %}
+              {% set ns.m = dict(ns.m, **{b: s.problems if s.problems is list else []}) %}
+            {% endfor %}
+            {{ ns.m }}
+          raised: "{{ raised }}"
+
+automation:
+  - id: control4_z2m_instance_checks
+    alias: "Control4: instance checks"
+    description: >-
+      One persistent notification per Zigbee2MQTT instance with the extension,
+      while it reports a problem or has not reported for 5 minutes.
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: sensor.control4_instances
+        attribute: problems
+        id: status
+      # A silence shows only as time passing.
+      - trigger: time_pattern
+        minutes: "/5"
+        id: tick
+    actions:
+      - variables:
+          # A Zigbee2MQTT restart takes a minute or two: only a longer silence is one.
+          stale_after: 300
+          instances: "{{ state_attr('sensor.control4_instances', 'instances') or {} }}"
+          tracked: "{{ state_attr('sensor.control4_instances', 'raised') }}"
+          # The notices up now. Not tracked yet (this package was just updated): any instance's may be.
+          raised: "{{ tracked if tracked is list else instances | list }}"
+          # Seconds since Home Assistant (or these checks) came up. Until stale_after, a
+          # status as old as the restart is the retained one from before it, not a silence.
+          up: >-
+            {% set since = as_datetime(this.last_changed, none) if this and this.last_changed else none %}
+            {{ (now() - since).total_seconds() | int if since else stale_after }}
+          starting: "{{ up < stale_after }}"
+          # The instances to raise a notice for: a problem, or a silence (outside the start).
+          due: >-
+            {% set ns = namespace(l=[]) %}
+            {% for base, s in instances.items() %}
+              {% set at = as_datetime(s.at, none) if s.at else none %}
+              {% set stale = not starting and (at is none or (now() - at).total_seconds() > stale_after) %}
+              {% if stale or (s.problems is list and s.problems | count > 0) %}
+                {% set ns.l = ns.l + [base] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.l }}
+          explain: >-
+            {{ {
+              'no_radio': 'the coordinator is not driven by the ember adapter, so the extension stays passive',
+              'interview_hook': 'a herdsman hook did not install (typically after a Zigbee2MQTT update): new Control4 devices may show interview failed',
+              'ping_hook': 'a herdsman hook did not install (typically after a Zigbee2MQTT update): Control4 devices may show offline with availability on',
+              'converter_missing': 'the converter file is not loaded',
+              'converter_api': 'the extension and the converter come from checkouts that cannot work together: copy both from one',
+              'no_frames': 'no Control4 frame has come through for 30 minutes, so Control4 buttons there go unheard',
+              'sends_failing': 'sends get no delivery confirmation, so commands to Control4 devices are not getting through',
+              'devices_unreachable': 'these Control4 devices have answered none of their last 3 keepalives, so commands to them are lost. One may still have power, work from its own paddles and check in every hour, but a press does not bring it back. A DIM1-Z is normally rebooted remotely (up to 3 times a day, an hour or more apart; its Reboot button does it at once); if one stays listed, or for another model, reboot it by hand (on a DIM1-Z, tap the top paddle 15 times) or cut its power',
+            } }}
+      - repeat:
+          for_each: "{{ due }}"
+          sequence:
+            - variables:
+                base: "{{ repeat.item }}"
+                last: "{{ instances[base].at }}"
+                # One template: a variable holding a datetime reaches the next one as a string.
+                age: "{% set at = as_datetime(last, none) if last else none %}{{ (now() - at).total_seconds() | int if at else none }}"
+                problems: "{{ instances[base].problems if instances[base].problems is list else [] }}"
+                unreachable: "{{ instances[base].unreachable if instances[base].unreachable is list else [] }}"
+                stale: "{{ not starting and (age is none or age > stale_after) }}"
+            - action: persistent_notification.create
+              data:
+                notification_id: "control4_instance_{{ base }}"
+                title: "Control4: {{ base }} {{ 'stopped reporting' if stale else 'reports a problem' }}"
+                # Literal, not folded: the problems are a Markdown list, one per line.
+                message: |-
+                  {% if stale -%}
+                  Zigbee2MQTT instance **{{ base }}** has not published its status (control4/status/{{ base }}) for {{ ((age / 60) | round(0) | int) ~ ' min' if age is not none else 'an unknown time' }}. Zigbee2MQTT or the control4-z2m extension there has stopped, or the extension never loaded (advanced.enable_external_js off, or its file renamed .invalid). Retired that coordinator? Publish an empty retained message to control4/status/{{ base }} and this goes away.
+                  {%- else -%}
+                  Zigbee2MQTT instance **{{ base }}** (build {{ instances[base].build or 'unknown' }}) reports:
+                  {% for p in problems %}
+                  - **{{ p }}**: {{ explain.get(p, 'see the README, Instance status') }}
+                  {%- if p == 'devices_unreachable' %}{% for name in unreachable %}
+                    - {{ name }}
+                  {%- endfor %}{% endif %}
+                  {%- endfor %}
+                  {%- endif %}
+      # Only a notice that is up is dismissed; a forgotten instance's goes too.
+      - repeat:
+          for_each: "{{ raised | reject('in', due) | list }}"
+          sequence:
+            - action: persistent_notification.dismiss
+              data:
+                notification_id: "control4_instance_{{ repeat.item }}"
+      - if: "{{ tracked is not list or (tracked | sort) != (due | sort) }}"
+        then:
+          - event: control4_instance_notices
+            event_data:
+              raised: "{{ due }}"

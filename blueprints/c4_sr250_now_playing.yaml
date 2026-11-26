@@ -1,0 +1,100 @@
+blueprint:
+  name: Control4 SR250 / SR260 Remote → LCD now playing (Zigbee2MQTT)
+  description: >
+    Shows a media player's current app or source on row 2 of the C4-SR250B's
+    LCD, under the room title, the way a Control4 system shows the active
+    source. Row 2 is cleared when the player turns off.
+
+    Writes the quirk's SR250 display cluster (0xFC47, attribute
+    active_source). The extension caches the value and re-sends it whenever the
+    remote wakes. Pair with c4_sr250_room_display.yaml for row 1.
+
+    Requires the control4-z2m Zigbee2MQTT extension.
+  domain: automation
+  input:
+    remote:
+      name: SR250 remote
+      description: The Control4 C4-SR250B remote device.
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR250B
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR260
+
+    source_player:
+      name: Media player
+      description: Its app name (or input source) is shown on row 2.
+      selector:
+        entity:
+          domain: media_player
+
+    max_length:
+      name: Maximum characters
+      description: >
+        Text is cut to this length. Measured on a C4-SR250B: the room line
+        shows 19 characters; a 26-character one leaves it blank.
+      default: 19
+      selector:
+        number:
+          min: 4
+          max: 40
+          mode: box
+
+mode: restart
+
+trigger:
+  - platform: homeassistant
+    event: start
+  # Only on/off changes, not play/pause: a pause/resume would otherwise re-send
+  # the player's (possibly stale) app and overwrite a fresh menu pick.
+  - platform: state
+    entity_id: !input source_player
+    to: ["off", "standby", "unavailable"]
+  - platform: state
+    entity_id: !input source_player
+    from: ["off", "standby", "unavailable"]
+  - platform: state
+    entity_id: !input source_player
+    attribute: app_name
+  - platform: state
+    entity_id: !input source_player
+    attribute: source
+
+variables:
+  c4_dev: !input remote
+  c4_ieee: >-
+    {{ ((device_attr(c4_dev, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x')
+        | first | default('')) | replace('zigbee2mqtt_', '') }}
+  remote: !input remote
+  source_player: !input source_player
+  max_length: !input max_length
+  remote_ieee: "{{ c4_ieee }}"
+  source_text: >-
+    {% if states(source_player) in ['off', 'standby', 'unavailable', 'unknown'] %}
+    {% else %}
+      {{ (state_attr(source_player, 'app_name') or state_attr(source_player, 'source') or '')[:max_length | int] }}
+    {% endif %}
+
+condition:
+  - condition: template
+    value_template: "{{ remote_ieee != '' }}"
+
+action:
+  # At HA start the automation can run before the remote is known, and
+  # the write then fails with "Device ... not found". Wait until it is.
+  - wait_template: >-
+      {{ device_entities(remote) | map('states')
+         | reject('in', ['unavailable']) | list | count > 0 }}
+    timeout: "00:10:00"
+    continue_on_timeout: false
+  # Settle briefly so an app switch that updates state and attributes in a
+  # burst sends one frame, not three.
+  - delay: 2
+  - action: mqtt.publish
+    data:
+      topic: "control4/{{ c4_ieee }}/set/active_source"
+      payload: "{{ source_text | trim }}"

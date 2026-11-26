@@ -1,0 +1,22 @@
+name: PR tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # typecheck + vitest + build, as `npm run check` does locally
+      - run: npm run check
+      # dist/ is committed and deployed as-is, so it must match a fresh build of src/
+      - name: dist matches src
+        run: git diff --exit-code -- dist

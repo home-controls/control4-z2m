@@ -1,0 +1,261 @@
+blueprint:
+  name: Control4 Keypad LED Notification (Zigbee2MQTT)
+  description: >
+    Show a colour or flash a Control4 keypad's LEDs when something happens -
+    washer or dryer done, garage left open, doorbell, alarm armed - and, by
+    default, keep showing it until the thing clears (the washer is unloaded,
+    the door is shut).
+
+
+    Show it: "Until it clears" holds the effect while ANY watched entity is
+    in the trigger state and stops it the moment none is. "A set number of
+    cycles" plays it once per trigger and lets it finish on its own. Either
+    way the LEDs go back to their normal colours afterwards (the colours the
+    Control4 Device / LED status automations keep there).
+
+
+    Effects: solid (hold a colour), blink, pulse / breathe, strobe, chase,
+    bounce, fill, alternate, rainbow. For a notification that may sit for
+    hours, solid or a slow blink (800 ms+) is kindest to the Zigbee mesh -
+    every animation step is one radio frame per LED.
+
+
+    Several notifications can share a keypad: priority decides which one
+    shows (higher wins, equal replaces). When one clears, every other
+    notification re-checks itself, so a washer AND dryer pair both done goes
+    back to showing the other one rather than nothing. Notifications also
+    come back by themselves after a Home Assistant restart.
+
+
+    Works on Control4 devices with the LED animation engine: C4-KC120277
+    scene controllers, C4-KP3-Z / KP6-Z keypads and C4-DIM1-Z dimmers (not
+    the APD120 or SW120277). Buttons are numbered by LED: 1-12 by slot on a
+    KC120277 (with three double-height paddles the visible LEDs are 1, 3 and
+    5), 1 = top / 2 = bottom paddle on a DIM1-Z.
+
+
+    DIM1-Z: every effect works. Each step is one write per animated LED, so
+    step times are kept to at least ~200 ms for one paddle LED and ~400 ms
+    for both (faster settings are slowed to that automatically). Pulse /
+    breathe on a single LED looks best. While a notification shows, the
+    device's "LED notification" sensor is on and the Control4 Device
+    automation leaves those LEDs alone.
+  domain: automation
+  input:
+    keypads:
+      name: Devices
+      description: Control4 keypads and/or DIM1-Z dimmers to show it on.
+      selector:
+        device:
+          multiple: true
+          filter:
+            - integration: mqtt
+              manufacturer: Control4
+    watch_entities:
+      name: When any of these...
+      selector:
+        entity:
+          multiple: true
+    trigger_to:
+      name: ...is in this state
+      description: >-
+        The state that means "notify", e.g. on, open, unlocked, home. For an
+        event entity (a doorbell), use the cycles mode and leave this empty to
+        fire on every event.
+      default: "on"
+      selector:
+        text: {}
+    hold:
+      name: Show it
+      default: until_clear
+      selector:
+        select:
+          options:
+            - label: Until it clears
+              value: until_clear
+            - label: For a set number of cycles
+              value: cycles
+    buttons:
+      name: Buttons
+      description: >-
+        Which LEDs: "all", or numbers like "5" or "1, 3, 5" (1-12 by LED
+        slot).
+      default: all
+      selector:
+        text: {}
+    effect:
+      name: Effect
+      default: blink
+      selector:
+        select:
+          options: [solid, blink, pulse, breathe, strobe, chase, bounce, fill, alternate, rainbow]
+    color:
+      name: Colour
+      description: "A palette name (red, amber, teal, warm_white, ...) or a hex value like #ff8800."
+      default: white
+      selector:
+        select:
+          custom_value: true
+          options: [white, warm_white, red, orange, amber, yellow, lime, green, teal, cyan, blue, purple, magenta, pink]
+    speed:
+      name: Step time (ms)
+      description: Milliseconds per animation step. 800+ for long-running notifications.
+      default: 800
+      selector:
+        number:
+          min: 50
+          max: 10000
+          step: 50
+          unit_of_measurement: ms
+    count:
+      name: Cycles
+      description: Only for "a set number of cycles".
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 255
+    duration:
+      name: Give up after (s)
+      description: Hard stop after this long, in either mode. 0 = no limit.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: s
+    brightness:
+      name: Brightness (%)
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    priority:
+      name: Priority
+      description: Higher wins when two notifications land on the same keypad.
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 255
+    mute_entity:
+      name: Mute switch (optional)
+      description: While this input_boolean / switch is on, nothing is shown.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: [input_boolean, switch]
+
+mode: queued
+max: 10
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input watch_entities
+    to: ~
+    id: change
+  - platform: state
+    entity_id: !input mute_entity
+    to: ~
+    id: change
+  # Another notification on these keypads cleared and stopped the shared
+  # overlay: re-assert this one if it still applies.
+  - platform: event
+    event_type: c4_led_notify_resync
+    id: resync
+  - platform: event
+    event_type: automation_reloaded
+    id: resync
+  - platform: homeassistant
+    event: start
+    id: boot
+
+variables:
+  kps: !input keypads
+  kp_ieees: >-
+    {% set ns = namespace(l=[]) %}
+    {% for d in (kps if kps is list else [kps]) %}
+      {% set i = ((device_attr(d, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x') | first | default('')) | replace('zigbee2mqtt_', '') %}
+      {% if i %}{% set ns.l = ns.l + [i] %}{% endif %}
+    {% endfor %}
+    {{ ns.l }}
+  watch: !input watch_entities
+  want_state: !input trigger_to
+  hold: !input hold
+  btns: !input buttons
+  fx: !input effect
+  colour: !input color
+  step_ms: !input speed
+  cycles: !input count
+  max_secs: !input duration
+  bright: !input brightness
+  prio: !input priority
+  mute: !input mute_entity
+  muted: "{{ mute | select('is_state', 'on') | list | count > 0 }}"
+  # In cycles mode only a real change INTO the trigger state plays it (an
+  # empty trigger state = any change, for event entities).
+  cycles_fire: >-
+    {{ hold == 'cycles' and trigger.id == 'change' and not muted
+       and trigger.entity_id in watch
+       and trigger.to_state is not none
+       and (want_state in ['', none] or trigger.to_state.state == want_state)
+       and (trigger.from_state is none
+            or trigger.from_state.state != trigger.to_state.state) }}
+
+condition:
+  - "{{ cycles_fire or hold == 'until_clear' }}"
+
+action:
+  - if: "{{ trigger.id == 'boot' }}"
+    then:
+      # Let ZHA and the keypads' own start-up LED pass finish first.
+      - delay: {seconds: 120}
+  - variables:
+      active_now: >-
+        {{ not (mute | select('is_state', 'on') | list | count > 0)
+           and watch | select('is_state', want_state) | list | count > 0 }}
+      payload: >
+        {% set p = {
+             'device_id': kps,
+             'buttons': btns,
+             'effect': fx,
+             'color': colour,
+             'speed': step_ms | int,
+             'count': (0 if hold == 'until_clear' else cycles | int),
+             'brightness': bright | int,
+             'priority': prio | int,
+           } %}
+        {{ p if (max_secs | float(0)) <= 0 else dict(p, duration=max_secs | float) }}
+  - choose:
+      - conditions: "{{ hold == 'cycles' }}"
+        sequence:
+          - if: "{{ kp_ieees | count > 0 }}"
+            then:
+              - action: mqtt.publish
+                data:
+                  topic: control4/request/led_effect
+                  payload: "{{ dict(payload, devices=kp_ieees) | to_json }}"
+      - conditions: "{{ active_now }}"
+        sequence:
+          - if: "{{ kp_ieees | count > 0 }}"
+            then:
+              - action: mqtt.publish
+                data:
+                  topic: control4/request/led_effect
+                  payload: "{{ dict(payload, devices=kp_ieees) | to_json }}"
+      # Cleared. Only a real change clears - a resync or restart that finds
+      # it inactive must not stop someone else's notification.
+      - conditions: "{{ trigger.id == 'change' }}"
+        sequence:
+          - if: "{{ kp_ieees | count > 0 }}"
+            then:
+              - action: mqtt.publish
+                data:
+                  topic: control4/request/led_stop
+                  payload: "{{ {'devices': kp_ieees, 'restore': true} | to_json }}"
+          - event: c4_led_notify_resync

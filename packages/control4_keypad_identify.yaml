@@ -1,0 +1,81 @@
+# Control4 keypad identifier — press any keypad button to see which device it is.
+# Port of the ZHA quirks' control4_keypad_identify.yaml to control4-z2m.
+#
+# * sensor.c4_last_keypad_pressed  — always live; state = "<keypad name> — <button>",
+#   with device_id / ieee / area / model / button / command as attributes. Read it
+#   in Developer Tools > States or add it to a dashboard.
+# * input_boolean.c4_identify_mode — turn ON while commissioning to also get a
+#   pop-up notification on every keypad press (auto-replaces, so no pile-up).
+#   Turn OFF when done so normal keypad use is silent.
+#
+# Listens on control4/event, which every Zigbee2MQTT instance with the
+# extension publishes to, so keypads on any coordinator are covered.
+
+input_boolean:
+  c4_identify_mode:
+    name: Control4 Identify Mode
+    icon: mdi:gesture-tap-button
+
+template:
+  - trigger:
+      - trigger: mqtt
+        topic: control4/event
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.payload_json is mapping
+             and (trigger.payload_json.command | default('') | string).startswith('remote_button') }}
+    action:
+      - variables:
+          ev: "{{ trigger.payload_json }}"
+          # The HA device: the one carrying the zigbee2mqtt_<ieee> identifier.
+          c4_dev: >-
+            {% set ns = namespace(d='') %}
+            {% for e in integration_entities('mqtt') %}
+              {% set d = device_id(e) %}
+              {% if d and not ns.d and ('zigbee2mqtt_' ~ ev.ieee) in ((device_attr(d, 'identifiers') or []) | map('last') | list) %}
+                {% set ns.d = d %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.d }}
+    sensor:
+      - name: C4 Last Keypad Pressed
+        unique_id: c4_last_keypad_pressed
+        icon: mdi:gesture-tap-button
+        state: >
+          {{ (device_attr(c4_dev, 'name_by_user') or device_attr(c4_dev, 'name')) if c4_dev else ev.device }} — {{ ev.button | default('?') | replace('_', ' ') }}
+        attributes:
+          device_id: "{{ c4_dev }}"
+          ieee: "{{ ev.ieee }}"
+          area: "{{ area_name(c4_dev) if c4_dev else none }}"
+          model: "{{ ev.model }}"
+          zigbee2mqtt: "{{ ev.base | default(none) }}"
+          button: "{{ ev.button | default(none) }}"
+          button_id: "{{ ev.button_id | default(none) }}"
+          gesture: "{{ ev.gesture | default(none) }}"
+          command: "{{ ev.command }}"
+          pressed_at: "{{ now().isoformat() }}"
+
+automation:
+  - id: c4_identify_mode_notify
+    alias: "Control4: identify-mode notification"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.c4_last_keypad_pressed
+        attribute: pressed_at
+    conditions:
+      - condition: state
+        entity_id: input_boolean.c4_identify_mode
+        state: "on"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: c4_identify
+          title: Control4 keypad pressed
+          message: >-
+            {{ states('sensor.c4_last_keypad_pressed') }}
+            ({{ state_attr('sensor.c4_last_keypad_pressed', 'model') }},
+            {{ state_attr('sensor.c4_last_keypad_pressed', 'ieee') }},
+            on {{ state_attr('sensor.c4_last_keypad_pressed', 'zigbee2mqtt') }},
+            {{ state_attr('sensor.c4_last_keypad_pressed', 'area') or 'no area' }})
