@@ -19,8 +19,10 @@ custom Docker image, so it works with the Home Assistant add-on:
 - **An Ember coordinator** (Silicon Labs EFR32: SkyConnect / ZBT-1, Sonoff
   ZBDongle-E, …) with `serial.adapter: ember`. Control4 devices speak on
   their own profiles; the extension reads and writes those through the Ember
-  stack. zstack (TI), deCONZ, zigate and the legacy `ezsp` driver are **not**
-  supported — the extension logs an error and stays passive there.
+  stack. Older EmberZNet firmware (before 7.4, e.g. EM35x NCPs on EZSP 8)
+  works through the legacy `serial.adapter: ezsp` driver. zstack (TI),
+  deCONZ and zigate are **not** supported — the extension logs an error and
+  stays passive there.
 
 ## Install
 
@@ -450,7 +452,7 @@ when it starts and every minute:
 
   | Problem | |
   |---|---|
-  | `no_radio` | the coordinator isn't driven by the `ember` adapter, so the extension stays passive |
+  | `no_radio` | the coordinator isn't driven by the `ember` (or legacy `ezsp`) adapter, so the extension stays passive |
   | `interview_hook`, `ping_hook` | a herdsman hook did not install (typically after a Zigbee2MQTT update): new Control4 devices may show "interview failed", or offline with availability on |
   | `converter_missing` | the converter file isn't loaded |
   | `converter_api` | the two files come from checkouts whose extension and converter can't work together: copy both from one |

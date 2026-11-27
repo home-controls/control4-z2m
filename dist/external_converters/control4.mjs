@@ -1,4 +1,4 @@
-// control4-z2m 0.2.0 - Zigbee2MQTT external converter
+// control4-z2m 0.3.0 - Zigbee2MQTT external converter
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 

@@ -56,7 +56,7 @@ import {Handoff, type HandoffHost, type HandoffStep} from "../core/handoff";
 import {type Logger, wrapZ2mLogger} from "../core/log";
 import {Runtime, type RuntimeHost} from "../core/runtime";
 import {type Json, type Profile, Store} from "../core/store";
-import {EmberTransport, type Transport} from "../core/transport";
+import {EmberTransport, EzspTransport, type Transport} from "../core/transport";
 import {VERSION} from "../core/version";
 import {remoteEventType} from "../devices/remote";
 import {CONVERTER_KEY, type ConverterInfo, HOT_LOAD_KEY, RUNTIME_API, RUNTIME_KEY} from "./global";
@@ -220,9 +220,11 @@ export default class Control4Extension {
         let transport: Transport | undefined;
         if (EmberTransport.supports(adapter)) {
             transport = new EmberTransport(adapter, this.log);
+        } else if (EzspTransport.supports(adapter)) {
+            transport = new EzspTransport(adapter, this.log);
         } else {
             this.log.error(
-                "Control4: this coordinator is not driven by the 'ember' adapter. Control4 devices need an Ember (Silicon Labs EFR32) coordinator with `adapter: ember` - the frames on profiles 0xC25C/D/E cannot be received otherwise.",
+                "Control4: this coordinator is not driven by the 'ember' or 'ezsp' adapter. Control4 devices need an Ember (Silicon Labs) coordinator with `adapter: ember` (or `adapter: ezsp` for EmberZNet before 7.4) - the frames on profiles 0xC25C/D/E cannot be received otherwise.",
             );
         }
         this.radio = transport !== undefined;
@@ -314,7 +316,7 @@ export default class Control4Extension {
             ? "hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap"
             : "first start since Zigbee2MQTT started";
         this.log.info(
-            `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`,
+            `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? transport.name : "no radio access"}, ${runtime.devices.size} devices, store ${file})`,
         );
 
         this.publishDiscovery();
