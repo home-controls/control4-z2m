@@ -22,7 +22,7 @@ permissions:
 # self-hosted one.
 jobs:
   check:
-    runs-on: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || startsWith(github.head_ref || github.ref_name, 'dependabot/') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -51,7 +51,7 @@ jobs:
         run: node tools/release-check.mjs ${{ github.event.pull_request.base.sha }}
 
   privacy:
-    runs-on: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || startsWith(github.head_ref || github.ref_name, 'dependabot/') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -66,7 +66,7 @@ jobs:
         env:
           PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
           RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.sha) }}
-          ALLOW: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && '--allow-missing' || '' }}
+          ALLOW: ${{ (github.actor == 'dependabot[bot]' || startsWith(github.head_ref || github.ref_name, 'dependabot/') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && '--allow-missing' || '' }}
         run: node tools/privacy-check.mjs $ALLOW --range "$RANGE"
 
   release:
