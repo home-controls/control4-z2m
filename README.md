@@ -298,6 +298,9 @@ lost.
 
 ## Status and plans
 
+Questions, setups to share and ideas go in [GitHub Discussions](https://github.com/home-controls/control4-z2m/discussions);
+bugs, device reports and planned work in [issues](https://github.com/home-controls/control4-z2m/issues).
+
 What each model can do, what the extension exposes of it, and what is left are
 written down outside this README:
 
@@ -946,6 +949,10 @@ same expected output.
 Source layout: `src/core` (protocol, transport, link health, fast taps, LEDs,
 animation engine, store, runtime), `src/devices` (one class per family),
 `src/z2m` (definitions, extension, converter entry points).
+
+## Code of conduct
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
