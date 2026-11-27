@@ -1,0 +1,21 @@
+# Weekly dependency updates. zigbee-herdsman and zigbee-herdsman-converters are pinned to what the
+# Zigbee2MQTT release we target ships (the herdsman drift canary watches the next ones), so Dependabot
+# leaves them alone. Its pull requests run CI on GitHub's hosted runners, never the self-hosted one.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: zigbee-herdsman
+      - dependency-name: zigbee-herdsman-converters
+    groups:
+      dev-tools:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

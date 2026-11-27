@@ -17,11 +17,12 @@ permissions:
   contents: read
 
 # Runners: the project's self-hosted runner takes the runs this repo's own people start (pushes,
-# manual runs, and the release). A pull request from a fork runs untrusted code, so it goes to
-# GitHub's hosted runners, never the self-hosted one.
+# manual runs, and the release). A pull request from a fork runs untrusted code, and a Dependabot
+# update runs new packages' install scripts, so both go to GitHub's hosted runners, never the
+# self-hosted one.
 jobs:
   check:
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -50,7 +51,7 @@ jobs:
         run: node tools/release-check.mjs ${{ github.event.pull_request.base.sha }}
 
   privacy:
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -59,13 +60,13 @@ jobs:
         with:
           node-version: 22
       # The patterns are private (the PRIVATE_PATTERNS secret). A pull request from a fork
-      # gets no secrets, so only there may the check skip (it runs again on the push to main
-      # after the merge); anywhere else a missing secret fails it.
+      # gets no secrets, nor does a Dependabot run, so only there may the check skip (it runs again
+      # on the push to main after the merge); anywhere else a missing secret fails it.
       - name: Privacy check
         env:
           PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
           RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.sha) }}
-          ALLOW: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && '--allow-missing' || '' }}
+          ALLOW: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)) && '--allow-missing' || '' }}
         run: node tools/privacy-check.mjs $ALLOW --range "$RANGE"
 
   release:
