@@ -97,15 +97,15 @@ describe("SR250 keys and menus", () => {
 
     it("carries the picked item on the menu_select event", async () => {
         await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix"]});
-        rig.ascii(R250, "0t0001 sa c4.ln.is 0001 0000");
+        rig.ascii(R250, "0t0001 sa c4.ln.is 0002 0000");
         await tick(100);
-        expect(rig.events.at(-1)).toMatchObject({action: "menu_select", command: "menu_select", item: "YouTube", title: "Watch", selected_index: 0, list_id: 1});
+        expect(rig.events.at(-1)).toMatchObject({action: "menu_select", command: "menu_select", item: "YouTube", title: "Watch", selected_index: 0, list_id: 2});
     });
 
     it("shows a list and answers gi with the item count", async () => {
         await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix", "Plex"]});
-        expect(rig.texts().at(-1)).toMatch(/^0i[0-9a-f]{4} c4\.ln\.sl 0001 0003 0000 "\x81Watch"$/);
-        rig.ascii(R250, "0ic444 c4.ln.gi 0001 0000 0003 00");
+        expect(rig.texts().at(-1)).toMatch(/^0i[0-9a-f]{4} c4\.ln\.sl 0002 0003 0000 "\x81Watch"$/);
+        rig.ascii(R250, "0ic444 c4.ln.gi 0002 0000 0003 00");
         await tick(100);
         expect(rig.texts().at(-1)).toBe('0rc444 000 0003 "\x01YouTube" "\x01Netflix" "\x01Plex"');
     });
@@ -115,21 +115,21 @@ describe("SR250 keys and menus", () => {
         await set(R250, "gi_icon", 0x100);
         await set(R250, "gi_max_items", 1);
         await set(R250, "gi_reply_ep", 197);
-        rig.ascii(R250, "0ic444 c4.ln.gi 0001 0001 0002 00");
+        rig.ascii(R250, "0ic444 c4.ln.gi 0002 0001 0002 00");
         await tick(100);
         expect(rig.texts().at(-1)).toBe('0rc444 000 0001 "Netflix"');
         expect(rig.transport.sent.at(-1)?.frame.dstEp).toBe(197);
         await set(R250, "gi_template", "0r{seq} 000 {list} {items}");
         await set(R250, "gi_item_template", "{index}={label}");
-        rig.ascii(R250, "0ic445 c4.ln.gi 0001 0000 0002 00");
+        rig.ascii(R250, "0ic445 c4.ln.gi 0002 0000 0002 00");
         await tick(100);
-        expect(rig.texts().at(-1)).toBe("0rc445 000 0001 0000=YouTube");
+        expect(rig.texts().at(-1)).toBe("0rc445 000 0002 0000=YouTube");
     });
 
     it("keeps the room on row 1 after a pick and closes the list", async () => {
         await set(R250, "room_name", "Living Room");
         await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix"]});
-        rig.ascii(R250, "0t0001 sa c4.ln.is 0001 0001");
+        rig.ascii(R250, "0t0001 sa c4.ln.is 0002 0001");
         await tick(200);
         expect(rig.cmds().slice(-2)).toEqual(['c4.ln.ri "Living Room" "Netflix"', "c4.ln.le"]);
         expect(rig.last(R250).active_source).toBe("Netflix");
@@ -139,7 +139,7 @@ describe("SR250 keys and menus", () => {
 
     it("reports a cancel and closes the list", async () => {
         await set(R250, "show_list", {title: "Watch", items: ["A"]});
-        rig.ascii(R250, "0t0001 sa c4.ln.cn 0001 0000");
+        rig.ascii(R250, "0t0001 sa c4.ln.cn 0002 0000");
         await tick(100);
         expect(rig.actions(R250)).toContain("menu_cancel");
         expect(rig.cmds().at(-1)).toBe("c4.ln.le");
@@ -197,7 +197,7 @@ describe("LCD text length", () => {
 describe("SR260", () => {
     it("answers gi without the item count", async () => {
         await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix|Plex"});
-        rig.ascii(R260, "0ib572 c4.ln.gi 0001 0000 0003 00");
+        rig.ascii(R260, "0ib572 c4.ln.gi 0002 0000 0003 00");
         await tick(100);
         expect(rig.texts().at(-1)).toBe('0rb572 000 "\x01YouTube" "\x01Netflix" "\x01Plex"');
     });
@@ -205,10 +205,10 @@ describe("SR260", () => {
     it("takes [xx] glyph codes off the title and items", async () => {
         await set(R260, "show_list", {title: "[a6]Settings", items: "[b1]Lights|Fans|TV"});
         expect(rig.texts().at(-1)).toMatch(/"\xa6Settings"$/);
-        rig.ascii(R260, "0ib573 c4.ln.gi 0001 0000 0003 00");
+        rig.ascii(R260, "0ib573 c4.ln.gi 0002 0000 0003 00");
         await tick(100);
         expect(rig.texts().at(-1)).toBe('0rb573 000 "\xb1Lights" "\x01Fans" "\x01TV"');
-        rig.ascii(R260, "0t0001 sa c4.ln.is 0001 0000");
+        rig.ascii(R260, "0t0001 sa c4.ln.is 0002 0000");
         await tick(100);
         expect(rig.published.find((p) => p.payload.action === "menu_select")?.payload.action_item).toBe("Lights");
     });
@@ -235,5 +235,15 @@ describe("SR260", () => {
     it("caches the battery it announces", () => {
         rig.ascii(R260, "0t0001 sa c4.zr.bl 3a");
         expect(rig.last(R260).battery).toBe(0x3a);
+    });
+});
+describe("list ids", () => {
+    it("never uses list 0001 (an SR260 draws it as a heading, not a menu), and wraps past it", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "A|B"});
+        expect(rig.texts().at(-1)).toMatch(/ c4\.ln\.sl 0002 /);
+        // biome-ignore lint/suspicious/noExplicitAny: private counter
+        (rig.runtime.get(R260) as any).listId = 0xffff;
+        await set(R260, "show_list", {title: "Watch", items: "A|B"});
+        expect(rig.texts().at(-1)).toMatch(/ c4\.ln\.sl 0002 /);
     });
 });

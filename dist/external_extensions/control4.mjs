@@ -5545,8 +5545,14 @@ var Remote = class extends C4Device {
     );
   }
   // -- menus -------------------------------------------------------------------
+  /**
+   * Never 0x0001: an SR260 draws list 1 as a centred heading (its first item)
+   * with no title or count, not as a menu. 2 and up give the normal menu (the
+   * Director's own lists start higher).
+   */
   nextListId() {
-    this.listId = this.listId + 1 & 65535 || 1;
+    const next = this.listId + 1;
+    this.listId = next > 65535 ? 2 : Math.max(next, 2);
     return this.listId;
   }
   async showList(title, items, selectedIndex, titleIcon = this.titleIcon) {
