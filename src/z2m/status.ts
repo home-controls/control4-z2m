@@ -59,6 +59,8 @@ export interface StatusInputs {
 export interface InstanceStatus {
     base: string;
     at: string;
+    /** The release version of the files this instance loaded (package.json's; "dev" from source). */
+    version: string;
     /** The build of the two files this instance loaded; null while either is unknown. */
     build: string | null;
     contract: number;
@@ -102,10 +104,30 @@ const ENTITIES: Entity[] = [
     },
     {component: "sensor", key: "build", name: "Control4 build", config: {value_template: "{{ value_json.build or 'unknown' }}", icon: "mdi:source-commit"}},
     {component: "sensor", key: "contract", name: "Control4 contract", config: {value_template: "{{ value_json.contract }}", icon: "mdi:handshake-outline"}},
-    {component: "sensor", key: "sent", name: "Control4 messages sent", config: {value_template: "{{ value_json.totals.sent }}", state_class: "total_increasing", icon: "mdi:upload"}},
-    {component: "sensor", key: "failed", name: "Control4 failed sends", config: {value_template: "{{ value_json.totals.failed }}", state_class: "total_increasing", icon: "mdi:upload-off"}},
-    {component: "sensor", key: "route_refreshes", name: "Control4 route refreshes", config: {value_template: "{{ value_json.totals.route_refreshes }}", state_class: "total_increasing", icon: "mdi:routes"}},
-    {component: "sensor", key: "led_queue", name: "Control4 LED queue", config: {value_template: "{{ value_json.totals.led_queue }}", state_class: "measurement", icon: "mdi:tray-full"}},
+    {
+        component: "sensor",
+        key: "sent",
+        name: "Control4 messages sent",
+        config: {value_template: "{{ value_json.totals.sent }}", state_class: "total_increasing", icon: "mdi:upload"},
+    },
+    {
+        component: "sensor",
+        key: "failed",
+        name: "Control4 failed sends",
+        config: {value_template: "{{ value_json.totals.failed }}", state_class: "total_increasing", icon: "mdi:upload-off"},
+    },
+    {
+        component: "sensor",
+        key: "route_refreshes",
+        name: "Control4 route refreshes",
+        config: {value_template: "{{ value_json.totals.route_refreshes }}", state_class: "total_increasing", icon: "mdi:routes"},
+    },
+    {
+        component: "sensor",
+        key: "led_queue",
+        name: "Control4 LED queue",
+        config: {value_template: "{{ value_json.totals.led_queue }}", state_class: "measurement", icon: "mdi:tray-full"},
+    },
 ];
 
 /**
@@ -116,7 +138,13 @@ const ENTITIES: Entity[] = [
  * whose first availability topic is under its base topic and which it did not
  * publish itself (lib/extension/homeassistant.ts, onMQTTMessage, in 2.14.2).
  */
-export function discoveryConfigs(o: {base: string; statusTopic: string; coordinatorIeee: string; build: string | null}): [string, Record<string, unknown>][] {
+export function discoveryConfigs(o: {
+    base: string;
+    statusTopic: string;
+    coordinatorIeee: string;
+    build: string | null;
+    version: string;
+}): [string, Record<string, unknown>][] {
     return ENTITIES.map((e) => [
         `${e.component}/control4_${o.coordinatorIeee}/${e.key}/config`,
         {
@@ -133,7 +161,7 @@ export function discoveryConfigs(o: {base: string; statusTopic: string; coordina
             availability_mode: "all",
             // Only the identifier: Zigbee2MQTT's own discovery names and describes its bridge device.
             device: {identifiers: [`zigbee2mqtt_bridge_${o.coordinatorIeee}`]},
-            origin: {name: "control4-z2m", ...(o.build ? {sw: o.build} : {})},
+            origin: {name: "control4-z2m", sw: o.build ? `${o.version} (build ${o.build})` : o.version},
         },
     ]);
 }

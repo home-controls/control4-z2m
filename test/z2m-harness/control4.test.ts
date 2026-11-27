@@ -16,9 +16,9 @@ import * as settings from "../../lib/util/settings";
 import {stringify} from "../../lib/util/stringify";
 
 const DIST = process.env.C4Z2M_DIST as string;
-const KP = "0x000fff0000636e2a";
-const DIM = "0x000fff0000636e2b";
-const NEW = "0x000fff0000636e2c";
+const KP = "0x000fff0000006e2a";
+const DIM = "0x000fff0000006e2b";
+const NEW = "0x000fff0000006e2c";
 const ALL: [string, string][] = [
     ["C4-APD120", "0x000fff0000700001"],
     ["C4-SW120277", "0x000fff0000700002"],
@@ -52,7 +52,17 @@ ezsp.send = vi.fn(async (_t: number, nwk: number, aps: Any, data: Buffer) => {
 ezsp.ezspSendManyToOneRouteRequest = vi.fn(async () => 0);
 
 function c4Device(ieee: string, nwk: number, model: string): Any {
-    const d: Any = new Device("Router", ieee, nwk, 0xabcd, [new Endpoint(1, [], [], ieee), new Endpoint(197, [1], [], ieee)], InterviewState.Successful, "Mains (single phase)", model, "Control4");
+    const d: Any = new Device(
+        "Router",
+        ieee,
+        nwk,
+        0xabcd,
+        [new Endpoint(1, [], [], ieee), new Endpoint(197, [1], [], ieee)],
+        InterviewState.Successful,
+        "Mains (single phase)",
+        model,
+        "Control4",
+    );
     d.createEndpoint = (id: number) => {
         const ep = new Endpoint(id, [], [], ieee);
         d.endpoints.push(ep);
@@ -65,7 +75,12 @@ function c4Device(ieee: string, nwk: number, model: string): Any {
 }
 
 const frame = (nwk: number, profileId: number, text: Buffer | string, src = 197) =>
-    ezsp.ezspIncomingMessageHandler(0, {profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 0}, {senderShortId: nwk, lastHopLqi: 201, lastHopRssi: -55}, typeof text === "string" ? Buffer.from(`${text}\r\n`, "latin1") : text);
+    ezsp.ezspIncomingMessageHandler(
+        0,
+        {profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 0},
+        {senderShortId: nwk, lastHopLqi: 201, lastHopRssi: -55},
+        typeof text === "string" ? Buffer.from(`${text}\r\n`, "latin1") : text,
+    );
 
 const published = (topic: string) => mockMQTTPublishAsync.mock.calls.filter((c) => c[0] === topic).map((c) => c[1] as string);
 
@@ -207,7 +222,16 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         expect(topics).toContain(`homeassistant/device_automation/${KP}/action_button_1_double/config`);
         // The blueprint event stream.
         const events = published("zigbee2mqtt/control4/event").map((p) => JSON.parse(p));
-        expect(events).toContainEqual(expect.objectContaining({ieee: KP, model: "KPZ-6B1", action: "button_1_double", button: "button_1", gesture: "double", command: "remote_button_double_press"}));
+        expect(events).toContainEqual(
+            expect.objectContaining({
+                ieee: KP,
+                model: "KPZ-6B1",
+                action: "button_1_double",
+                button: "button_1",
+                gesture: "double",
+                command: "remote_button_double_press",
+            }),
+        );
         // The device's own topic, which its event entity listens on.
         const own = published(`control4/${KP}/event`).map((p) => JSON.parse(p));
         expect(own).toContainEqual(expect.objectContaining({ieee: KP, action: "button_1_double", event_type: "remote_button_double_press"}));
@@ -234,7 +258,10 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
 
     it("accepts the ZHA LED-cluster commands on /set", async () => {
         const before = sent.length;
-        await mockMQTTEvents.message(`zigbee2mqtt/0x000fff0000700001/set`, stringify({set_led_color: {button_id: 1, on_red: 255, on_green: 0, on_blue: 0, off_red: 0, off_green: 0, off_blue: 8}}));
+        await mockMQTTEvents.message(
+            `zigbee2mqtt/0x000fff0000700001/set`,
+            stringify({set_led_color: {button_id: 1, on_red: 255, on_green: 0, on_blue: 0, off_red: 0, off_green: 0, off_blue: 8}}),
+        );
         await vi.advanceTimersByTimeAsync(500);
         const texts = sent.slice(before).map((s) => s.text.trim().replace(/^0s[0-9a-f]{4} /, ""));
         expect(texts).toEqual(["c4.dmx.led 01 03 ff0000", "c4.dmx.led 01 04 000008"]);
@@ -343,12 +370,17 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         };
         const probe = `homeassistant/sensor/${DIM}/republish_probe/config`;
         const bridgeExposes = () =>
-            (JSON.parse(published("zigbee2mqtt/bridge/devices").at(-1) as string) as Any[]).find((d) => d.ieee_address === DIM).definition.exposes.map((x: Any) => x.name ?? x.type);
+            (JSON.parse(published("zigbee2mqtt/bridge/devices").at(-1) as string) as Any[])
+                .find((d) => d.ieee_address === DIM)
+                .definition.exposes.map((x: Any) => x.name ?? x.type);
         // The build under test, with one more sensor on the DIM1-Z.
         const original = fs.readFileSync(path.join(DIST, "external_converters", "control4.mjs"), "utf8");
         const entry = "var converter_entry_default = buildDefinitions();";
         expect(original).toContain(entry);
-        const edited = original.replace(entry, `${entry}\nfor (const d of converter_entry_default) if (d.model === "C4-DIM1-Z") d.exposes = [...d.exposes, e.numeric("republish_probe", ea.STATE)];`);
+        const edited = original.replace(
+            entry,
+            `${entry}\nfor (const d of converter_entry_default) if (d.model === "C4-DIM1-Z") d.exposes = [...d.exposes, e.numeric("republish_probe", ea.STATE)];`,
+        );
 
         await save(edited);
         // Zigbee2MQTT re-resolved the definition, but published none of it.
@@ -385,7 +417,11 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         const io = () => ({
             async publish(topic: string, payload: string) {
                 const kind = /\/bridge\/request\/(converter|extension)\/save$/.exec(topic)?.[1];
-                if (kind) await (controller.getExtension(kind === "converter" ? "ExternalConverters" : "ExternalExtensions") as Any).onMQTTMessage({topic, message: payload});
+                if (kind)
+                    await (controller.getExtension(kind === "converter" ? "ExternalConverters" : "ExternalExtensions") as Any).onMQTTMessage({
+                        topic,
+                        message: payload,
+                    });
                 else await mockMQTTEvents.message(topic, payload);
             },
             mark: () => mockMQTTPublishAsync.mock.calls.length,
@@ -441,7 +477,10 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
             const dist = {extension: read("extension"), converter: read("converter")};
             const start = "  async start() {\n";
             expect(dist.extension.split(start)).toHaveLength(2);
-            const broken = {converter: dist.converter, extension: dist.extension.replace(start, `${start}    throw new Error("harness: a build whose start() throws");\n`)};
+            const broken = {
+                converter: dist.converter,
+                extension: dist.extension.replace(start, `${start}    throw new Error("harness: a build whose start() throws");\n`),
+            };
             const target = plan(retained(), "another build").find((r: Any) => r.base === "zigbee2mqtt");
             const since = mockMQTTPublishAsync.mock.calls.length;
 
@@ -467,7 +506,10 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
         const before = started().length;
         const from = sent.length;
         const code = fs.readFileSync(path.join(DIST, "external_extensions", "control4.mjs"), "utf8");
-        await (controller.getExtension("ExternalExtensions") as Any).onMQTTMessage({topic: "zigbee2mqtt/bridge/request/extension/save", message: stringify({name: "control4.mjs", code})});
+        await (controller.getExtension("ExternalExtensions") as Any).onMQTTMessage({
+            topic: "zigbee2mqtt/bridge/request/extension/save",
+            message: stringify({name: "control4.mjs", code}),
+        });
         await flushPromises();
         expect(started().slice(before)).toEqual([expect.stringMatching(/^Control4: extension started: hot-load, /)]);
         // A keypad's start-up identity sends come 12-32 s after a start that is no hot-load.
@@ -536,7 +578,16 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
             const {id} = last(handoff(NEW, "request"));
             await mockMQTTEvents.message(
                 handoff(NEW, "offer"),
-                stringify({from: "zigbee2mqtt_old", to: "zigbee2mqtt", id, had: Date.now(), holds: true, model: "KPZ-3B1", settings: {button_1_idle_color: "blue"}, profile: {name: "Hall Keypad", options: {tap_window: 0.8}}}),
+                stringify({
+                    from: "zigbee2mqtt_old",
+                    to: "zigbee2mqtt",
+                    id,
+                    had: Date.now(),
+                    holds: true,
+                    model: "KPZ-3B1",
+                    settings: {button_1_idle_color: "blue"},
+                    profile: {name: "Hall Keypad", options: {tap_window: 0.8}},
+                }),
             );
             await vi.advanceTimersByTimeAsync(6_000);
             expect((devices as Any).c4_new.modelID).toBe("KPZ-3B1");
@@ -550,7 +601,9 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
             // Zigbee2MQTT cleared the device's discovery, then published it again under the new name.
             // (The Control4 events entity is the extension's own: it republishes that itself.)
             const ours = (topic: string) => topic.endsWith("/control4_event/config");
-            const configs = mockMQTTPublishAsync.mock.calls.slice(since).filter((c) => new RegExp(`^homeassistant/\\w+/${NEW}/[^/]+/config$`).test(c[0] as string) && !ours(c[0] as string));
+            const configs = mockMQTTPublishAsync.mock.calls
+                .slice(since)
+                .filter((c) => new RegExp(`^homeassistant/\\w+/${NEW}/[^/]+/config$`).test(c[0] as string) && !ours(c[0] as string));
             expect(mockMQTTPublishAsync.mock.calls.slice(since).some((c) => ours(c[0] as string) && c[1] !== "")).toBe(true);
             const firstFull = configs.findIndex((c) => c[1] !== "");
             expect(configs.slice(0, firstFull).length).toBeGreaterThan(0);

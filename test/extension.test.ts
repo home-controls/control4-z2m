@@ -18,11 +18,11 @@ import * as entityModule from "zigbee-herdsman/dist/controller/model/entity.js";
 
 import {buildIdOf, fileHash} from "../src/core/build";
 import {CONTRACT, PROFILE_BUTTON, PROFILE_NETWORK} from "../src/core/constants";
-import Control4Extension from "../src/z2m/extension";
-import {buildDefinitions} from "../src/z2m/definitions";
-import {CONVERTER_KEY, type ConverterInfo, HOT_LOAD_KEY, RUNTIME_API, RUNTIME_KEY} from "../src/z2m/global";
-import {HANDOFF_TIMING} from "../src/core/handoff";
 import {setFastTapTiming} from "../src/core/fasttap";
+import {HANDOFF_TIMING} from "../src/core/handoff";
+import {buildDefinitions} from "../src/z2m/definitions";
+import Control4Extension from "../src/z2m/extension";
+import {CONVERTER_KEY, type ConverterInfo, HOT_LOAD_KEY, RUNTIME_API, RUNTIME_KEY} from "../src/z2m/global";
 import {showEvent} from "./contract";
 
 // biome-ignore lint/suspicious/noExplicitAny: compiled herdsman / Z2M fakes
@@ -32,8 +32,8 @@ const Device = (deviceModule as Any).Device ?? (deviceModule as Any).default?.De
 const Entity = (entityModule as Any).default?.default ?? (entityModule as Any).default ?? (entityModule as Any).Entity;
 
 const COORD = "0x00124b0024c0dc0d";
-const KP = "0x000fff0000636e2a";
-const DIM = "0x000fff0000636e2b";
+const KP = "0x000fff0000006e2a";
+const DIM = "0x000fff0000006e2b";
 const PLUG = "0x00124b0000000009";
 
 /** What the converter bundle registers when Zigbee2MQTT loads it (here a made-up file hash). */
@@ -43,7 +43,30 @@ const EXTENSION_FILE = fileHash(pathToFileURL(path.resolve(__dirname, "..", "src
 const BUILD = buildIdOf(EXTENSION_FILE, CONVERTER.file as string);
 
 function zhDevice(id: number, type: string, ieee: string, nwk: number, modelID?: string, manufacturerID = 0xabcd): Any {
-    return new Device(id, type, ieee, nwk, manufacturerID, [], undefined, undefined, modelID, undefined, undefined, undefined, undefined, undefined, undefined, "SUCCESSFUL", {}, Date.now(), undefined, 0, undefined, undefined);
+    return new Device(
+        id,
+        type,
+        ieee,
+        nwk,
+        manufacturerID,
+        [],
+        undefined,
+        undefined,
+        modelID,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "SUCCESSFUL",
+        {},
+        Date.now(),
+        undefined,
+        0,
+        undefined,
+        undefined,
+    );
 }
 
 interface Harness {
@@ -108,7 +131,12 @@ function newHerdsman(): Pick<Harness, "adapter" | "controller" | "devices" | "se
         setTimeout(() => adapter.ezsp.emit("messageSent", 0, 0, _nwk, apsFrame, t), 1);
         return [0, t];
     };
-    const devices = [zhDevice(1, "Coordinator", COORD, 0), zhDevice(2, "Router", KP, 0x1234), zhDevice(3, "Router", DIM, 0x2345, "C4-DIM1-Z"), zhDevice(4, "Router", PLUG, 0x3456, "TS011F")];
+    const devices = [
+        zhDevice(1, "Coordinator", COORD, 0),
+        zhDevice(2, "Router", KP, 0x1234),
+        zhDevice(3, "Router", DIM, 0x2345, "C4-DIM1-Z"),
+        zhDevice(4, "Router", PLUG, 0x3456, "TS011F"),
+    ];
     const lastSeen: Any[] = [];
     const controller = {
         adapter,
@@ -127,7 +155,14 @@ async function makeHarness(opts: HarnessOptions = {}): Promise<Harness> {
     const {adapter, controller, devices, sends, lastSeen} = opts.same ?? newHerdsman();
     const z2m = new Map<string, Any>();
     for (const d of devices) {
-        z2m.set(d.ieeeAddr, {zh: d, ieeeAddr: d.ieeeAddr, name: `name_${d.ieeeAddr.slice(-4)}`, options: {}, resolveDefinition: vi.fn(async () => undefined), exposes: () => exposesFor(d)});
+        z2m.set(d.ieeeAddr, {
+            zh: d,
+            ieeeAddr: d.ieeeAddr,
+            name: `name_${d.ieeeAddr.slice(-4)}`,
+            options: {},
+            resolveDefinition: vi.fn(async () => undefined),
+            exposes: () => exposesFor(d),
+        });
     }
     const zigbee = {
         zhController: controller,
@@ -144,10 +179,17 @@ async function makeHarness(opts: HarnessOptions = {}): Promise<Harness> {
         {
             get: (_t, prop: string) => {
                 if (prop.startsWith("on")) return (_key: unknown, cb: (d: Any) => unknown) => (bus[prop] = cb);
-                if (prop === "removeListeners") return () => Object.keys(bus).forEach((k) => delete bus[k]);
+                if (prop === "removeListeners")
+                    return () => {
+                        for (const k of Object.keys(bus)) delete bus[k];
+                    };
                 if (prop === "emitExposesChanged") return (d: Any) => changed.exposes.push(d.device.ieeeAddr);
                 if (prop === "emitDevicesChanged") return () => changed.devices++;
-                if (prop === "emitExposesAndDevicesChanged") return (dev: Any) => (changed.exposes.push(dev.ieeeAddr), changed.devices++);
+                if (prop === "emitExposesAndDevicesChanged")
+                    return (dev: Any) => {
+                        changed.exposes.push(dev.ieeeAddr);
+                        changed.devices++;
+                    };
                 if (prop === "emitMQTTMessage") return (d: Any) => emitted.push(d);
                 return undefined;
             },
@@ -159,7 +201,12 @@ async function makeHarness(opts: HarnessOptions = {}): Promise<Harness> {
         zigbee,
         {
             publish: async (topic: string, payload: string, options?: {baseTopic?: string; skipReceive?: boolean; clientOptions?: {retain?: boolean}}) =>
-                mqtt.push({topic: options?.baseTopic ? `@${options.baseTopic}/${topic}` : topic, payload, retain: options?.clientOptions?.retain, skipReceive: options?.skipReceive}),
+                mqtt.push({
+                    topic: options?.baseTopic ? `@${options.baseTopic}/${topic}` : topic,
+                    payload,
+                    retain: options?.clientOptions?.retain,
+                    skipReceive: options?.skipReceive,
+                }),
             subscribe: async (topic: string) => subscribed.push(topic),
             unsubscribe: async () => undefined,
         },
@@ -188,7 +235,7 @@ function dimStartupReadQueued(): boolean {
     return link.summary().state_reads_queued < before;
 }
 
-const aps = (profileId: number, src = 197) =>({profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 1});
+const aps = (profileId: number, src = 197) => ({profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 1});
 const pkt = (nwk: number) => ({senderShortId: nwk, lastHopLqi: 222, lastHopRssi: -50});
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -236,7 +283,7 @@ describe("extension end to end", () => {
         expect(stored.models[KP]).toBe("KPZ-3B1");
     });
 
-    // Guest Bed, dead for a day, showed available for ~11 min after each hourly check-in.
+    // A DIM1-Z, dead for a day, showed available for ~11 min after each hourly check-in.
     it("tells Zigbee2MQTT a router was seen only on a frame it sent directly, a remote on any frame", async () => {
         const kp = h.devices[1];
         const press = Buffer.from("0t0041 sa c4.dm.cc 00 02\r\n");
@@ -315,7 +362,12 @@ describe("extension end to end", () => {
 
     it("reads a DIM1-Z's state through herdsman's endpoint read on /get", async () => {
         const reads: [string, string[], Any][] = [];
-        const ep1 = {read: vi.fn(async (cluster: string, attrs: string[], options: Any) => (reads.push([cluster, attrs, options]), cluster === "genOnOff" ? {onOff: 1} : {currentLevel: 77}))};
+        const ep1 = {
+            read: vi.fn(async (cluster: string, attrs: string[], options: Any) => {
+                reads.push([cluster, attrs, options]);
+                return cluster === "genOnOff" ? {onOff: 1} : {currentLevel: 77};
+            }),
+        };
         h.devices[2].getEndpoint = (id: number) => (id === 1 ? ep1 : undefined);
         const def = buildDefinitions().find((d: Any) => d.model === "C4-DIM1-Z");
         const conv = def.toZigbee.find((c: Any) => c.key.includes("state"));
@@ -347,7 +399,11 @@ describe("extension end to end", () => {
 
         await h.ext.stop();
         h = await makeHarness({same: h});
-        expect(started()).toEqual([expect.stringMatching(/^Control4: extension started: hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap \(/)]);
+        expect(started()).toEqual([
+            expect.stringMatching(
+                /^Control4: extension started: hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap \(/,
+            ),
+        ]);
         // No state read, but settings never read are read after a hot-load too.
         expect(queued()).toBe(1);
         (globalThis as Any)[RUNTIME_KEY].link.cancelStateRead(`${DIM}:settings`);
@@ -366,7 +422,9 @@ describe("extension end to end", () => {
         const before = h.controller;
         h = await makeHarness();
         expect(h.controller).not.toBe(before);
-        expect(h.info.filter((l) => l.startsWith("Control4: extension started"))).toEqual([expect.stringMatching(/^Control4: extension started: first start since Zigbee2MQTT started \(/)]);
+        expect(h.info.filter((l) => l.startsWith("Control4: extension started"))).toEqual([
+            expect.stringMatching(/^Control4: extension started: first start since Zigbee2MQTT started \(/),
+        ]);
         expect(dimStartupReadQueued()).toBe(true);
     });
 
@@ -384,7 +442,8 @@ describe("extension end to end", () => {
         beforeEach(() => Object.assign(HANDOFF_TIMING, {offers: 50, done: 200}));
         afterEach(() => Object.assign(HANDOFF_TIMING, timing));
         const sent = (ieee: string, step: string) => h.mqtt.filter((m) => m.topic === `@control4/handoff/${ieee}/${step}`);
-        const message = (ieee: string, step: string, body: Record<string, unknown>) => h.bus.onMQTTMessage({topic: `control4/handoff/${ieee}/${step}`, message: JSON.stringify(body)});
+        const message = (ieee: string, step: string, body: Record<string, unknown>) =>
+            h.bus.onMQTTMessage({topic: `control4/handoff/${ieee}/${step}`, message: JSON.stringify(body)});
         const store = () => (globalThis as Any)[RUNTIME_KEY].host.store;
 
         it("asks on a Control4 join, takes the offer's settings, model and options, and renames once the old instance has let go", async () => {
@@ -401,19 +460,25 @@ describe("extension end to end", () => {
                 holds: true,
                 model: "KPZ-3B1",
                 settings: {button_1_idle_color: "blue", led_defaults: "existing"},
-                profile: {name: "Kitchen Keypad", options: {tap_window: 0.8}},
+                profile: {name: "Keypad A", options: {tap_window: 0.8}},
             });
             await tick(150);
 
             expect(h.devices[1].modelID).toBe("KPZ-3B1");
             expect(store().all(KP)).toEqual({button_1_idle_color: "blue", led_defaults: "existing"});
-            expect(h.emitted).toContainEqual({topic: "zigbee2mqtt/bridge/request/device/options", message: JSON.stringify({id: KP, options: {tap_window: 0.8}})});
+            expect(h.emitted).toContainEqual({
+                topic: "zigbee2mqtt/bridge/request/device/options",
+                message: JSON.stringify({id: KP, options: {tap_window: 0.8}}),
+            });
             expect(JSON.parse(sent(KP, "ack")[0].payload)).toEqual({from: "zigbee2mqtt", to: ["zigbee2mqtt_old"], id});
             // Not renamed while the old instance's record (and its discovery) may still be there.
             expect(h.emitted.some((e) => e.topic.endsWith("/device/rename"))).toBe(false);
 
             message(KP, "done", {from: "zigbee2mqtt_old", to: "zigbee2mqtt", id, evicted: true});
-            expect(h.emitted).toContainEqual({topic: "zigbee2mqtt/bridge/request/device/rename", message: JSON.stringify({from: KP, to: "Kitchen Keypad", homeassistant_rename: true})});
+            expect(h.emitted).toContainEqual({
+                topic: "zigbee2mqtt/bridge/request/device/rename",
+                message: JSON.stringify({from: KP, to: "Keypad A", homeassistant_rename: true}),
+            });
         });
 
         it("answers another instance's request for a device it has had, and on the ack force-removes its record and forgets it", async () => {
@@ -476,7 +541,10 @@ describe("extension end to end", () => {
         // DIM1-Z answers Gets: the ping goes out as 0g c4.sy.fwv and resolves on the reply.
         const ping = h.devices[2].ping();
         await tick(60);
-        const get = h.sends.map((x) => x.data.toString("latin1")).reverse().find((t) => t.startsWith("0g"));
+        const get = h.sends
+            .map((x) => x.data.toString("latin1"))
+            .reverse()
+            .find((t) => t.startsWith("0g"));
         expect(get).toMatch(/^0g[0-9a-f]{4} c4\.sy\.fwv\r\n$/);
         h.adapter.ezsp.ezspIncomingMessageHandler(0, aps(PROFILE_BUTTON), pkt(0x2345), Buffer.from(`0r${get?.slice(2, 6)} 000 c4.sy.fwv 03.22.41\r\n`));
         await expect(ping).resolves.toBeUndefined();
@@ -545,7 +613,12 @@ describe("extension end to end", () => {
         const withHa = (homeassistant: unknown = {enabled: true}) => ({settings: {mqtt: {base_topic: "zigbee2mqtt"}, homeassistant}});
         const checkIn = (model: string) => {
             const s = Buffer.from(`c4:control4_keypad:${model}`);
-            h.adapter.ezsp.ezspIncomingMessageHandler(4, aps(PROFILE_NETWORK, 2), pkt(0x1234), Buffer.concat([Buffer.from([0x18, 0x01, 0x0a, 0x07, 0x00, 0x42, s.length]), s]));
+            h.adapter.ezsp.ezspIncomingMessageHandler(
+                4,
+                aps(PROFILE_NETWORK, 2),
+                pkt(0x1234),
+                Buffer.concat([Buffer.from([0x18, 0x01, 0x0a, 0x07, 0x00, 0x42, s.length]), s]),
+            );
         };
 
         beforeEach(async () => {
@@ -558,8 +631,21 @@ describe("extension end to end", () => {
             expect(again).toEqual([]);
             expect(dim.retain).toBe(true);
             const cfg = JSON.parse(dim.payload);
-            expect(cfg).toMatchObject({state_topic: `control4/${DIM}/event`, unique_id: `${DIM}_control4_event`, device: {identifiers: [`zigbee2mqtt_${DIM}`]}, device_class: "button"});
-            expect(cfg.event_types).toEqual(expect.arrayContaining(["initial_switch_press", "remote_button_tap_known", "remote_button_fast_short_press", "remote_button_long_press", "led_notification_end"]));
+            expect(cfg).toMatchObject({
+                state_topic: `control4/${DIM}/event`,
+                unique_id: `${DIM}_control4_event`,
+                device: {identifiers: [`zigbee2mqtt_${DIM}`]},
+                device_class: "button",
+            });
+            expect(cfg.event_types).toEqual(
+                expect.arrayContaining([
+                    "initial_switch_press",
+                    "remote_button_tap_known",
+                    "remote_button_fast_short_press",
+                    "remote_button_long_press",
+                    "led_notification_end",
+                ]),
+            );
             // Zigbee2MQTT clears, at start, a config it didn't publish whose first availability topic is under its base topic.
             expect(cfg).not.toHaveProperty("availability");
             expect(cfg).not.toHaveProperty("availability_topic");
@@ -600,7 +686,10 @@ describe("extension end to end", () => {
                 h.adapter.ezsp.ezspIncomingMessageHandler(0, aps(PROFILE_BUTTON), pkt(0x1234), Buffer.from(`${text}\r\n`));
             }
             await tick(50);
-            const shared = h.mqtt.filter((m) => m.topic === "@control4/event").map((m) => JSON.parse(m.payload)).filter((e) => e.ieee === KP);
+            const shared = h.mqtt
+                .filter((m) => m.topic === "@control4/event")
+                .map((m) => JSON.parse(m.payload))
+                .filter((e) => e.ieee === KP);
             const own = h.mqtt.filter((m) => m.topic === `@control4/${KP}/event`).map((m) => JSON.parse(m.payload));
             expect(shared.map((e) => e.command)).toEqual(["remote_button_short_press", "menu_cancel", "motion_wake"]);
             expect(own.map((e) => e.event_type)).toEqual(["remote_button_short_press", "remote_menu_cancel", "remote_motion_wake"]);
@@ -688,7 +777,7 @@ describe("instance status", () => {
         expect(first.unreachable).toEqual([]);
     });
 
-    // Guest Bed and Garage Inside Lights were dead for hours, and only the log said so.
+    // Two DIM1-Zs were dead for hours, and only the log said so.
     it("lists the devices keepalive cannot reach by name, and republishes as soon as that changes", async () => {
         const rt = (globalThis as Any)[RUNTIME_KEY];
         rt.link.cancelStateRead(DIM);
@@ -706,7 +795,10 @@ describe("instance status", () => {
         }
         // A DIM1-Z is rebooted remotely as it is listed (`0i c4.dm.rb`), and the status says how long ago.
         expect(statuses().slice(before)).toEqual([
-            expect.objectContaining({problems: ["devices_unreachable"], unreachable: [{ieee: DIM, name: "name_6e2b", model: "C4-DIM1-Z", quiet_min: 0, reboot_min: 0}]}),
+            expect.objectContaining({
+                problems: ["devices_unreachable"],
+                unreachable: [{ieee: DIM, name: "name_6e2b", model: "C4-DIM1-Z", quiet_min: 0, reboot_min: 0}],
+            }),
         ]);
         expect(h.sends.map((x) => x.data.toString("latin1"))).toContainEqual(expect.stringMatching(/^0i[0-9a-f]{4} c4\.dm\.rb\r\n$/));
         // A frame it sends direct (a rebooted dimmer sends one): it is reachable again.
@@ -782,7 +874,7 @@ describe("instance status", () => {
             },
         });
         expect(statuses()[0].problems).toEqual([]);
-        expect(h.info.filter((l) => l.startsWith("Control4: extension started")).at(-1)).toMatch(/ \(ezsp, /);
+        expect(h.info.filter((l) => l.startsWith("Control4: extension started")).at(-1)).toMatch(/, ezsp, /);
     });
 
     it("puts the converter file's hash into the build", async () => {
@@ -832,9 +924,9 @@ describe("instance status", () => {
 // shared control4/event topic. The fixture is what the blueprints, the
 // dispatcher package and the live scenario runner are checked against.
 describe("control4/event contract", () => {
-    const KC = "0x000fff0000636e2c";
-    const APD = "0x000fff0000a9d120";
-    const FS1 = "0x000fff0000f51001";
+    const KC = "0x000fff0000006e2c";
+    const APD = "0x000fff000000d120";
+    const FS1 = "0x000fff0000001001";
 
     beforeEach(() => setFastTapTiming(300));
     afterEach(() => setFastTapTiming(2000));
@@ -851,7 +943,12 @@ describe("control4/event contract", () => {
             h.z2m.set(ieee, {zh, ieeeAddr: ieee, name: `name_${ieee.slice(-4)}`, options: {}, resolveDefinition: vi.fn(async () => undefined)});
         }
         const s = Buffer.from("c4:control4_keypad:KPZ-3B1");
-        h.adapter.ezsp.ezspIncomingMessageHandler(4, aps(PROFILE_NETWORK, 2), pkt(0x1234), Buffer.concat([Buffer.from([0x18, 0x01, 0x0a, 0x07, 0x00, 0x42, s.length]), s]));
+        h.adapter.ezsp.ezspIncomingMessageHandler(
+            4,
+            aps(PROFILE_NETWORK, 2),
+            pkt(0x1234),
+            Buffer.concat([Buffer.from([0x18, 0x01, 0x0a, 0x07, 0x00, 0x42, s.length]), s]),
+        );
         await tick(30);
         const before = h.mqtt.filter((m) => m.topic === "@control4/event").length;
         const frames: [number, string[]][] = [
@@ -893,7 +990,10 @@ describe("control4/event contract", () => {
             for (const t of texts) h.adapter.ezsp.ezspIncomingMessageHandler(0, aps(PROFILE_BUTTON), pkt(nwk), Buffer.from(`0t0041 sa ${t}\r\n`));
             await tick(700); // past the 0.55 s tap window
         }
-        const events = h.mqtt.filter((m) => m.topic === "@control4/event").slice(before).map((m) => JSON.parse(m.payload));
+        const events = h.mqtt
+            .filter((m) => m.topic === "@control4/event")
+            .slice(before)
+            .map((m) => JSON.parse(m.payload));
         expect(events.map((e: Any) => showEvent(e, e.model, e.action))).toEqual([
             "KPZ-3B1 button_1_press",
             "KPZ-3B1 button_1_release",

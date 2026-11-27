@@ -1,0 +1,287 @@
+blueprint:
+  name: Control4 SR260 Remote → LCD colour and now playing (Zigbee2MQTT)
+  description: >
+    Makes the C4-SR260's LCD follow a media player, set up from this form.
+
+    Text colour: one colour while the player plays, one while it is paused,
+    one when it is idle or off, and an alert colour, at full brightness, while
+    any alert entity is on, open or unlocked. While the "dark" entity is on,
+    the colours dim to the night level: the SR260's text colour also sets how
+    bright its text is. The night level is a fixed number, or an input_number
+    helper (0-100) to tune it from a dashboard. The remote has 8 levels of red
+    and green and 4 of blue, so not every step shows; a colour never dims to
+    black.
+
+    Line 2 (optional): the player's app, under the room name. After a pick in
+    one of the remote's menus, line 2 shows the pick for a few seconds, then
+    the app again.
+
+    Sends only what the remote would show differently, read from its text
+    colour and LCD source entities. The extension sends both again on every
+    wake and when the remote joins.
+
+    Requires the control4-z2m Zigbee2MQTT extension with the SR260 text colour
+    (text_color).
+
+    Hears the remote through its "Control4 events" entity, which the control4-z2m
+    extension adds with Zigbee2MQTT's Home Assistant integration on: update the
+    extension before this blueprint.
+  domain: automation
+  input:
+    remote:
+      name: SR260 remote
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: Control4
+              model_id: C4-SR260
+
+    player:
+      name: Media player
+      description: Its playing / paused state picks the colour, and its app is shown on line 2. Leave empty for the idle colour and the alerts only.
+      default: []
+      selector:
+        entity:
+          domain: media_player
+
+    colors:
+      name: Colours
+      icon: mdi:palette
+      input:
+        playing_color:
+          name: Playing
+          default: [0, 255, 0]
+          selector:
+            color_rgb: {}
+        paused_color:
+          name: Paused
+          default: [255, 192, 0]
+          selector:
+            color_rgb: {}
+        idle_color:
+          name: Idle or off
+          default: [255, 255, 255]
+          selector:
+            color_rgb: {}
+
+    night:
+      name: Night dimming
+      icon: mdi:weather-night
+      input:
+        dark_entity:
+          name: Dark
+          description: While this is on (a "dark inside" binary sensor, a night mode toggle), the colours dim to the night level. Leave empty to never dim.
+          default: []
+          selector:
+            entity:
+              domain:
+                - binary_sensor
+                - input_boolean
+                - switch
+        night_level:
+          name: Night level
+          description: How bright the text is while it is dark, in percent of the colour.
+          default: 40
+          selector:
+            number:
+              min: 10
+              max: 100
+              step: 5
+              unit_of_measurement: "%"
+        night_level_entity:
+          name: Night level helper
+          description: An input_number (0-100) that sets the night level instead of the number above, to tune it from a dashboard.
+          default: []
+          selector:
+            entity:
+              domain: input_number
+
+    alerts:
+      name: Alerts
+      icon: mdi:alert
+      input:
+        alert_entities:
+          name: Alert entities
+          description: While any of these is on, open or unlocked (a door left unlocked at night, a leak), the text shows the alert colour at full brightness.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        alert_color:
+          name: Alert colour
+          default: [255, 0, 0]
+          selector:
+            color_rgb: {}
+
+    line2:
+      name: Line 2
+      icon: mdi:television-play
+      input:
+        show_app:
+          name: Show the player's app on line 2
+          default: true
+          selector:
+            boolean: {}
+        max_length:
+          name: Maximum characters
+          description: Measured on a C4-SR250B, the room line shows 19 characters; a 26-character one leaves it blank.
+          default: 19
+          selector:
+            number:
+              min: 4
+              max: 40
+              mode: box
+        pick_return:
+          name: Back to the app after a menu pick
+          description: A pick in one of the remote's menus shows on line 2; after this long the app comes back. 0 keeps the pick.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              unit_of_measurement: s
+              mode: box
+
+mode: restart
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: state
+    entity_id: !input player
+    to: null
+  - platform: state
+    entity_id: !input player
+    attribute: app_name
+  - platform: state
+    entity_id: !input player
+    attribute: source
+  - platform: state
+    entity_id: !input alert_entities
+    to: null
+  - platform: state
+    entity_id: !input dark_entity
+    to: null
+  - platform: state
+    entity_id: !input night_level_entity
+    to: null
+  - trigger: event.received
+    target:
+      device_id: !input remote
+    options:
+      event_type:
+        - remote_menu_select
+    id: pick
+
+variables:
+  c4_dev: !input remote
+  c4_ieee: >-
+    {{ ((device_attr(c4_dev, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x')
+        | first | default('')) | replace('zigbee2mqtt_', '') }}
+  player: !input player
+  playing_color: !input playing_color
+  paused_color: !input paused_color
+  idle_color: !input idle_color
+  alert_entities: !input alert_entities
+  alert_color: !input alert_color
+  dark_entity: !input dark_entity
+  night_level: !input night_level
+  night_level_entity: !input night_level_entity
+  show_app: !input show_app
+  max_length: !input max_length
+  pick_return: !input pick_return
+  # The remote's own entities (text.<remote>_color, text.<remote>_active_source), to send only what changed.
+  color_entity: >-
+    {{ device_entities(c4_dev) | select('search', '^text\.\w*colou?r$') | first | default('') }}
+  source_entity: >-
+    {{ device_entities(c4_dev) | select('search', '^text\.\w*active_source$') | first | default('') }}
+  alert: >-
+    {{ alert_entities | map('states') | select('in', ['on', 'open', 'unlocked']) | list | count > 0 }}
+  play_state: "{{ states(player) if player is string and player != '' else 'off' }}"
+  dark: "{{ dark_entity is string and dark_entity != '' and is_state(dark_entity, 'on') }}"
+  level: >-
+    {% if night_level_entity is string and night_level_entity != '' %}
+      {{ [[states(night_level_entity) | float(night_level), 0] | max, 100] | min }}
+    {% else %}
+      {{ night_level }}
+    {% endif %}
+  # The colour before dimming: alert first, then the player's state.
+  base_color: >-
+    {% if alert %}{{ alert_color }}
+    {% elif play_state == 'playing' %}{{ playing_color }}
+    {% elif play_state == 'paused' %}{{ paused_color }}
+    {% else %}{{ idle_color }}{% endif %}
+  # Dimmed while dark (never an alert), with each lit channel kept at least at the
+  # remote's lowest step (red / green 0x20, blue 0x40), so the text never goes black.
+  rgb: >-
+    {% set k = (level | float(40)) / 100 if dark and not alert else 1 %}
+    {% set ns = namespace(out=[]) %}
+    {% for c in base_color %}
+      {% set v = [[(c | float(0) * k) | round | int, 0] | max, 255] | min %}
+      {% if c | int(0) > 0 %}{% set v = [v, 32 if loop.index < 3 else 64] | max %}{% endif %}
+      {% set ns.out = ns.out + [v] %}
+    {% endfor %}
+    {{ ns.out }}
+  color_hex: >-
+    {% set hx = '0123456789abcdef' %}
+    #{% for v in rgb %}{{ hx[v // 16] ~ hx[v % 16] }}{% endfor %}
+  # The byte the remote stores (RGB332): red bits 7-5, green 4-2, blue 1-0.
+  color_byte: "{{ (rgb[0] // 32) * 32 + (rgb[1] // 32) * 4 + rgb[2] // 64 }}"
+  # The remote's colour now, as that byte: its entity holds "#rrggbb" or the byte; -1 when unknown.
+  current_byte: >-
+    {% set t = (states(color_entity) if color_entity else '') | trim %}
+    {% if t is match('^#?[0-9a-fA-F]{6}$') %}
+      {% set h = t[-6:] %}
+      {{ ((h[0:2] | int(0, base=16)) // 32) * 32 + ((h[2:4] | int(0, base=16)) // 32) * 4 + (h[4:6] | int(0, base=16)) // 64 }}
+    {% elif t is match('^[0-9]{1,3}$') %}
+      {{ t | int }}
+    {% else %}
+      -1
+    {% endif %}
+  # Line 2: the player's app (or input source) while it is on.
+  app_text: >-
+    {% if play_state in ['off', 'standby', 'unavailable', 'unknown'] %}
+    {% else %}
+      {{ (state_attr(player, 'app_name') or state_attr(player, 'source') or '')[:max_length | int] }}
+    {% endif %}
+
+condition:
+  - condition: template
+    value_template: "{{ c4_ieee != '' }}"
+  # A menu pick keeps line 2 when "Back to the app" is 0.
+  - condition: template
+    value_template: "{{ trigger.id != 'pick' or pick_return | int(0) > 0 }}"
+
+action:
+  # At HA start the automation can run before the remote is known. Wait until it is.
+  - wait_template: >-
+      {{ device_entities(c4_dev) | map('states')
+         | reject('in', ['unavailable']) | list | count > 0 }}
+    timeout: "00:10:00"
+    continue_on_timeout: false
+  # After a menu pick, line 2 shows the pick until this delay ends (a new run restarts it).
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'pick' }}"
+    then:
+      - delay:
+          seconds: "{{ pick_return | int(0) }}"
+  - if:
+      - condition: template
+        value_template: "{{ current_byte | int(-1) != color_byte | int }}"
+    then:
+      - action: mqtt.publish
+        data:
+          topic: "control4/{{ c4_ieee }}/set/text_color"
+          payload: "{{ color_hex }}"
+  # Read again after the delay: the pick changed line 2 meanwhile.
+  - if:
+      - condition: template
+        value_template: >-
+          {{ show_app and ((states(source_entity) if source_entity else '') | replace('unknown', '') | trim) != (app_text | trim) }}
+    then:
+      - action: mqtt.publish
+        data:
+          topic: "control4/{{ c4_ieee }}/set/active_source"
+          payload: "{{ app_text | trim }}"

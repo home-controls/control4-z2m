@@ -116,7 +116,9 @@ describe("runtime: an undelivered controller identity", () => {
         rig.runtime.link.stop();
         await rig.runtime.sendIdentity(KP, "read_attributes");
         expect(rig.log.lines.filter((l) => l.includes("controller identity"))).toEqual([]);
-        expect(rig.log.lines).toContainEqual(expect.stringMatching(/^debug: Control4 identity \(read_attributes\) to 0x000fff0000000001 failed: .*link stopped/));
+        expect(rig.log.lines).toContainEqual(
+            expect.stringMatching(/^debug: Control4 identity \(read_attributes\) to 0x000fff0000000001 failed: .*link stopped/),
+        );
     });
 });
 
@@ -177,7 +179,9 @@ describe("runtime: re-joins", () => {
         const [reply] = identitiesTo(0x7777);
         expect(reply.frame).toMatchObject({profile: PROFILE_NETWORK, srcEp: 2, dstEp: 2});
         expect(reply.frame.data[2]).toBe(0x0a); // a Report Attributes, as for a known device's check-in
-        expect(rig.log.lines).toContain("info: Control4: answered a check-in from network address 30583, which Zigbee2MQTT does not know yet, with the controller identity");
+        expect(rig.log.lines).toContain(
+            "info: Control4: answered a check-in from network address 30583, which Zigbee2MQTT does not know yet, with the controller identity",
+        );
     });
 
     it("answers a poll for its controller from an unknown address with a read response, and nothing else", async () => {
@@ -185,7 +189,16 @@ describe("runtime: re-joins", () => {
         const poll = Buffer.from([0x00, 0x2a, 0x00, 0x08, 0x00]);
         rig.transport.onFrame?.({nwk: 0x7778, profile: PROFILE_NETWORK, cluster: 1, srcEp: 2, dstEp: 2, data: poll, lqi: 200, unicast: true});
         // A button press, and a report that carries no model (not a check-in): no reply.
-        rig.transport.onFrame?.({nwk: 0x7779, profile: 0xc25c, cluster: 1, srcEp: 197, dstEp: 1, data: Buffer.from("0t0041 sa c4.dm.cc 00 02\r\n"), lqi: 200, unicast: true});
+        rig.transport.onFrame?.({
+            nwk: 0x7779,
+            profile: 0xc25c,
+            cluster: 1,
+            srcEp: 197,
+            dstEp: 1,
+            data: Buffer.from("0t0041 sa c4.dm.cc 00 02\r\n"),
+            lqi: 200,
+            unicast: true,
+        });
         const levelReport = Buffer.from([0x18, 0x02, 0x0a, 0x00, 0x00, 0x20, 0x05]);
         rig.transport.onFrame?.({nwk: 0x777a, profile: PROFILE_NETWORK, cluster: 1, srcEp: 2, dstEp: 2, data: levelReport, lqi: 200, unicast: false});
         await tick(100);
@@ -214,7 +227,11 @@ describe("runtime: re-joins", () => {
         await tick(130_000);
         expect(rig.runtime.link.unreachable().map((u) => u.ieee)).toEqual([DIM]);
         expect(rig.statusChanges).toBe(1);
-        expect(rig.log.lines).toContainEqual(expect.stringMatching(/^warning: Control4: 0x000fff0000000004 \(C4-DIM1-Z\) re-joined and has answered none of the 2 checks since - commands to it are lost\. .*15 times/));
+        expect(rig.log.lines).toContainEqual(
+            expect.stringMatching(
+                /^warning: Control4: 0x000fff0000000004 \(C4-DIM1-Z\) re-joined and has answered none of the 2 checks since - commands to it are lost\. .*15 times/,
+            ),
+        );
         // Its next direct frame clears it, as after missed keepalives.
         rig.ascii(DIM, "0t0001 sa c4.dm.t0c 00", true);
         expect(rig.runtime.link.unreachable()).toEqual([]);
@@ -246,7 +263,9 @@ describe("runtime: re-joins", () => {
         expect(reboots()).toBe(0); // not during its identity sends
         await tick(45_000); // 30-60 s after the announce
         expect(reboots()).toBe(1);
-        expect(rig.log.lines).toContain(`warning: Control4: ${DIM} (C4-DIM1-Z): it has re-joined 3 times in about 2 h (stuck re-joining) - rebooting it remotely (1 of 3 in 24 h)`);
+        expect(rig.log.lines).toContain(
+            `warning: Control4: ${DIM} (C4-DIM1-Z): it has re-joined 3 times in about 2 h (stuck re-joining) - rebooting it remotely (1 of 3 in 24 h)`,
+        );
         expect(rig.runtime.link.unreachable()).toEqual([]);
         // The count starts again after a reboot: one more re-join is not a fourth.
         await tick(60 * 60_000);
@@ -294,10 +313,12 @@ describe("link health", () => {
         rig.start();
         const dev = rig.runtime.get(APD);
         const times: number[] = [];
-        const p = Promise.all([0, 1, 2].map(async () => {
-            await dev?.set("c4.sy.test");
-            times.push(Date.now());
-        }));
+        const p = Promise.all(
+            [0, 1, 2].map(async () => {
+                await dev?.set("c4.sy.test");
+                times.push(Date.now());
+            }),
+        );
         await tick(200);
         await p;
         expect(times[1] - times[0]).toBeGreaterThanOrEqual(40);
@@ -347,7 +368,7 @@ describe("link health", () => {
         expect(await ping).toBe(false);
     });
 
-    // Guest Bed, dead for a day, showed available for ~11 min after each hourly check-in.
+    // A DIM1-Z, dead for a day, showed available for ~11 min after each hourly check-in.
     it("marks a router seen only on a frame it sent directly; a remote on any frame", async () => {
         const SR = "0x000fff0000000003";
         rig.add(APD, "C4-APD120");
@@ -442,7 +463,9 @@ describe("link health", () => {
             await tick(100);
             expect(reboots()).toBe(1);
             expect(rig.runtime.link.unreachable()).toEqual([{ieee: DIMX, model: "C4-DIM1-Z", quietMin: 0, rebootMin: 0}]);
-            expect(rig.log.lines).toContainEqual(expect.stringMatching(/has not answered 3 keepalives .* The extension reboots it remotely \(up to 3 times a day, an hour or more apart\)/));
+            expect(rig.log.lines).toContainEqual(
+                expect.stringMatching(/has not answered 3 keepalives .* The extension reboots it remotely \(up to 3 times a day, an hour or more apart\)/),
+            );
             expect(rig.log.lines).toContain(`warning: Control4: ${DIMX} (C4-DIM1-Z): it is unreachable - rebooting it remotely (1 of 3 in 24 h)`);
             // Keepalives within the hour send no second one.
             await tick(58 * 60_000);
@@ -482,10 +505,19 @@ describe("link health", () => {
             rig.start();
             await listed(DIMX);
             await listed(APD);
-            expect(rig.runtime.link.unreachable().map((u) => u.ieee).sort()).toEqual([APD, DIMX].sort());
+            expect(
+                rig.runtime.link
+                    .unreachable()
+                    .map((u) => u.ieee)
+                    .sort(),
+            ).toEqual([APD, DIMX].sort());
             expect(reboots()).toBe(0);
             expect(rig.runtime.link.unreachable().every((u) => u.rebootMin === undefined)).toBe(true);
-            expect(rig.log.lines.filter((l) => l.includes("has not answered 3 keepalives")).every((l) => l.includes("tap the top paddle 15 times") && !l.includes("reboots it remotely"))).toBe(true);
+            expect(
+                rig.log.lines
+                    .filter((l) => l.includes("has not answered 3 keepalives"))
+                    .every((l) => l.includes("tap the top paddle 15 times") && !l.includes("reboots it remotely")),
+            ).toBe(true);
         });
 
         // With no frames coming through, every dimmer looks unreachable, healthy or not.
@@ -589,7 +621,7 @@ describe("send options", () => {
         const remote = r.add("0x000fff00000000e2", "C4-SR260", {type: "EndDevice"});
         const keypad = r.add("0x000fff00000000a1", "C4-KP6-Z", {type: "Router"});
         r.start();
-        await tick(30_000); // the start-up identity sends, and the remote's commissioning
+        await tick(40_000); // the start-up identity sends (a keypad's start 12-32 s in), and the remote's commissioning
         const sleepy = (ieee: string) => [...new Set(r.transport.sent.filter((s) => s.nwk === r.nwk(ieee)).map((s) => s.sleepy))];
         expect(sleepy(remote)).toEqual([true]);
         expect(sleepy(keypad)).toEqual([false]);

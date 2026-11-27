@@ -12,12 +12,7 @@ export const ANIMATION_KEYS = ["led_effect", "led_status", "led_stop", "led_refr
 export class AnimationKeys {
     readonly animator: Animator;
 
-    constructor(
-        private readonly dev: C4Device,
-        host: Omit<AnimatorHost, "ieee" | "name" | "alive" | "set" | "onNotifying">,
-        buttons: number[],
-        protocol: "kp" | "dmx" | "dm",
-    ) {
+    constructor(dev: C4Device, host: Omit<AnimatorHost, "ieee" | "name" | "alive" | "set" | "onNotifying">, buttons: number[], protocol: "kp" | "dmx" | "dm") {
         const full: AnimatorHost = {
             get ieee() {
                 return dev.ieee;

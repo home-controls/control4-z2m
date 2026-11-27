@@ -1,7 +1,7 @@
 # The extension reboots a stuck DIM1-Z remotely, within a rolling cap and instance-wide holds
 
 A DIM1-Z's Control4 firmware can stop answering while its radio still works: it checks in every hour and works
-from its own paddles, but nothing sent to it is answered (#60). Another failure mode is re-joining every hour. On
+from its own paddles, but nothing sent to it is answered (archived issue 60). Another failure mode is re-joining every hour. On
 2026-11-04 and 2026-11-06 the only cure was a reboot by hand, 15 taps on the top paddle. On 2026-11-07 the
 interrupt frame `0i c4.dm.rb` turned out to reboot a DIM1-Z in about 2 s, with its load at the same level and
 every setting kept. So the extension now does it on its own:
@@ -17,7 +17,7 @@ The limits are part of the decision, not tuning:
 - **Per instance:** at most one reboot a minute.
 - **Held:** no reboot while `no_frames` or `sends_failing` is raised, or while more than 3 devices are unreachable at
   once. In those cases every dimmer looks dead, and the fault is the instance's or the mesh's. Rebooting healthy
-  dimmers would flash every LED in the house and drop paddle presses.
+  dimmers would flash every LED on the network and drop paddle presses.
 - **Opting out:** a device option, `auto_reboot: false`.
 - **No APS acknowledgement on the frame:** the dimmer can restart before acknowledging, and each APS retry then
   reboots it again. Three reboots in 3.5 s were seen.
@@ -37,4 +37,7 @@ The limits are part of the decision, not tuning:
 - An automatic reboot flashes the dimmer's LEDs (green, then white), and a paddle press in its ~2 s is lost.
 - The counts live in memory, so a Zigbee2MQTT restart starts them again: a dimmer that stays deaf can get 3 more
   reboots after each restart.
-- Only the DIM1-Z is rebooted. Whether `0i` reboots the KC120277, APD120 or SW120277 is untested.
+- Only the DIM1-Z is rebooted. On the KC120277 and APD120, `0i c4.sy.rb` reboots them too (frame-type survey,
+  `docs/research/kc-apd-sw-capability-map.md`): they answer before restarting, so its APS acknowledgement goes out and
+  no retry reboots them again. Extending the Reboot button and these automatic reboots to them is #12; the SW120277
+  is untested.

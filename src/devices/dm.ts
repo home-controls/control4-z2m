@@ -6,19 +6,20 @@
 
 import {
     AUTO_REBOOT_OPTION,
-    clickGesture,
     COLD_START_LEVEL_KEY,
     COLD_START_TIME_KEY,
+    clickGesture,
     DIM1Z_TV_PARAMS,
     DM_BUTTONS,
     type Gesture,
     OUTLET_BUTTONS,
+    PALETTE_HEX,
+    type PaletteName,
     REBOOT_KEY,
 } from "../core/constants";
-import {LED_BRIGHTNESS_KEY, LedWriter, type LedSelect} from "../core/leds";
-import {hex2, hex4, type ParsedFrame, parseHex, pctToBrightness, scaleHex, type ZclValue} from "../core/protocol";
-import {PALETTE_HEX, type PaletteName} from "../core/constants";
+import {LED_BRIGHTNESS_KEY, type LedSelect, LedWriter} from "../core/leds";
 import {type GetReply, isDeliveryFailure, type StateReadResult} from "../core/link";
+import {hex2, hex4, type ParsedFrame, parseHex, pctToBrightness, scaleHex, type ZclValue} from "../core/protocol";
 import {AnimationKeys} from "./animkeys";
 import {C4Device, type Payload, type SetMeta, toBool} from "./base";
 import {FadeHold, LoadControl, OFF_TRANSITION_KEY, ON_TRANSITION_KEY, TvParams} from "./dimming";
@@ -91,7 +92,7 @@ export class Dim1z extends DmDevice {
             const ms = this.hold.sent(delivered);
             if (ms !== undefined) this.noteRamp(ms);
         },
-        // Its `rtl` time is a full 0-100 % sweep (tested 2026-11-07 on Linen Closet).
+        // Its `rtl` time is a full 0-100 % sweep (tested 2026-11-07 on a DIM1-Z).
         hardwareFade: "sweep",
         clampPct: (pct) => this.tv.clampPct(pct),
         liveLevel: () => this.hold.current(),
@@ -368,7 +369,8 @@ export class Dim1z extends DmDevice {
         }
         this.saveSetting(SETTINGS_READ_KEY, Date.now());
         this.publish(read);
-        if (changed.length) this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k]} -> ${read[k]}`).join(", ")}`);
+        if (changed.length)
+            this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k]} -> ${read[k]}`).join(", ")}`);
         else this.log.debug(`Control4 ${this.name}: settings read from the device, as shown`);
         return "read";
     }
@@ -468,7 +470,9 @@ export class Fs1z extends DmDevice {
             this.after(FS1_CONFIRM_TIMEOUT, () => {
                 const r = this.lastReport;
                 if (!r || r.at >= sentAt) return;
-                this.log.warning(`Control4 ${this.name}: no c4.dm.t0c confirmation within ${FS1_CONFIRM_TIMEOUT / 1000}s - reverting to the last reported state`);
+                this.log.warning(
+                    `Control4 ${this.name}: no c4.dm.t0c confirmation within ${FS1_CONFIRM_TIMEOUT / 1000}s - reverting to the last reported state`,
+                );
                 this.publish({state: r.on ? "ON" : "OFF"});
             });
             return result;

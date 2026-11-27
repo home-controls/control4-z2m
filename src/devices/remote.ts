@@ -10,9 +10,10 @@
  * (identity, clock, locale, room) and needs cluster 0x0001 bound to us.
  */
 
+import {parseColour} from "../core/animation";
 import {C4_CLUSTER, type Gesture, REMOTE_COMMANDS, SR250_BUTTONS, SR260_BUTTONS} from "../core/constants";
-import {buildFrame, hex2, hex4, type ParsedFrame, parseHex, sanitize} from "../core/protocol";
 import {isDeliveryFailure} from "../core/link";
+import {buildFrame, hex2, hex4, type ParsedFrame, parseHex, sanitize} from "../core/protocol";
 import {C4Device, type Payload, type SetMeta, toNumber} from "./base";
 
 /**
@@ -544,7 +545,24 @@ export class Sr260 extends Remote {
         }
     }
 
+    /**
+     * The rows, then the text colour when one is set: every path that pushes rows (setup,
+     * wake, /set) re-applies it. The colour going undelivered doesn't make the rows count as
+     * undelivered; the next push sends it again.
+     */
+    override async sendRoomInfo(room: string, source: string): Promise<void> {
+        await super.sendRoomInfo(room, source);
+        const color = this.setting<number>("text_color_byte");
+        if (typeof color === "number") await this.trySet(`c4.zr.tc ${hex2(color)}`);
+    }
+
     override async setValue(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {
+        if (key === "text_color") {
+            const byte = rgb332(value); // throws on what isn't a colour, keeping the saved one
+            this.saveSetting("text_color_byte", byte);
+            if (byte !== undefined) await this.set(`c4.zr.tc ${hex2(byte)}`);
+            return {text_color: byte === undefined ? "" : rgb332Hex(byte)};
+        }
         if (key === "show_message") {
             const obj = value && typeof value === "object" ? (value as Record<string, unknown>) : {message: value};
             await this.showMessage(String(obj.message ?? ""), obj.icon === undefined ? undefined : Number(obj.icon), Number(obj.seconds ?? 0) || 0);
@@ -552,4 +570,32 @@ export class Sr260 extends Remote {
         }
         return super.setValue(key, value, meta);
     }
+}
+/**
+ * The SR260's text colour (c4.zr.tc) is one RGB332 byte: red bits 7-5, green
+ * 4-2, blue 1-0 (256 colours; it also sets the text brightness). Takes the byte
+ * (a number, or a decimal string as a text entity sends it), or anything
+ * parseColour does ("#rrggbb", "#rgb", a palette name, [r, g, b]) or {r, g, b}.
+ * Empty gives undefined; anything else throws.
+ */
+export function rgb332(value: unknown): number | undefined {
+    if (value === undefined || value === null || (typeof value === "string" && !value.trim())) return undefined;
+    if (typeof value === "number" || (typeof value === "string" && /^\s*\d+\s*$/.test(value))) {
+        const n = Number(value);
+        if (!Number.isInteger(n) || n < 0 || n > 255) throw new Error(`text colour byte ${value} is not 0-255`);
+        return n;
+    }
+    const obj = value as {r?: unknown; g?: unknown; b?: unknown};
+    const rgb = typeof value === "object" && !Array.isArray(value) ? [obj.r, obj.g, obj.b] : value;
+    if (Array.isArray(rgb) && rgb.some((c) => c === undefined || c === null || !Number.isFinite(Number(c)))) {
+        throw new Error(`text colour ${JSON.stringify(value)} needs numeric r, g and b`);
+    }
+    const [r, g, b] = parseColour(rgb);
+    return (r & 0xe0) | ((g & 0xe0) >> 3) | (b >> 6);
+}
+
+/** The RGB332 byte as the "#rrggbb" it shows, each component scaled to 0-255. */
+export function rgb332Hex(byte: number): string {
+    const part = (v: number, max: number) => hex2(Math.round((v * 255) / max));
+    return `#${part((byte >> 5) & 7, 7)}${part((byte >> 2) & 7, 7)}${part(byte & 3, 3)}`;
 }

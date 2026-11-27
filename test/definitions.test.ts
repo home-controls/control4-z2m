@@ -3,8 +3,8 @@
  * built bundles (dist/) loaded the way Zigbee2MQTT loads them.
  */
 
-import {pathToFileURL} from "node:url";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
 
 import {describe, expect, it, vi} from "vitest";
 import * as zhc from "zigbee-herdsman-converters";
@@ -45,7 +45,12 @@ describe("definitions", () => {
         delete g[key];
         const pending = conv.convertSet(undefined, "led_brightness", 40, {device: {ieeeAddr: "0x000FFF0000000001"}, message: {led_brightness: 40}});
         await new Promise((r) => setTimeout(r, 300));
-        g[key] = {set: async (...args: unknown[]) => (calls.push(args), {led_brightness: 40})};
+        g[key] = {
+            set: async (...args: unknown[]) => {
+                calls.push(args);
+                return {led_brightness: 40};
+            },
+        };
         try {
             await expect(pending).resolves.toEqual({state: {led_brightness: 40}});
             expect(calls).toHaveLength(1);
@@ -70,7 +75,9 @@ describe("definitions", () => {
             const get = conv.convertGet(undefined, "state", meta("GET"));
             await vi.advanceTimersByTimeAsync(70);
             g[key] = {
-                set: async (_i: string, _k: string, value: unknown) => (order.push(String(value)), undefined),
+                set: async (_i: string, _k: string, value: unknown) => {
+                    order.push(String(value));
+                },
                 getValue: async () => void order.push("GET"),
             };
             await vi.advanceTimersByTimeAsync(200);
@@ -154,11 +161,14 @@ describe("definitions", () => {
         expect(names).not.toContain("relay_1");
     });
 
-    it.each(["C4-KP3-Z", "C4-KP6-Z", "C4-KC120277", "C4-DIM1-Z", "C4-APD120", "C4-SW120277", "C4-FS1-Z", "C4-4SF120", "LOZ-5S1-W"])("offer %s a tap window option of 0.25-1.5 s", (model) => {
-        const def = defs.find((d: Any) => d.model === model);
-        const option = (def.options ?? []).find((o: Any) => o.property === "tap_window");
-        expect(option, model).toMatchObject({type: "numeric", value_min: 0.25, value_max: 1.5, unit: "s"});
-    });
+    it.each(["C4-KP3-Z", "C4-KP6-Z", "C4-KC120277", "C4-DIM1-Z", "C4-APD120", "C4-SW120277", "C4-FS1-Z", "C4-4SF120", "LOZ-5S1-W"])(
+        "offer %s a tap window option of 0.25-1.5 s",
+        (model) => {
+            const def = defs.find((d: Any) => d.model === model);
+            const option = (def.options ?? []).find((o: Any) => o.property === "tap_window");
+            expect(option, model).toMatchObject({type: "numeric", value_min: 0.25, value_max: 1.5, unit: "s"});
+        },
+    );
 
     it("give the DIM1-Z and the APD120 cold start settings", () => {
         const props = (model: string) => flatten(defs.find((d: Any) => d.model === model).exposes).map((x: Any) => x.property);
@@ -201,8 +211,10 @@ describe("definitions", () => {
         const kc = defs.find((d: Any) => d.model === "C4-KC120277");
         const all = flatten(kc.exposes(fakeDevice("C4-KC120277"), {}));
         expect(all.find((x: Any) => x.name === "action").values).toContain("button_7_single");
-        expect(all.map((x: Any) => x.property)).toEqual(expect.arrayContaining(["led_12_idle_color", "led_12_mode", "backlight_color", "backlight_brightness", "tx_power"]));
-        // Three double-height buttons (the Kitchen Keypad).
+        expect(all.map((x: Any) => x.property)).toEqual(
+            expect.arrayContaining(["led_12_idle_color", "led_12_mode", "backlight_color", "backlight_brightness", "tx_power"]),
+        );
+        // Three double-height buttons (the Keypad A).
         const fitted = flatten(kcExposes({wires: [0, 2, 4], numbering: "pairs"}));
         const actions = fitted.find((x: Any) => x.name === "action").values;
         expect(actions).toEqual(expect.arrayContaining(["button_1_single", "button_2_single", "button_3_single"]));

@@ -8,7 +8,7 @@ import {Handoff, type HandoffHost, type HandoffStep, type Profile} from "../src/
 import {Store} from "../src/core/store";
 import {captureLogger} from "./rig";
 
-const KP = "0x000fff0000636e2a";
+const KP = "0x000fff0000006e2a";
 
 interface Sent {
     ieee: string;
@@ -90,7 +90,7 @@ function aHadIt(at = Date.now()): void {
     a.store.set(KP, "button_1_idle_color", "blue");
     a.store.set(KP, "led_defaults", "existing");
     a.records.set(KP, at);
-    a.profiles.set(KP, {name: "Kitchen Keypad", options: {tap_window: 0.8, homeassistant: {name: "Kitchen"}}});
+    a.profiles.set(KP, {name: "Keypad A", options: {tap_window: 0.8, homeassistant: {name: "Kitchen"}}});
     a.handoff.seed([KP]);
 }
 
@@ -123,7 +123,7 @@ describe("handoff", () => {
         expect(b.store.all(KP)).toEqual({button_1_idle_color: "blue", led_defaults: "existing"});
         expect(b.adopted).toEqual([{ieee: KP, model: "KPZ-3B1", options: {tap_window: 0.8, homeassistant: {name: "Kitchen"}}}]);
         // The name, kept by `a` when the device was removed from it.
-        expect(b.settled).toEqual([{ieee: KP, name: "Kitchen Keypad", evicted: false}]);
+        expect(b.settled).toEqual([{ieee: KP, name: "Keypad A", evicted: false}]);
         expect(b.handoff.pending(KP)).toBe(false);
     });
 
@@ -147,7 +147,7 @@ describe("handoff", () => {
         c.store.setModel(KP, "KPZ-3B1");
         c.store.set(KP, "button_1_idle_color", "yellow");
         c.records.set(KP, Date.now() - 1_000);
-        c.profiles.set(KP, {name: "Kitchen Keypad 2", options: {}});
+        c.profiles.set(KP, {name: "Keypad A 2", options: {}});
         c.handoff.seed([KP]);
         // `d` only holds a copy (the ZHA import ran into every instance).
         const d = new Instance("zigbee2mqtt_d");
@@ -159,7 +159,7 @@ describe("handoff", () => {
 
         expect(d.sent("offer")).toEqual([]);
         expect(b.store.get(KP, "button_1_idle_color")).toBe("yellow");
-        expect(b.settled[0]?.name).toBe("Kitchen Keypad 2");
+        expect(b.settled[0]?.name).toBe("Keypad A 2");
         d.handoff.stop();
     });
 
@@ -180,7 +180,7 @@ describe("handoff", () => {
         expect(a.store.all(KP)).toEqual({});
         expect(a.evicted).toEqual([KP]);
         expect(a.sent("done")).toEqual([expect.objectContaining({body: expect.objectContaining({to: "zigbee2mqtt_b", evicted: true})})]);
-        expect(b.settled).toEqual([{ieee: KP, name: "Kitchen Keypad", evicted: true}]);
+        expect(b.settled).toEqual([{ieee: KP, name: "Keypad A", evicted: true}]);
         // Let go for good: a later join elsewhere is not answered by `a`.
         c.join(KP);
         await settle();
@@ -194,7 +194,7 @@ describe("handoff", () => {
         await settle();
         expect(b.sent("ack").length).toBeGreaterThan(1);
         // It knew from the offer that `a` would evict.
-        expect(b.settled).toEqual([{ieee: KP, name: "Kitchen Keypad", evicted: true}]);
+        expect(b.settled).toEqual([{ieee: KP, name: "Keypad A", evicted: true}]);
         expect(a.evicted).toEqual([KP]);
     });
 

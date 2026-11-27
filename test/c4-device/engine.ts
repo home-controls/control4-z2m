@@ -55,8 +55,26 @@ export function intOfText(text: string): number | undefined {
     return /^[+-]?\d+$/.test(t) ? Number.parseInt(t, 10) : undefined;
 }
 
-/** Jinja2's do_int, as HA's int filter / function uses it: int(value), else int(float(value)), else the default. */
-function toInt(value: unknown, fallback: unknown = NO_DEFAULT): unknown {
+/**
+ * Jinja2's do_int, as HA's int filter / function uses it: int(value), else int(float(value)), else the default.
+ * With base= (a keyword argument, which arrives as a trailing object), text is read in that base, as
+ * Python's int(text, base) reads it (a 0x / 0o / 0b prefix of that base allowed); else the default.
+ */
+function toInt(value: unknown, fallback: unknown = NO_DEFAULT, kwargs?: unknown): unknown {
+    if (fallback !== null && typeof fallback === "object" && !Array.isArray(fallback) && kwargs === undefined) {
+        kwargs = fallback;
+        fallback = (fallback as {default?: unknown}).default ?? NO_DEFAULT;
+    }
+    const base = Number((kwargs as {base?: unknown} | undefined)?.base ?? 10);
+    if (base !== 10) {
+        const digits = "0123456789abcdefghijklmnopqrstuvwxyz".slice(0, base);
+        const prefix = {16: "0x", 8: "0o", 2: "0b"}[base] ?? "";
+        const t = typeof value === "string" ? value.replace(NUMBER_STRIP, "").toLowerCase() : "";
+        const m = new RegExp(`^([+-]?)(?:${prefix})?([${digits}]+)$`).exec(t);
+        if (m) return (m[1] === "-" ? -1 : 1) * Number.parseInt(m[2], base);
+        if (fallback === NO_DEFAULT) throw new Error(`int got invalid input '${String(value)}' but no default was specified`);
+        return fallback;
+    }
     if (typeof value === "boolean") return value ? 1 : 0;
     if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
     if (typeof value === "string") {
@@ -121,12 +139,15 @@ export function haEnvironment(world: HaWorld = EMPTY): Environment {
         states,
         is_state: isState,
         state_attr: (e: unknown, attr: unknown) => state(e)?.attributes[String(attr)] ?? null,
-        now: () => ({strftime: (fmt: string) => fmt.replace("%H", world.time.slice(0, 2)).replace("%M", world.time.slice(3, 5)).replace("%S", world.time.slice(6, 8))}),
+        now: () => ({
+            strftime: (fmt: string) => fmt.replace("%H", world.time.slice(0, 2)).replace("%M", world.time.slice(3, 5)).replace("%S", world.time.slice(6, 8)),
+        }),
         int: toInt,
         float: toFloat,
         is_number: isNumber,
     };
-    for (const name of ["device_attr", "device_entities", "states", "is_state", "state_attr", "now", "int", "float", "is_number"]) env.addFunction(name, fns[name]);
+    for (const name of ["device_attr", "device_entities", "states", "is_state", "state_attr", "now", "int", "float", "is_number"])
+        env.addFunction(name, fns[name]);
     env.addFilter("states", states);
     env.addFilter("int", toInt);
     env.addFilter("float", toFloat);
@@ -183,7 +204,8 @@ export function isTemplate(value: unknown): value is string {
  */
 function renderComplex(env: Environment, value: unknown, vars: Record<string, unknown>): unknown {
     if (Array.isArray(value)) return value.map((x) => renderComplex(env, x, vars));
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, x]) => [renderComplex(env, k, vars), renderComplex(env, x, vars)]));
+    if (value && typeof value === "object")
+        return Object.fromEntries(Object.entries(value).map(([k, x]) => [renderComplex(env, k, vars), renderComplex(env, x, vars)]));
     return isTemplate(value) ? haValue(renderStripped(env, value, vars)) : value;
 }
 

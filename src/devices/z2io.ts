@@ -154,7 +154,11 @@ export class Z2io extends C4Device {
             const closed = Boolean(cts & (1 << ch));
             out[`contact_${ch + 1}`] = closed;
             if (this.contacts[ch] !== closed) {
-                changes.push({channel: ch + 1, state: closed ? "closed" : "open", previous: this.contacts[ch] === undefined ? "unknown" : this.contacts[ch] ? "closed" : "open"});
+                changes.push({
+                    channel: ch + 1,
+                    state: closed ? "closed" : "open",
+                    previous: this.contacts[ch] === undefined ? "unknown" : this.contacts[ch] ? "closed" : "open",
+                });
                 this.contacts[ch] = closed;
             }
         }

@@ -30,7 +30,8 @@ afterEach(() => {
 /** The controller identity frames sent to a device. */
 const identities = (ieee: string) => rig.transport.sent.filter((s) => s.nwk === rig.nwk(ieee) && s.frame.profile === PROFILE_NETWORK).length;
 /** The ASCII commands sent to a device. */
-const cmdsTo = (ieee: string) => rig.transport.sent.filter((s) => s.nwk === rig.nwk(ieee) && s.frame.profile !== PROFILE_NETWORK).map((s) => s.text.replace(/^0[sgir][0-9a-f]{4} /, ""));
+const cmdsTo = (ieee: string) =>
+    rig.transport.sent.filter((s) => s.nwk === rig.nwk(ieee) && s.frame.profile !== PROFILE_NETWORK).map((s) => s.text.replace(/^0[sgir][0-9a-f]{4} /, ""));
 
 /** What the start-up work leaves on the radio, 45 s after a start: the keypad and remote identities, the DIM1-Z's read, the IO module's set-up. */
 async function startupWork() {

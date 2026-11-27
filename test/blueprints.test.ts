@@ -10,7 +10,7 @@ import {commandOf, eventEntityConfig, eventTypeOf} from "../src/z2m/extension";
 import {EVENTS_NOTE, port, remoteEventType} from "../tools/port-zha-blueprints.mjs";
 import {renderTemplate} from "./c4-device";
 import {inputTag, kindOf, substitute} from "./c4-device/blueprint";
-import {conditionPasses, haEnvironment, type HaWorld, renderValue, renderVariables} from "./c4-device/engine";
+import {conditionPasses, type HaState, type HaWorld, haEnvironment, renderValue, renderVariables} from "./c4-device/engine";
 import {CONTRACT_EVENTS, CONTRACT_FIELDS} from "./contract";
 import {Rig, tick} from "./rig";
 
@@ -19,7 +19,10 @@ const files = fs.readdirSync(DIR).filter((f) => f.endsWith(".yaml"));
 
 function load(file: string) {
     const doc = parseDocument(fs.readFileSync(path.join(DIR, file), "utf8"), {customTags: [inputTag as never], uniqueKeys: true});
-    expect(doc.errors.map((e) => e.message), file).toEqual([]);
+    expect(
+        doc.errors.map((e) => e.message),
+        file,
+    ).toEqual([]);
     return doc.toJS() as Record<string, unknown>;
 }
 
@@ -43,10 +46,10 @@ function inputDefaults(node: unknown, out: Record<string, unknown> = {}): Record
 }
 
 function usedInputs(node: unknown, out = new Set<string>()): Set<string> {
-    if (Array.isArray(node)) node.forEach((x) => usedInputs(x, out));
+    if (Array.isArray(node)) for (const x of node) usedInputs(x, out);
     else if (node && typeof node === "object") {
         if ("__input" in (node as object)) out.add((node as {__input: string}).__input);
-        else Object.values(node as object).forEach((x) => usedInputs(x, out));
+        else for (const x of Object.values(node as object)) usedInputs(x, out);
     }
     return out;
 }
@@ -64,6 +67,7 @@ describe("blueprints", () => {
                 "c4_sr250_room_display.yaml",
                 "c4_sr260_media_player.yaml",
                 "c4_sr260_menu_dispatcher.yaml",
+                "c4_sr260_screen.yaml",
             ].sort(),
         );
     });
@@ -81,13 +85,18 @@ describe("blueprints", () => {
 
     it.each(files)("%s has no ZHA device I/O left", (file) => {
         const text = fs.readFileSync(path.join(DIR, file), "utf8");
-        for (const bad of ["zha_event", "zha.", "integration: zha", "zha_c4_patch", "cluster_id", "endpoint_id"]) expect(text.includes(bad), `${file}: ${bad}`).toBe(false);
+        for (const bad of ["zha_event", "zha.", "integration: zha", "zha_c4_patch", "cluster_id", "endpoint_id"])
+            expect(text.includes(bad), `${file}: ${bad}`).toBe(false);
         // Event data is read only from the dispatcher's control4_event, never from a ZHA event.
         if (/trigger\.event\.data/.test(text)) expect(text, `${file}: trigger.event.data without control4_event`).toMatch(/event_type: control4_event/);
     });
 
     it("read a trigger's kind from trigger:, as the automation editor writes it, or platform:, never both", () => {
-        expect([kindOf({trigger: "state", entity_id: "light.a"}), kindOf({platform: "state", entity_id: "light.a"}), kindOf({event: "start"})]).toEqual(["state", "state", undefined]);
+        expect([kindOf({trigger: "state", entity_id: "light.a"}), kindOf({platform: "state", entity_id: "light.a"}), kindOf({event: "start"})]).toEqual([
+            "state",
+            "state",
+            undefined,
+        ]);
         expect(() => kindOf({platform: "state", trigger: "state"})).toThrow(/Home Assistant refuses a trigger with both platform: and trigger:/);
     });
 
@@ -99,7 +108,7 @@ describe("blueprints", () => {
         const text = () => fs.readFileSync(path.join(DIR, "c4_device.yaml"), "utf8");
         /** Every wait_for_trigger entry anywhere in the actions. */
         function waits(node: unknown, out: Trigger[] = []): Trigger[] {
-            if (Array.isArray(node)) node.forEach((x) => waits(x, out));
+            if (Array.isArray(node)) for (const x of node) waits(x, out);
             else if (node && typeof node === "object") {
                 for (const [k, v] of Object.entries(node)) {
                     if (k === "wait_for_trigger") out.push(...(v as Trigger[]));
@@ -114,17 +123,36 @@ describe("blueprints", () => {
         const tidMap = () => [...(load("c4_device.yaml").variables as Record<string, string>).tid.matchAll(/'(\w+)': '(\w+)'/g)].map((m) => [m[1], m[2]]);
 
         it("offers in its picker only the Control4 wall devices whose buttons it drives", () => {
-            const input = (load("c4_device.yaml").blueprint as {input: {device_section: {input: {c4_device: {selector: {device: {filter: Record<string, string>[]}}}}}}}).input;
+            const input = (
+                load("c4_device.yaml").blueprint as {input: {device_section: {input: {c4_device: {selector: {device: {filter: Record<string, string>[]}}}}}}}
+            ).input;
             const filters = input.device_section.input.c4_device.selector.device.filter;
             for (const f of filters) expect(f).toMatchObject({integration: "mqtt", manufacturer: "Control4"});
             const models = filters.map((f) => f.model_id);
-            expect(models.sort()).toEqual(["C4-4SF120", "C4-APD120", "C4-DIM1-Z", "C4-FS1-Z", "C4-KC120277", "C4-KP3-Z", "C4-KP6-Z", "C4-SW120277", "LOZ-5S1-W"]);
+            expect(models.sort()).toEqual([
+                "C4-4SF120",
+                "C4-APD120",
+                "C4-DIM1-Z",
+                "C4-FS1-Z",
+                "C4-KC120277",
+                "C4-KP3-Z",
+                "C4-KP6-Z",
+                "C4-SW120277",
+                "LOZ-5S1-W",
+            ]);
             // Each is the model Zigbee2MQTT gives the device (its definition's model), so it matches model_id.
-            for (const m of models) expect(MODELS.map((x) => x.model), m).toContain(m);
+            for (const m of models)
+                expect(
+                    MODELS.map((x) => x.model),
+                    m,
+                ).toContain(m);
         });
 
         it("names in its description every model its picker offers", () => {
-            const bpMeta = load("c4_device.yaml").blueprint as {description: string; input: {device_section: {input: {c4_device: {selector: {device: {filter: {model_id: string}[]}}}}}}};
+            const bpMeta = load("c4_device.yaml").blueprint as {
+                description: string;
+                input: {device_section: {input: {c4_device: {selector: {device: {filter: {model_id: string}[]}}}}}};
+            };
             const intro = bpMeta.description.slice(0, bpMeta.description.indexOf("REQUIRED:")).replace(/\s+/g, " ");
             for (const f of bpMeta.input.device_section.input.c4_device.selector.device.filter) expect(intro, f.model_id).toContain(f.model_id);
         });
@@ -134,7 +162,12 @@ describe("blueprints", () => {
             expect(events).toEqual([{trigger: "event.received", target: {device_id: DEVICE}, options: {event_type: expect.any(Array)}, id: "event"}]);
             // Every command a run can start on; a tap release is only waited for.
             const types = (events[0].options as {event_type: string[]}).event_type;
-            expect([...types].sort()).toEqual(tidMap().map(([c]) => c).filter((c) => c !== GESTURES.release).sort());
+            expect([...types].sort()).toEqual(
+                tidMap()
+                    .map(([c]) => c)
+                    .filter((c) => c !== GESTURES.release)
+                    .sort(),
+            );
             expect(bp().trigger.filter((t) => t.platform === "mqtt")).toEqual([]);
             expect(text()).not.toContain("control4/event");
             expect(text()).not.toContain("control4_event");
@@ -143,7 +176,9 @@ describe("blueprints", () => {
         it("starts only on event types the extension declares for the devices its picker offers", () => {
             const types = ((bp().trigger.find((t) => t.id === "event") as Trigger).options as {event_type: string[]}).event_type;
             const defs = buildDefinitions();
-            const picker = (load("c4_device.yaml").blueprint as {input: {device_section: {input: {c4_device: {selector: {device: {filter: {model_id: string}[]}}}}}}}).input;
+            const picker = (
+                load("c4_device.yaml").blueprint as {input: {device_section: {input: {c4_device: {selector: {device: {filter: {model_id: string}[]}}}}}}}
+            ).input;
             const all = new Set<string>();
             for (const {model_id: model} of picker.device_section.input.c4_device.selector.device.filter) {
                 type Ex = {name: string; values: string[]}[];
@@ -178,7 +213,11 @@ describe("blueprints", () => {
         // and the only retry of a lost status frame; the extension now retries those itself.
         it("re-checks its LEDs hourly by default, or every 30 minutes", () => {
             expect(bp().trigger).toContainEqual({platform: "time_pattern", minutes: {__input: "led_resync"}, id: "led"});
-            const leds = (load("c4_device.yaml").blueprint as {input: {led_section: {input: Record<string, {default: unknown; selector: {select: {options: {value: string}[]}}}>}}}).input.led_section.input;
+            const leds = (
+                load("c4_device.yaml").blueprint as {
+                    input: {led_section: {input: Record<string, {default: unknown; selector: {select: {options: {value: string}[]}}}>}};
+                }
+            ).input.led_section.input;
             expect(leds.led_resync.default).toBe("0");
             // "/30" stays: an automation saved with it keeps working.
             expect(leds.led_resync.selector.select.options.map((o) => o.value)).toEqual(["0", "/30"]);
@@ -194,12 +233,19 @@ describe("blueprints", () => {
             expect(check.if).toBe("{{ tid in ['boot', 'reload'] }}");
             const vars = (check.then[0] as {variables: {note_id: string; hears: string}}).variables;
             expect(vars.note_id).toBe("c4_device_no_events_{{ ieee }}");
-            const tell = check.then[1] as {if: string; then: {action: string; data: Record<string, string>}[]; else: {action: string; data: Record<string, string>}[]};
+            const tell = check.then[1] as {
+                if: string;
+                then: {action: string; data: Record<string, string>}[];
+                else: {action: string; data: Record<string, string>}[];
+            };
             expect(tell.if).toBe("{{ hears }}");
             expect(tell.then[0]).toEqual({action: "persistent_notification.dismiss", data: {notification_id: "{{ note_id }}"}});
             expect(tell.else[0]).toMatchObject({action: "persistent_notification.create", data: {notification_id: "{{ note_id }}"}});
             // An FS1-Z, fan or outlet skips the LED branch, so it runs the same check on its own.
-            const bar = ((bp().action as Record<string, unknown>[])[0].choose as {conditions: string; sequence: Record<string, unknown>[]}[]).at(-1) as {conditions: string; sequence: Record<string, unknown>[]};
+            const bar = ((bp().action as Record<string, unknown>[])[0].choose as {conditions: string; sequence: Record<string, unknown>[]}[]).at(-1) as {
+                conditions: string;
+                sequence: Record<string, unknown>[];
+            };
             expect(bar.conditions).toBe("{{ tid in ['boot', 'reload'] and ieee != '' and not paints_leds }}");
             expect(Object.keys(bar.sequence[0])).toEqual(["delay"]);
             expect(bar.sequence.slice(1)).toEqual(check.then);
@@ -208,7 +254,9 @@ describe("blueprints", () => {
         it("reads only the payload fields in the contract fixture", () => {
             const contract = new Set(CONTRACT_FIELDS);
             expect(text()).not.toContain("trigger.event.data");
-            const read = [...text().matchAll(/\bevt(?:\.get\('(\w+)'|\.(\w+))|wait\.trigger\.payload_json\.(\w+)|value_json\.(\w+)/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? m[4]);
+            const read = [...text().matchAll(/\bevt(?:\.get\('(\w+)'|\.(\w+))|wait\.trigger\.payload_json\.(\w+)|value_json\.(\w+)/g)].map(
+                (m) => m[1] ?? m[2] ?? m[3] ?? m[4],
+            );
             expect(read).toContain("command");
             expect(read).toContain("button");
             for (const f of read) expect(contract.has(f), f).toBe(true);
@@ -230,13 +278,23 @@ describe("blueprints", () => {
             expect([dir(0, 200), dir(0, 20), dir(1, 200), dir(1, 20)]).toEqual([1, 1, -1, -1]);
             // A keypad button instead goes the way that moves the lights furthest.
             const kp = renderTemplate(isPaddle, {model: "C4-KC120277"}).toLowerCase() === "true";
-            expect([Number(renderTemplate(dirTemplate, {bi: 0, base: 200, is_paddle: kp})), Number(renderTemplate(dirTemplate, {bi: 0, base: 20, is_paddle: kp}))]).toEqual([-1, 1]);
+            expect([
+                Number(renderTemplate(dirTemplate, {bi: 0, base: 200, is_paddle: kp})),
+                Number(renderTemplate(dirTemplate, {bi: 0, base: 20, is_paddle: kp})),
+            ]).toEqual([-1, 1]);
         });
 
         it("describes each paddle half's button behaviour for the installer", () => {
             const desc = flat((load("c4_device.yaml").blueprint as {description: string}).description);
             const paddles = desc.slice(desc.indexOf("PADDLES."), desc.indexOf("SCENE."));
-            for (const s of ["top_button_behaviour, bottom_button_behaviour", "event_only drives nothing", "factory: top load_on, bottom load_off", "the SW120277 is a relay, so nothing ramps", "A half that drives its load gets no hold-to-dim here"]) expect(paddles).toContain(s);
+            for (const s of [
+                "top_button_behaviour, bottom_button_behaviour",
+                "event_only drives nothing",
+                "factory: top load_on, bottom load_off",
+                "the SW120277 is a relay, so nothing ramps",
+                "A half that drives its load gets no hold-to-dim here",
+            ])
+                expect(paddles).toContain(s);
             expect(desc).not.toContain("never paints it");
         });
 
@@ -284,11 +342,14 @@ describe("blueprints", () => {
                 expect(buttonSteps()[0].if).toBe("{{ early }}");
                 const branches = (buttonSteps()[1].choose as {conditions: string}[]).map((b) => b.conditions);
                 expect(branches.filter((c) => c.includes("btn.action | count > 0"))).toHaveLength(6);
-                for (const c of branches.filter((x) => /btn\.action \| count > 0|tgt \| count > 0/.test(x))) expect(c).toMatch(/^\{\{ \(is_tap or early\) and /);
+                for (const c of branches.filter((x) => /btn\.action \| count > 0|tgt \| count > 0/.test(x)))
+                    expect(c).toMatch(/^\{\{ \(is_tap or early\) and /);
             });
 
             it("takes the Direction from the mode and the targets' state now; a Scene and a custom tap action are toward OFF", () => {
-                const modes = (bp() as unknown as {blueprint: {input: Record<string, {input: Record<string, {selector: {select: {options: {value: string}[]}}}>}>}}).blueprint.input.b1_section.input.b1_mode.selector.select.options.map((o) => o.value);
+                const modes = (
+                    bp() as unknown as {blueprint: {input: Record<string, {input: Record<string, {selector: {select: {options: {value: string}[]}}}>}>}}
+                ).blueprint.input.b1_section.input.b1_mode.selector.select.options.map((o) => o.value);
                 const lists = [...towardOn().matchAll(/btn\.mode in \[([^\]]*)\]/g)].map((m) => [...m[1].matchAll(/'(\w+)'/g)].map((x) => x[1]));
                 expect(towardOn()).toMatch(/^\{\{ btn\.action \| count == 0 and \(/);
                 // Always toward ON, then toward ON only while no target is on.
@@ -296,7 +357,9 @@ describe("blueprints", () => {
                     ["on", "brighten"],
                     ["toggle", "room_master"],
                 ]);
-                expect(towardOn()).toContain("btn.mode in ['toggle', 'room_master'] and expand(tgt) | rejectattr('state', 'in', ['off', 'unavailable', 'unknown']) | list | count == 0");
+                expect(towardOn()).toContain(
+                    "btn.mode in ['toggle', 'room_master'] and expand(tgt) | rejectattr('state', 'in', ['off', 'unavailable', 'unknown']) | list | count == 0",
+                );
                 // Every other mode is toward OFF.
                 expect(modes.filter((m) => !lists.flat().includes(m)).sort()).toEqual(["dim", "off", "room_off", "scene"]);
             });
@@ -305,7 +368,12 @@ describe("blueprints", () => {
                 const [first, , second, decide] = towardOff();
                 for (const w of [first, second]) {
                     for (const t of w.wait_for_trigger as Trigger[]) {
-                        expect(t).toEqual({platform: "mqtt", topic: "control4/{{ ieee }}/event", value_template: "{{ value_json.button }}|{{ value_json.command }}", payload: `{{ evt.button }}|${awaited(t)}`});
+                        expect(t).toEqual({
+                            platform: "mqtt",
+                            topic: "control4/{{ ieee }}/event",
+                            value_template: "{{ value_json.button }}|{{ value_json.command }}",
+                            payload: `{{ evt.button }}|${awaited(t)}`,
+                        });
                     }
                 }
                 // A hold ends the sequence, like a count that isn't single.
@@ -325,8 +393,16 @@ describe("blueprints", () => {
             it("is described with known taps and the per-device tap window as the extension has them", () => {
                 const desc = flat((load("c4_device.yaml").blueprint as {description: string}).description);
                 const response = desc.slice(desc.indexOf("RESPONSE."), desc.indexOf("LEDS."));
-                expect(response).toContain(`option ${TAP_WINDOW_OPTION} (${MIN_TAP_WINDOW_MS / 1000}-${MAX_TAP_WINDOW_MS / 1000} s, default ${DEFAULT_TAP_WINDOW_MS / 1000} s)`);
-                for (const s of ['(a "known" tap)', "commits early", "toward ON: On and Brighten, and Toggle and Room master while every target is off", "toward OFF (Off, Dim and Room off, Toggle and Room master while any target is on, Scene, and every custom tap action)", "Fast: the single tap on the fast count, never early"]) {
+                expect(response).toContain(
+                    `option ${TAP_WINDOW_OPTION} (${MIN_TAP_WINDOW_MS / 1000}-${MAX_TAP_WINDOW_MS / 1000} s, default ${DEFAULT_TAP_WINDOW_MS / 1000} s)`,
+                );
+                for (const s of [
+                    '(a "known" tap)',
+                    "commits early",
+                    "toward ON: On and Brighten, and Toggle and Room master while every target is off",
+                    "toward OFF (Off, Dim and Room off, Toggle and Room master while any target is on, Scene, and every custom tap action)",
+                    "Fast: the single tap on the fast count, never early",
+                ]) {
                     expect(response).toContain(s);
                 }
             });
@@ -345,7 +421,6 @@ describe("blueprints", () => {
                 // Every button's targets and watches, on and off and in brightness, and the room's lists.
                 expect(states).toHaveLength(6 * 2 * 2 + 2);
             });
-
         });
 
         // #22: a button's LED found from its name, unless colour selects are picked.
@@ -365,13 +440,25 @@ describe("blueprints", () => {
         describe("scene", () => {
             type Step = Record<string, unknown>;
             const flat = (s: unknown) => String(s).replace(/\s+/g, " ").trim();
-            const doc = () => load("c4_device.yaml") as {blueprint: {input: Record<string, {input: Record<string, {selector: {select: {options: {value: string}[]}}}>}>}; variables: Record<string, string>; condition: string[]; action: Step[]};
-            const branches = () => (((doc().action[0].choose as {sequence: Step[]}[])[0].sequence[1] as {choose: {conditions: string; sequence: unknown}[]}).choose);
+            const doc = () =>
+                load("c4_device.yaml") as {
+                    blueprint: {input: Record<string, {input: Record<string, {selector: {select: {options: {value: string}[]}}}>}>};
+                    variables: Record<string, string>;
+                    condition: string[];
+                    action: Step[];
+                };
+            const branches = () =>
+                ((doc().action[0].choose as {sequence: Step[]}[])[0].sequence[1] as {choose: {conditions: string; sequence: unknown}[]}).choose;
             /** The hold branch's steps once its paddle-down is known to be a hold. */
-            const holdSteps = () => ((branches().find((b) => b.conditions === "{{ hold_candidate }}")?.sequence as Step[])[1] as {then: Step[]}).then;
+            const holdSteps = () => {
+                const sequence = branches().find((b) => b.conditions === "{{ hold_candidate }}")?.sequence as Step[] | undefined;
+                if (!sequence) throw new Error("c4_device has no hold_candidate branch");
+                return (sequence[1] as {then: Step[]}).then;
+            };
 
             it("is a Tap-does value on every button", () => {
-                for (let n = 1; n <= 6; n++) expect(doc().blueprint.input[`b${n}_section`].input[`b${n}_mode`].selector.select.options.map((o) => o.value)).toContain("scene");
+                for (let n = 1; n <= 6; n++)
+                    expect(doc().blueprint.input[`b${n}_section`].input[`b${n}_mode`].selector.select.options.map((o) => o.value)).toContain("scene");
             });
 
             it("taps through its Tap action only: the mode logic, Night Dim included, never runs for a Scene", () => {
@@ -384,18 +471,28 @@ describe("blueprints", () => {
 
             it("has a brightness trigger on every button's targets, for its LED to follow its lights' levels", () => {
                 const bri = (load("c4_device.yaml") as {trigger: Record<string, unknown>[]}).trigger.filter((t) => t.id === "led_bri");
-                for (let n = 1; n <= 6; n++) expect(bri).toContainEqual({platform: "state", entity_id: {__input: `b${n}_targets`}, attribute: "brightness", id: "led_bri"});
+                for (let n = 1; n <= 6; n++)
+                    expect(bri).toContainEqual({platform: "state", entity_id: {__input: `b${n}_targets`}, attribute: "brightness", id: "led_bri"});
             });
 
             it("ramps a Scene's lit lights each from its own level on a hold, any other group from its brightest", () => {
                 const start = flat((holdSteps().find((s) => s.variables) as {variables: {ramp_from: string}}).variables.ramp_from);
-                expect(start).toContain("{% if btn.mode != 'scene' %} {% set ns.d = dict(ns.d, **{e: base | int(0)}) %} {% elif is_state(e, 'on') %} {% set ns.d = dict(ns.d, **{e: state_attr(e, 'brightness') | int(0)}) %} {% endif %}");
+                expect(start).toContain(
+                    "{% if btn.mode != 'scene' %} {% set ns.d = dict(ns.d, **{e: base | int(0)}) %} {% elif is_state(e, 'on') %} {% set ns.d = dict(ns.d, **{e: state_attr(e, 'brightness') | int(0)}) %} {% endif %}",
+                );
                 expect(holdSteps().find((s) => s.condition)).toEqual({condition: "{{ ramp_from | count > 0 and (dir | int > 0 or base | int(0) > 0) }}"});
             });
 
             it("is described for the installer", () => {
                 const desc = flat((load("c4_device.yaml").blueprint as {description: string}).description);
-                for (const s of ["SCENE. A Scene button's Tap action is one scene.apply", "within 2 points of its brightness", "whatever \"When an LED watches several entities\" says", "names other lights than Targets", "Night Dim never changes it"]) expect(desc).toContain(s);
+                for (const s of [
+                    "SCENE. A Scene button's Tap action is one scene.apply",
+                    "within 2 points of its brightness",
+                    'whatever "When an LED watches several entities" says',
+                    "names other lights than Targets",
+                    "Night Dim never changes it",
+                ])
+                    expect(desc).toContain(s);
             });
         });
     });
@@ -412,6 +509,7 @@ describe("blueprints", () => {
             "c4_sr250_media_player.yaml": "remote",
             "c4_sr260_media_player.yaml": "remote",
             "c4_sr260_menu_dispatcher.yaml": "sr260_device",
+            "c4_sr260_screen.yaml": "remote",
         };
         const hearing = Object.entries(HEARS);
         const text = (file: string) => fs.readFileSync(path.join(DIR, file), "utf8");
@@ -477,7 +575,8 @@ describe("blueprints", () => {
         it("are ported with the extension's names for a remote's event types", () => {
             for (const model of ["C4-SR250B", "C4-SR260"]) {
                 const family = modelInfo(model)?.family;
-                for (const a of actionsOf(model)) expect(remoteEventType(commandOf(a, family)), `${model} ${a}`).toBe(eventTypeOf(commandOf(a, family), family));
+                for (const a of actionsOf(model))
+                    expect(remoteEventType(commandOf(a, family)), `${model} ${a}`).toBe(eventTypeOf(commandOf(a, family), family));
             }
         });
 
@@ -519,7 +618,12 @@ describe("blueprints", () => {
             const {text: out, events} = port(zha, "test.yaml");
             expect(events).toBe(2);
             const doc = parseDocument(out, {customTags: [inputTag as never]}).toJS() as Any;
-            const hears = (type: string, id: string) => ({trigger: "event.received", target: {device_id: {__input: "remote"}}, options: {event_type: [type]}, id});
+            const hears = (type: string, id: string) => ({
+                trigger: "event.received",
+                target: {device_id: {__input: "remote"}},
+                options: {event_type: [type]},
+                id,
+            });
             expect(doc.trigger).toEqual([hears("remote_button_short_press", "press")]);
             expect(doc.action[0].wait_for_trigger).toEqual([hears("remote_menu_select", "select")]);
             expect(doc.variables).toEqual({button: "{{ (trigger.to_state.attributes if trigger.to_state is defined else {}).button }}"});
@@ -577,10 +681,16 @@ describe("blueprints", () => {
                 const e = rig.events.at(-1) as Record<string, unknown>;
                 expect(e.ieee).toBe(ieee);
                 const eventType = eventTypeOf(String(e.command), modelInfo(String(e.model))?.family);
-                const t = triggers.find((x) => kindOf(x) === "event.received" && (x.target as {device_id: string}).device_id === DEVICE[ieee] && typesOf(x).includes(eventType));
+                const t = triggers.find(
+                    (x) => kindOf(x) === "event.received" && (x.target as {device_id: string}).device_id === DEVICE[ieee] && typesOf(x).includes(eventType),
+                );
                 if (!t) return null;
                 const entity = "event.remote_control4_events";
-                return {id: t.id, entity_id: entity, to_state: {entity_id: entity, state: "2026-11-07T12:00:00.000+00:00", attributes: {...e, base: "zigbee2mqtt", event_type: eventType}}};
+                return {
+                    id: t.id,
+                    entity_id: entity,
+                    to_state: {entity_id: entity, state: "2026-11-07T12:00:00.000+00:00", attributes: {...e, base: "zigbee2mqtt", event_type: eventType}},
+                };
             }
 
             /** The wait_for_trigger triggers in an automation's actions, and the choose branch whose conditions are `conditions`. */
@@ -654,6 +764,30 @@ describe("blueprints", () => {
                 expect(heard(waitOf(a), ieee)?.id).toBe("cancel");
             });
 
+            it("SR260 media player: Mute mutes only a volume target that can mute", () => {
+                const a = automation("c4_sr260_media_player.yaml", {remote: DEVICE[R260], volume_target: "media_player.tv"});
+                const mute = find(a.action, (o) => Array.isArray(o.conditions) && o.conditions[0] === "{{ button == 'volume_mute' }}") as Record<string, Any>;
+                expect(mute.sequence[0].action).toBe("media_player.volume_mute");
+                const runs = (features: number | undefined) => {
+                    const e = haEnvironment({
+                        ...world,
+                        states: {"media_player.tv": {state: "playing", attributes: features === undefined ? {} : {supported_features: features}}},
+                    });
+                    const vars = {button: "volume_mute", volume_target: "media_player.tv"};
+                    return mute.conditions.every((c: string) => conditionPasses(e, c, vars));
+                };
+                // An Apple TV: volume step and set, no mute (448439 has no 8).
+                expect(runs(448439)).toBe(false);
+                expect(runs(undefined)).toBe(false);
+                expect(runs(4 | 8 | 1024)).toBe(true);
+            });
+
+            it("SR260 menu dispatcher: a show-trigger press while the menu is up restarts the run, never queues a second menu", () => {
+                const a = automation("c4_sr260_menu_dispatcher.yaml", {sr260_device: DEVICE[R260]});
+                expect(a.mode).toBe("restart");
+                expect(a.max).toBeUndefined();
+            });
+
             it("SR260 menu dispatcher: the picked item's label is what it dispatches on", async () => {
                 const a = automation("c4_sr260_menu_dispatcher.yaml", {sr260_device: DEVICE[R260], item_1: "Movie", item_2: "Dinner"});
                 const shown = rig.runtime.set(R260, "show_list", {title: "Scenes", items: ["Movie", "Dinner"]}, {message: {}});
@@ -666,10 +800,137 @@ describe("blueprints", () => {
                 expect(renderValue(env, step.variables.selected_item, {wait}, "variable", "selected_item")).toBe("Dinner");
             });
 
-            it.each(["c4_sr250_menu.yaml", "c4_sr250_media_player.yaml", "c4_sr260_media_player.yaml"])("%s run by hand reads no event and names no key", (file) => {
-                const a = automation(file, {remote: DEVICE[file.includes("sr260") ? R260 : R250]});
-                expect(renderVariables(env, a.variables, {trigger: {platform: null}}).button).toBe("");
-            });
+            it.each(["c4_sr250_menu.yaml", "c4_sr250_media_player.yaml", "c4_sr260_media_player.yaml"])(
+                "%s run by hand reads no event and names no key",
+                (file) => {
+                    const a = automation(file, {remote: DEVICE[file.includes("sr260") ? R260 : R250]});
+                    expect(renderVariables(env, a.variables, {trigger: {platform: null}}).button).toBe("");
+                },
+            );
+        });
+    });
+
+    describe("c4_sr260_screen", () => {
+        const R260 = "0x000fff00000000e2";
+        const COLOR = "text.bedroom_remote_color";
+        const SOURCE = "text.bedroom_remote_active_source";
+        // biome-ignore lint/suspicious/noExplicitAny: automation shapes
+        type Any = Record<string, any>;
+        /** The blueprint set up with `values` over the defaults, run by `trigger` in a world holding `states`. */
+        function run(values: Record<string, unknown>, states: Record<string, string | HaState>, trigger: Record<string, unknown> = {platform: null}) {
+            const {blueprint, ...body} = load("c4_sr260_screen.yaml") as {blueprint: {input: unknown}} & Record<string, unknown>;
+            const a = substitute(body, {...inputDefaults(blueprint.input), remote: "d_sr260", ...values}) as Any;
+            const world: HaWorld = {
+                devices: {
+                    d_sr260: {
+                        identifiers: [["mqtt", `zigbee2mqtt_${R260}`]],
+                        model_id: "C4-SR260",
+                        name: "Bedroom remote",
+                        entities: ["sensor.bedroom_remote_battery", "text.bedroom_remote_room_name", SOURCE, COLOR],
+                    },
+                },
+                states: Object.fromEntries(Object.entries(states).map(([e, st]) => [e, typeof st === "string" ? {state: st, attributes: {}} : st])),
+                time: "12:00:00",
+            };
+            const env = haEnvironment(world);
+            const vars: Record<string, unknown> = {...renderVariables(env, a.variables, {trigger}), trigger};
+            const runs = (a.condition as Any[]).every((c) => conditionPasses(env, c.value_template, vars));
+            const [, pick, color, line2] = a.action as Any[];
+            const sent: Record<string, unknown> = {};
+            for (const step of [color, line2]) {
+                if (!conditionPasses(env, step.if[0].value_template, vars)) continue;
+                const topic = String(renderValue(env, step.then[0].data.topic, vars, "variable", "topic"));
+                expect(topic.startsWith(`control4/${R260}/set/`)).toBe(true);
+                sent[topic.replace(`control4/${R260}/set/`, "")] = renderValue(env, step.then[0].data.payload, vars, "variable", "payload");
+            }
+            const delay = conditionPasses(env, pick.if[0].value_template, vars) ? renderValue(env, pick.then[0].delay.seconds, vars, "variable", "delay") : 0;
+            return {vars, runs, sent, delay, a};
+        }
+        const tv = {player: "media_player.tv"};
+        const night = {...tv, dark_entity: "binary_sensor.dark"};
+        const playing = (app = "YouTube"): HaState => ({state: "playing", attributes: {app_name: app}});
+
+        it("follows the player by day: green playing, amber paused, white idle, off or with no player", () => {
+            const color = (values: Record<string, unknown>, states: Record<string, string | HaState>) => {
+                const {vars} = run(values, states);
+                return [vars.color_hex, vars.color_byte];
+            };
+            expect(color(tv, {"media_player.tv": "playing"})).toEqual(["#00ff00", 0x1c]);
+            expect(color(tv, {"media_player.tv": "paused"})).toEqual(["#ffc000", 0xf8]);
+            expect(color(tv, {"media_player.tv": "idle"})).toEqual(["#ffffff", 0xff]);
+            expect(color(tv, {"media_player.tv": "off"})).toEqual(["#ffffff", 0xff]);
+            expect(color({}, {})).toEqual(["#ffffff", 0xff]);
+        });
+
+        it("dims to the night level while dark, from its number or its helper, and never to black", () => {
+            const color = (values: Record<string, unknown>, states: Record<string, string | HaState>) => run(values, states).vars.color_hex;
+            const dark = {"binary_sensor.dark": "on"};
+            expect(color(night, {...dark, "media_player.tv": "playing"})).toBe("#006600");
+            expect(color(night, {...dark, "media_player.tv": "paused"})).toBe("#664d00");
+            expect(color(night, {...dark, "media_player.tv": "idle"})).toBe("#666666");
+            expect(color(night, {"binary_sensor.dark": "off", "media_player.tv": "playing"})).toBe("#00ff00");
+            const helper = {...night, night_level_entity: "input_number.night"};
+            expect(color(helper, {...dark, "media_player.tv": "playing", "input_number.night": "80"})).toBe("#00cc00");
+            // At 10 % each lit channel stays at the remote's lowest step: dim, not black.
+            expect(run(helper, {...dark, "media_player.tv": "idle", "input_number.night": "10"}).vars).toMatchObject({color_hex: "#202040", color_byte: 0x25});
+            // A helper with no number yet falls back to the fixed level.
+            expect(color(helper, {...dark, "media_player.tv": "playing", "input_number.night": "unknown"})).toBe("#006600");
+        });
+
+        it("shows the alert colour at full brightness while an alert entity is on, open or unlocked, dark or not", () => {
+            const values = {...night, alert_entities: ["lock.front", "binary_sensor.window"]};
+            const base = {"binary_sensor.dark": "on", "media_player.tv": "playing", "binary_sensor.window": "off"};
+            expect(run(values, {...base, "lock.front": "locked"}).vars.color_hex).toBe("#006600");
+            expect(run(values, {...base, "lock.front": "unlocked"}).vars).toMatchObject({color_hex: "#ff0000", color_byte: 0xe0});
+            expect(run(values, {...base, "lock.front": "locked", "binary_sensor.window": "on"}).vars.color_hex).toBe("#ff0000");
+        });
+
+        it("sends the colour only when the colour the remote would show changes, however its entity writes it", () => {
+            const sentColor = (values: Record<string, unknown>, states: Record<string, string | HaState>) =>
+                run(values, {...states, [SOURCE]: "YouTube"}).sent.text_color;
+            const tvOn = {"media_player.tv": playing()};
+            expect(sentColor(tv, tvOn)).toBe("#00ff00");
+            expect(sentColor(tv, {...tvOn, [COLOR]: "#ffffff"})).toBe("#00ff00");
+            expect(sentColor(tv, {...tvOn, [COLOR]: "#00ff00"})).toBeUndefined();
+            expect(sentColor(tv, {...tvOn, [COLOR]: "28"})).toBeUndefined();
+            // Night green goes as #006600; the remote stores the byte, which may read back as #006d00.
+            const dark = {"binary_sensor.dark": "on", "media_player.tv": playing()};
+            expect(sentColor(night, {...dark, [COLOR]: "#006d00"})).toBeUndefined();
+            expect(sentColor(night, {...dark, [COLOR]: "#006600"})).toBeUndefined();
+        });
+
+        it("shows the player's app on line 2 while it is on, cut to its length, and clears it when off", () => {
+            const line2 = (values: Record<string, unknown>, states: Record<string, string | HaState>) =>
+                run(values, {[COLOR]: "#ffffff", ...states}).sent.active_source;
+            expect(line2(tv, {"media_player.tv": playing(), [SOURCE]: ""})).toBe("YouTube");
+            expect(line2(tv, {"media_player.tv": playing(), [SOURCE]: "YouTube"})).toBeUndefined();
+            expect(line2({...tv, max_length: 7}, {"media_player.tv": playing("Paramount+ with Showtime"), [SOURCE]: ""})).toBe("Paramou");
+            expect(line2(tv, {"media_player.tv": {state: "on", attributes: {source: "HDMI 2"}}, [SOURCE]: ""})).toBe("HDMI 2");
+            expect(line2(tv, {"media_player.tv": "off", [SOURCE]: "YouTube"})).toBe("");
+            expect(line2({...tv, show_app: false}, {"media_player.tv": playing(), [SOURCE]: "Apple"})).toBeUndefined();
+        });
+
+        it("lets a menu pick show on line 2 for its seconds, then puts the app back; 0 keeps the pick", () => {
+            const pick = {id: "pick", platform: "event.received"};
+            const after = run(tv, {"media_player.tv": playing(), [COLOR]: "#00ff00", [SOURCE]: "Green Lamp"}, pick);
+            expect(after).toMatchObject({runs: true, delay: 5, sent: {active_source: "YouTube"}});
+            expect(run({...tv, pick_return: 0}, {"media_player.tv": playing(), [SOURCE]: "Green Lamp"}, pick).runs).toBe(false);
+            expect(run(tv, {"media_player.tv": playing()}, {id: "1", platform: "state"}).delay).toBe(0);
+        });
+
+        it("runs on every change of what picks the colour or line 2, on a menu pick, and at Home Assistant start", () => {
+            const {a} = run({...night, alert_entities: ["lock.front"], night_level_entity: "input_number.night"}, {});
+            const watched = (a.trigger as Any[]).filter((t) => kindOf(t) === "state").map((t) => [t.entity_id, t.attribute ?? null]);
+            expect(watched).toEqual([
+                ["media_player.tv", null],
+                ["media_player.tv", "app_name"],
+                ["media_player.tv", "source"],
+                [["lock.front"], null],
+                ["binary_sensor.dark", null],
+                ["input_number.night", null],
+            ]);
+            expect((a.trigger as Any[]).some((t) => kindOf(t) === "homeassistant" && t.event === "start")).toBe(true);
+            expect((a.trigger as Any[]).find((t) => t.id === "pick")?.options).toEqual({event_type: ["remote_menu_select"]});
         });
     });
 
@@ -680,7 +941,7 @@ describe("blueprints", () => {
     });
 
     it("send to the extension's keys only", () => {
-        const known = ["room_name", "active_source", "display_message", "show_list", "close_list", "led_status", "led_effect", "led_stop"];
+        const known = ["room_name", "active_source", "display_message", "text_color", "show_list", "close_list", "led_status", "led_effect", "led_stop"];
         for (const file of files) {
             const text = fs.readFileSync(path.join(DIR, file), "utf8");
             for (const m of text.matchAll(/\/set\/(\w+)"/g)) expect(known, `${file}: /set/${m[1]}`).toContain(m[1]);

@@ -533,7 +533,12 @@ ${colourInput("fault_colour", "Fault colour", "Red", "Shown when a watched entit
 `;
 
 // A tap sequence's counts as ZHA command names: the extension's fast count and the device's own.
-const FAST_COUNTS = ["remote_button_fast_short_press", "remote_button_fast_double_press", "remote_button_fast_triple_press", "remote_button_fast_quadruple_press"];
+const FAST_COUNTS = [
+    "remote_button_fast_short_press",
+    "remote_button_fast_double_press",
+    "remote_button_fast_triple_press",
+    "remote_button_fast_quadruple_press",
+];
 const DEVICE_COUNTS = ["remote_button_short_press", "remote_button_double_press", "remote_button_triple_press", "remote_button_quadruple_press"];
 // Every command a run can start on (tid below); a tap release is only waited for.
 const STARTS = ["initial_switch_press", ...DEVICE_COUNTS, ...FAST_COUNTS, "remote_button_tap_known", "remote_button_long_press", "led_notification_end"];

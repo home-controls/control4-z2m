@@ -18,13 +18,13 @@ import path from "node:path";
 
 import {afterEach, describe, expect, it} from "vitest";
 import * as emberModule from "zigbee-herdsman/dist/adapter/ember/adapter/emberAdapter.js";
-import * as ezspAdapterModule from "zigbee-herdsman/dist/adapter/ezsp/adapter/ezspAdapter.js";
-import type {Driver as LegacyDriver} from "zigbee-herdsman/dist/adapter/ezsp/driver/driver.js";
-import * as legacyEzspModule from "zigbee-herdsman/dist/adapter/ezsp/driver/ezsp.js";
-import type {Ezsp as LegacyEzsp} from "zigbee-herdsman/dist/adapter/ezsp/driver/ezsp.js";
-import type {EmberApsFrame as LegacyApsFrame} from "zigbee-herdsman/dist/adapter/ezsp/driver/types/struct.js";
 import type {Ezsp} from "zigbee-herdsman/dist/adapter/ember/ezsp/ezsp.js";
 import type {EmberApsFrame} from "zigbee-herdsman/dist/adapter/ember/types.js";
+import * as ezspAdapterModule from "zigbee-herdsman/dist/adapter/ezsp/adapter/ezspAdapter.js";
+import type {Driver as LegacyDriver} from "zigbee-herdsman/dist/adapter/ezsp/driver/driver.js";
+import type {Ezsp as LegacyEzsp} from "zigbee-herdsman/dist/adapter/ezsp/driver/ezsp.js";
+import * as legacyEzspModule from "zigbee-herdsman/dist/adapter/ezsp/driver/ezsp.js";
+import type {EmberApsFrame as LegacyApsFrame} from "zigbee-herdsman/dist/adapter/ezsp/driver/types/struct.js";
 
 import {PROFILE_BUTTON, PROFILE_NETWORK} from "../src/core/constants";
 import {DeliveryError, EmberTransport, EzspTransport, type InFrame, type OutFrame} from "../src/core/transport";
@@ -93,7 +93,15 @@ class Reader {
         return v;
     }
     aps(): EmberApsFrame {
-        return {profileId: this.u16(), clusterId: this.u16(), sourceEndpoint: this.u8(), destinationEndpoint: this.u8(), options: this.u16(), groupId: this.u16(), sequence: this.u8()};
+        return {
+            profileId: this.u16(),
+            clusterId: this.u16(),
+            sourceEndpoint: this.u8(),
+            destinationEndpoint: this.u8(),
+            options: this.u16(),
+            groupId: this.u16(),
+            sequence: this.u8(),
+        };
     }
     payload(): Buffer {
         const n = this.u8();
@@ -195,7 +203,15 @@ function makeAdapter() {
     );
 }
 
-const aps = (profileId: number, src = 197): EmberApsFrame => ({profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 1});
+const aps = (profileId: number, src = 197): EmberApsFrame => ({
+    profileId,
+    clusterId: 1,
+    sourceEndpoint: src,
+    destinationEndpoint: 1,
+    options: 0,
+    groupId: 0,
+    sequence: 1,
+});
 const out: OutFrame = {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 197, data: Buffer.from("0s0042 c4.dmx.led 00 ff0000\r\n")};
 
 let transport: EmberTransport | undefined;
@@ -247,7 +263,14 @@ describe.each([13, 14] as const)("EmberTransport under herdsman's EZSP v%i dispa
         );
         expect(ncp.unexpected).toEqual([]);
         expect(outcome).toBe("delivered");
-        expect(ncp.unicasts).toEqual([{nwk: 0x1234, aps: expect.objectContaining({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 197}), tag: expect.any(Number), data: out.data}]);
+        expect(ncp.unicasts).toEqual([
+            {
+                nwk: 0x1234,
+                aps: expect.objectContaining({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 197}),
+                tag: expect.any(Number),
+                data: out.data,
+            },
+        ]);
         expect(ncp.unicasts[0].aps.options & 0x0040).toBe(0x0040); // APS retry: an ACK is requested
     });
 
@@ -331,7 +354,14 @@ class LegacyNcp {
         const data = r.payload();
         this.unicasts.push({nwk, aps, tag, data});
         const reply = this.header(seq, SEND_UNICAST).u8(0).u8(42).done(); // queued, APS sequence 42
-        const sent = this.header(0, MESSAGE_SENT_HANDLER).u8(type).u16(nwk).aps({...aps, sequence: 42}).u8(tag).u8(this.delivery).payload(Buffer.alloc(0)).done();
+        const sent = this.header(0, MESSAGE_SENT_HANDLER)
+            .u8(type)
+            .u16(nwk)
+            .aps({...aps, sequence: 42})
+            .u8(tag)
+            .u8(this.delivery)
+            .payload(Buffer.alloc(0))
+            .done();
         setImmediate(() => {
             this.deliver(reply);
             if (this.sameChunk) this.deliver(sent);
@@ -463,5 +493,12 @@ export async function legacyMtorrShape(ezsp: LegacyEzsp): Promise<number> {
 }
 export type LegacyReceiveShape = Is<
     import("zigbee-herdsman/dist/adapter/ezsp/driver/driver.js").EmberIncomingMessage,
-    {messageType: number; apsFrame: {profileId: number; clusterId: number; sourceEndpoint: number; destinationEndpoint: number}; lqi: number; rssi: number; sender: number; message: Buffer}
+    {
+        messageType: number;
+        apsFrame: {profileId: number; clusterId: number; sourceEndpoint: number; destinationEndpoint: number};
+        lqi: number;
+        rssi: number;
+        sender: number;
+        message: Buffer;
+    }
 >;

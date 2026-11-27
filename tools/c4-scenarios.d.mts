@@ -57,7 +57,12 @@ type Verdict = {ok: boolean; lines: string[]};
 /** The known scenario's verdict on what a known double tap did to the button's targets. */
 export function checkKnownTaps(cfg: Pick<ButtonConfig, "mode" | "targets"> & Partial<ButtonConfig>, obs: Observation): Verdict;
 /** The double / triple scenarios' verdict on a known tap sequence of `taps` taps, given the button's action for that count. */
-export function checkMultiTap(cfg: Pick<ButtonConfig, "mode" | "targets" | "custom" | "multi" | "response">, obs: Observation, taps: 2 | 3, action: unknown[]): Verdict;
+export function checkMultiTap(
+    cfg: Pick<ButtonConfig, "mode" | "targets" | "custom" | "multi" | "response">,
+    obs: Observation,
+    taps: 2 | 3,
+    action: unknown[],
+): Verdict;
 export function buttonConfig(input: Record<string, unknown>, button: number): ButtonConfig;
 /** The service call that readies a button's targets for its mode, or undefined. */
 export function prepareCall(cfg: Pick<ButtonConfig, "mode" | "targets">): ServiceCall | undefined;
@@ -78,7 +83,12 @@ export function sceneState(actions: unknown[], targets: string[], stateOf: (enti
 /** Whether the button drives its device's own load (which a hold then ramps itself): c4_device's drives_load. */
 export function drivesLoad(model: string, button: number, read?: {localSwitchOn?: boolean; behaviour?: {top?: string; bottom?: string}}): boolean;
 /** The colour and brightness (null when it follows the lights) the button's LED shows. */
-export function expectedLed(input: Record<string, unknown>, button: number, stateOf: (entity: string) => HaState | undefined, time: string): {color: string; brightness: number | null};
+export function expectedLed(
+    input: Record<string, unknown>,
+    button: number,
+    stateOf: (entity: string) => HaState | undefined,
+    time: string,
+): {color: string; brightness: number | null};
 export function sequences(
     dev: {ieee: string; name: string; model: string},
     button: number,

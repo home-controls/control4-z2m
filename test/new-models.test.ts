@@ -175,5 +175,3 @@ describe("LOZ-5D1-W", () => {
         expect(d.exposes.filter((x: {type: string}) => x.type === "light").map((x: {endpoint?: string}) => x.endpoint)).toEqual(["l1", "l2"]);
     });
 });
-
-
