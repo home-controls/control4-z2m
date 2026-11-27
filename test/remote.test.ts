@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
+import {PROFILE_BUTTON, PROFILE_NETWORK} from "../src/core/constants";
 import {rgb332, rgb332Hex} from "../src/devices/remote";
 import {Rig, tick} from "./rig";
 
@@ -363,5 +364,127 @@ describe("list ids", () => {
         (rig.runtime.get(R260) as any).listId = 0xffff;
         await set(R260, "show_list", {title: "Watch", items: "A|B"});
         expect(rig.texts().at(-1)).toMatch(/ c4\.ln\.sl 0002 /);
+    });
+});
+
+describe("screen after a wake or re-join", () => {
+    const identityRead = () => rig.inject(R260, PROFILE_NETWORK, Buffer.from([0x00, 0x5a, 0x00, 0x08, 0x00, 0x09, 0x00, 0x0a, 0x00]));
+    /** R260's sends after `from`, without the sequence and the battery poll. */
+    const sent260 = (from: number) =>
+        rig.transport.sent
+            .slice(from)
+            .filter((x) => x.nwk === rig.nwk(R260) && x.frame.profile === PROFILE_BUTTON)
+            .map((x) => x.text.replace(/^0[sgir][0-9a-f]{4} /, ""))
+            .filter((c) => !c.startsWith("c4.zr.bl"));
+    // Past the start-up commissioning.
+    beforeEach(() => tick(60_000));
+    const fails = () => Object.assign(new Error("delivery failed (status 0x66)"), {name: "DeliveryError"});
+
+    it("re-shows the open menu, with the same list id, after the clock and rows", async () => {
+        await set(R260, "room_name", "Den");
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        const sl = rig.cmds().at(-1);
+        expect(sl).toMatch(/^c4\.ln\.sl /);
+        await tick(10_000);
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(1_000);
+        const cmds = sent260(from);
+        expect(cmds.map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
+        expect(cmds.at(-1)).toBe(sl);
+    });
+
+    it("does not re-show a menu that was picked while the refresh was sending the rows", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        const list = rig.cmds().at(-1)?.split(" ")[1];
+        await tick(10_000);
+        rig.transport.latency = 150;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(700); // battery poll, tm, rows (done at 650 ms): inside the 200 ms gap before the menu
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, `0t0002 sa c4.ln.is ${list} 0000`);
+        await tick(20_000);
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toEqual([]);
+        expect(rig.events.at(-1)).toMatchObject({action: "menu_select", item: "YouTube"});
+    });
+
+    it("does not send a menu shown during the refresh a second time", async () => {
+        rig.transport.latency = 150;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(300); // the refresh is sending the clock and rows
+        const from = rig.transport.sent.length;
+        const shown = rig.runtime.set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"}, {message: {}});
+        await tick(20_000);
+        await shown;
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
+    });
+
+    it("sends one refresh when the wake and the identity read come together", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(10_000);
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        identityRead();
+        await tick(20_000);
+        expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
+    });
+
+    it("retries a wake refresh while the remote re-joins, and refreshes on a later identity read inside the debounce", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(10_000);
+        // The wake: the remote is mid re-join, so everything fails at once (tries at 0 and 1.5 s).
+        rig.transport.failWith = (f) => (f.profile === PROFILE_BUTTON ? fails() : undefined);
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(1_000);
+        identityRead(); // re-joined; the refresh under way covers it
+        await tick(1_000);
+        rig.transport.failWith = undefined;
+        let from = rig.transport.sent.length;
+        await tick(5_000); // the try at 5.5 s
+        expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
+        from = rig.transport.sent.length;
+        await tick(20_000);
+        expect(sent260(from)).toEqual([]);
+        // An identity read with nothing under way refreshes even inside the wake debounce; the
+        // menu that wake's refresh re-showed is on the screen already, so it is not sent again.
+        rig.ascii(R260, "0t0002 sa c4.zr.mot");
+        await tick(1_000);
+        from = rig.transport.sent.length;
+        identityRead();
+        await tick(1_000);
+        expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri"]);
+    });
+
+    it("does not re-show a menu shown between a failed try and its retry", async () => {
+        rig.transport.failWith = (f) => (f.profile === PROFILE_BUTTON ? fails() : undefined);
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(500); // the first try failed
+        rig.transport.failWith = undefined;
+        const from = rig.transport.sent.length;
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(20_000);
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
+    });
+
+    it("does not re-show a menu shown after the wake when the identity read comes", async () => {
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(500); // that wake's refresh is done
+        const from = rig.transport.sent.length;
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"}); // out by 600 ms
+        await tick(300);
+        identityRead(); // about a second after the wake
+        await tick(20_000);
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
+    });
+
+    it("retries only the menu when the rows went through and the menu did not", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(10_000);
+        let menuFails = 1;
+        rig.transport.failWith = (f) => (f.data.toString("latin1").includes("c4.ln.sl") && menuFails-- > 0 ? fails() : undefined);
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(20_000);
+        expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
     });
 });

@@ -1,4 +1,4 @@
-// control4-z2m 0.3.0 - Zigbee2MQTT external extension
+// control4-z2m 0.3.1 - Zigbee2MQTT external extension
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -2188,6 +2188,9 @@ var C4Device = class {
     this.log.debug(`Control4 ${this.name}: unhandled announcement ${namespace} ${data.join(" ")}`);
   }
   onReply(_frame) {
+  }
+  /** The device read the controller identity (0xC25D attributes 8/9/A), which it does after a re-join. */
+  onIdentityRead() {
   }
   onOther(frame2) {
     this.log.debug(`Control4 ${this.name}: frame ${frame2.text}`);
@@ -5410,6 +5413,7 @@ function remoteEventType(command) {
 var DEFAULT_ROOM = "Home";
 var LOCALE = "en_US";
 var WAKE_REFRESH_MIN = 5e3;
+var WAKE_TRIES = [0, 1500, 4e3, 8e3];
 var DIAG_POLL = 30 * 6e4;
 var PAGE_SIZE = 5;
 var GI_MAX_FRAME = 70;
@@ -5448,6 +5452,8 @@ var Remote = class extends C4Device {
   listId = 0;
   rowsPending = false;
   lastRefresh = Number.NEGATIVE_INFINITY;
+  refreshing = false;
+  lastWake = Number.NEGATIVE_INFINITY;
   lastDiag = Number.NEGATIVE_INFINITY;
   bootstrapped = false;
   start(hotLoad = false) {
@@ -5589,26 +5595,80 @@ var Remote = class extends C4Device {
     const key = (data[0] ?? "").toLowerCase();
     if (ns === "c4.zr.bb" && key in this.pageKeys) this.pageList(this.pageKeys[key]);
     if (ns === "c4.zr.mot" || ns === "c4.zr.bb") this.diagPoll();
-    if (ns === "c4.zr.mot") this.wakeRefresh(true);
-    else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh(false);
+    if (ns === "c4.zr.mot") {
+      this.lastWake = this.ctx.now();
+      this.wakeRefresh({ sendTime: true });
+    } else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh({ sendTime: false });
   }
-  wakeRefresh(sendTime) {
+  /**
+   * An SR260 reads the controller identity as it wakes, and after a re-join (which it does
+   * on a wake after a few minutes asleep, with no announce): then its screen says
+   * "rejoining network" until the clock and rows come again, and it has dropped any open
+   * menu. So the read refreshes the screen, inside the wake debounce, unless a refresh is
+   * already under way.
+   */
+  onIdentityRead() {
+    if (this.refreshing) return;
     const now = this.ctx.now();
-    if (now - this.lastRefresh < WAKE_REFRESH_MIN) return;
+    this.wakeRefresh({ sendTime: true, force: true, wokeAt: now - this.lastWake < WAKE_REFRESH_MIN ? this.lastWake : now });
+  }
+  /**
+   * One refresh at a time: the clock (with `sendTime`) and rows, then the open menu, each
+   * tried again (WAKE_TRIES) until delivered. `force` skips the wake debounce.
+   */
+  wakeRefresh(opts) {
+    const now = this.ctx.now();
+    if (this.refreshing || !opts.force && now - this.lastRefresh < WAKE_REFRESH_MIN) return;
     this.lastRefresh = now;
+    this.refreshing = true;
+    const wokeAt = opts.wokeAt ?? now;
     this.spawn(
       (async () => {
-        if (sendTime) {
-          try {
-            await this.sendTime();
-          } catch (error) {
-            this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+        let rows = false;
+        try {
+          for (const delay of WAKE_TRIES) {
+            if (delay) await this.sleep(delay);
+            if (!this.alive) return;
+            rows ||= await this.refreshRows(opts.sendTime);
+            if (rows && await this.reshowMenu(wokeAt)) return;
           }
-          await this.sleep(200);
+        } finally {
+          this.refreshing = false;
         }
-        await this.pushRoomInfo();
       })()
     );
+  }
+  /** Clock (when asked) and rows; false when the rows were not delivered. */
+  async refreshRows(sendTime) {
+    if (sendTime) {
+      try {
+        await this.sendTime();
+      } catch (error) {
+        this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+      }
+      await this.sleep(200);
+    }
+    return this.pushRoomInfo();
+  }
+  /**
+   * The open menu again, which the remote drops while asleep: only one it last took
+   * before `wokeAt`. One shown since (or still going out) is on its screen already, and
+   * one picked or closed meanwhile must stay shut. False when not delivered.
+   */
+  async reshowMenu(wokeAt) {
+    const stale = (m) => !!m?.header && m.sentAt !== void 0 && m.sentAt < wokeAt;
+    if (!stale(this.menu)) return true;
+    const menu = this.menu;
+    await this.sleep(200);
+    if (this.menu !== menu || !stale(menu)) return true;
+    try {
+      await this.sendText(`0i${hex4(this.nextSeq())} ${menu.header}`);
+      menu.sentAt = this.ctx.now();
+    } catch (error) {
+      this.log.debug(`Control4 ${this.name}: menu re-show failed: ${error}`);
+      return false;
+    }
+    return true;
   }
   diagPoll() {
     const now = this.ctx.now();
@@ -5636,11 +5696,12 @@ var Remote = class extends C4Device {
     const sel = Math.max(0, Math.min(items.length - 1, Math.trunc(selectedIndex) || 0));
     const listId = this.nextListId();
     this.menu = { listId, title, items, selectedIndex: sel };
-    const head = (seq) => `0i${seq} c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 255)}`;
-    const shown = fitLcd((s) => `${head(SEQ0)}${s}"`, sanitize(title));
-    const cmd = `${head(hex4(this.nextSeq()))}${shown}"`;
+    const head = `c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 255)}`;
+    const shown = fitLcd((s) => `0i${SEQ0} ${head}${s}"`, sanitize(title));
+    this.menu.header = `${head}${shown}"`;
     try {
-      await this.sendText(cmd);
+      await this.sendText(`0i${hex4(this.nextSeq())} ${this.menu.header}`);
+      if (this.menu?.listId === listId) this.menu.sentAt = this.ctx.now();
     } catch (error) {
       this.menu = void 0;
       if (isDeliveryFailure(error)) {
@@ -6986,6 +7047,7 @@ var Runtime = class {
     const payload = frame2.data.subarray(hdr.offset);
     if (hdr.commandId === 0) {
       void this.sendIdentity(ieee, "read_attributes", hdr.tsn);
+      this.devices.get(ieee)?.onIdentityRead();
       return;
     }
     let attrs;
@@ -7238,7 +7300,7 @@ var Store = class {
 };
 
 // src/core/version.ts
-var VERSION = true ? "0.3.0" : "dev";
+var VERSION = true ? "0.3.1" : "dev";
 
 // src/z2m/global.ts
 var RUNTIME_KEY = "__control4_z2m_runtime__";
