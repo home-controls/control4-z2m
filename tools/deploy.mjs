@@ -6,7 +6,7 @@
 //
 //   HA_URL=http://host:8123 HA_TOKEN_FILE=/path/token.txt node tools/deploy.mjs [--dry-run]
 //
-// It works on one instance at a time (spec: Gitea #25 and #32):
+// It works on one instance at a time (spec: archived issues 25 and 32):
 //   - Instances are found from the retained <base>/bridge/info,
 //     bridge/extensions and bridge/converters. A target already has both
 //     control4.mjs files. An instance with advanced.enable_external_js off, or
@@ -116,7 +116,11 @@ export function plan(retained, distBuild) {
         const kept = {converter: code("converter"), extension: code("extension")};
         const missing = SAVE_ORDER.filter((kind) => kept[kind] === undefined);
         if (missing.length) {
-            return {...row, action: "report", reason: `no ${missing.map((k) => `external_${k}s/${FILE}`).join(" or ")}: left alone (to add Control4 to it, install by hand: README, Install)`};
+            return {
+                ...row,
+                action: "report",
+                reason: `no ${missing.map((k) => `external_${k}s/${FILE}`).join(" or ")}: left alone (to add Control4 to it, install by hand: README, Install)`,
+            };
         }
         if (row.before === distBuild) return {...row, action: "skip", reason: `already on ${distBuild}`, kept};
         return {...row, action: "push", kept};
@@ -186,7 +190,8 @@ export async function pushInstance(io, target, dist, t = TIMEOUTS) {
         const r = saveRequest(base, kind, code, transaction);
         return request(r.topic, r.response, r.payload, transaction, t.save);
     };
-    const answer = (kind, reply) => (!reply ? `${kind} save: no answer within ${t.save / 1000} s` : reply.status !== "ok" ? `${kind} save: ${reply.error ?? reply.status}` : undefined);
+    const answer = (kind, reply) =>
+        !reply ? `${kind} save: no answer within ${t.save / 1000} s` : reply.status !== "ok" ? `${kind} save: ${reply.error ?? reply.status}` : undefined;
 
     // Zigbee2MQTT writes a file before importing it, so a save that fails still leaves the file written.
     const saved = [];
@@ -204,7 +209,13 @@ export async function pushInstance(io, target, dist, t = TIMEOUTS) {
         const verdict = await io.wait(`control4/status/${base}`, since, t.proof, (s) => judge(s, dist.build, target.problemsBefore));
         if (verdict === true) {
             const transaction = `deploy-${stamp}-${++n}`;
-            const {reply} = await request(`${base}/bridge/request/control4/republish`, `${base}/bridge/response/control4/republish`, JSON.stringify({transaction}), transaction, t.republish);
+            const {reply} = await request(
+                `${base}/bridge/request/control4/republish`,
+                `${base}/bridge/response/control4/republish`,
+                JSON.stringify({transaction}),
+                transaction,
+                t.republish,
+            );
             // The build runs either way: stale exposes in Home Assistant are no reason to undo it.
             const note = reply?.status === "ok" ? "" : `; republish ${reply ? (reply.error ?? reply.status) : "unanswered"}: send it again by hand`;
             return {row: {base, before: target.before, now: dist.build, result: `pushed${note}`}, ok: true};
@@ -396,7 +407,11 @@ async function checkTransport(ha, inbox, topic, payloads) {
         await ha.publishMqtt(topic, payload);
         const back = await inbox.wait(topic, since, 15_000, (_json, text) => text);
         if (back !== payload) {
-            throw new Error(back === undefined ? `the transport check got nothing back on ${topic} within 15 s` : `Home Assistant changed a payload on its way through MQTT (${payload.length} bytes sent, ${back.length} back): nothing pushed`);
+            throw new Error(
+                back === undefined
+                    ? `the transport check got nothing back on ${topic} within 15 s`
+                    : `Home Assistant changed a payload on its way through MQTT (${payload.length} bytes sent, ${back.length} back): nothing pushed`,
+            );
         }
     }
 }
@@ -431,7 +446,12 @@ async function main() {
         const targets = rows.filter((r) => r.action === "push");
         if (opts.dryRun || !targets.length) return;
 
-        await checkTransport(ha, inbox, probe, SAVE_ORDER.map((kind) => saveRequest("probe", kind, dist[kind], "probe").payload));
+        await checkTransport(
+            ha,
+            inbox,
+            probe,
+            SAVE_ORDER.map((kind) => saveRequest("probe", kind, dist[kind], "probe").payload),
+        );
         const io = {
             publish: (topic, payload) => ha.publishMqtt(topic, payload),
             mark: () => inbox.mark(),
@@ -449,7 +469,9 @@ async function main() {
             }
         }
         const untouched = rows.filter((r) => !done.some((d) => d.base === r.base));
-        console.log(`\n${table([...done, ...untouched.map((r) => ({base: r.base, before: r.before, now: r.before, result: r.action === "push" ? "not pushed: the run stopped" : `${r.action}: ${r.reason}`}))])}`);
+        console.log(
+            `\n${table([...done, ...untouched.map((r) => ({base: r.base, before: r.before, now: r.before, result: r.action === "push" ? "not pushed: the run stopped" : `${r.action}: ${r.reason}`}))])}`,
+        );
     } finally {
         ha.close();
     }

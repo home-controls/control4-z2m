@@ -139,12 +139,15 @@ export function haEnvironment(world: HaWorld = EMPTY): Environment {
         states,
         is_state: isState,
         state_attr: (e: unknown, attr: unknown) => state(e)?.attributes[String(attr)] ?? null,
-        now: () => ({strftime: (fmt: string) => fmt.replace("%H", world.time.slice(0, 2)).replace("%M", world.time.slice(3, 5)).replace("%S", world.time.slice(6, 8))}),
+        now: () => ({
+            strftime: (fmt: string) => fmt.replace("%H", world.time.slice(0, 2)).replace("%M", world.time.slice(3, 5)).replace("%S", world.time.slice(6, 8)),
+        }),
         int: toInt,
         float: toFloat,
         is_number: isNumber,
     };
-    for (const name of ["device_attr", "device_entities", "states", "is_state", "state_attr", "now", "int", "float", "is_number"]) env.addFunction(name, fns[name]);
+    for (const name of ["device_attr", "device_entities", "states", "is_state", "state_attr", "now", "int", "float", "is_number"])
+        env.addFunction(name, fns[name]);
     env.addFilter("states", states);
     env.addFilter("int", toInt);
     env.addFilter("float", toFloat);
@@ -201,7 +204,8 @@ export function isTemplate(value: unknown): value is string {
  */
 function renderComplex(env: Environment, value: unknown, vars: Record<string, unknown>): unknown {
     if (Array.isArray(value)) return value.map((x) => renderComplex(env, x, vars));
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, x]) => [renderComplex(env, k, vars), renderComplex(env, x, vars)]));
+    if (value && typeof value === "object")
+        return Object.fromEntries(Object.entries(value).map(([k, x]) => [renderComplex(env, k, vars), renderComplex(env, x, vars)]));
     return isTemplate(value) ? haValue(renderStripped(env, value, vars)) : value;
 }
 

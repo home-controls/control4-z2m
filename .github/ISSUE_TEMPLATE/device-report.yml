@@ -1,0 +1,47 @@
+name: Device report
+description: How a Control4 device behaves with control4-z2m (docs/TESTING.md says what to try)
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. **Everything here is public:** rename devices or strip friendly names that name people or rooms before pasting logs, and leave out addresses and hostnames.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: As printed on the device or shown in Zigbee2MQTT (e.g. C4-DIM1-Z, C4-KC120277, C4-SR260).
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      description: The device's firmware version if Zigbee2MQTT or the Firmware version entity shows it.
+  - type: input
+    id: version
+    attributes:
+      label: control4-z2m version
+      description: From the Control4 build sensor, the instance status, or the start-up line ("Control4 extension started … (control4-z2m X.Y.Z, …)").
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Zigbee2MQTT and coordinator
+      description: Zigbee2MQTT version and the coordinator (e.g. 2.14.3, SkyConnect on ember).
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: What you tried, and what happened
+      description: Go through the device's checklist in docs/TESTING.md. Note anything that didn't do what it says.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The Zigbee2MQTT log around the test (debug level helps), or attach control4.txt. Names that identify people or rooms removed.
+      render: text

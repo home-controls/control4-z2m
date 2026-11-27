@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import {describe as group, expect, it} from "vitest";
+import {expect, describe as group, it} from "vitest";
 
 import {describe, hitsIn, hitsInFile, parsePatterns} from "../tools/privacy-check.mjs";
 
@@ -53,7 +53,14 @@ group("privacy check", () => {
         const body = path.join(dir, "body.md");
         const run = (args: string[], env: Record<string, string> = {}) => {
             try {
-                return {code: 0, out: execFileSync(process.execPath, [TOOL, ...args], {encoding: "utf8", env: {...process.env, HOME: dir, USERPROFILE: dir, PRIVATE_PATTERNS: "", ...env}, stdio: "pipe"})};
+                return {
+                    code: 0,
+                    out: execFileSync(process.execPath, [TOOL, ...args], {
+                        encoding: "utf8",
+                        env: {...process.env, HOME: dir, USERPROFILE: dir, PRIVATE_PATTERNS: "", ...env},
+                        stdio: "pipe",
+                    }),
+                };
             } catch (e) {
                 const err = e as {status: number; stdout: string; stderr: string};
                 return {code: err.status, out: `${err.stdout}${err.stderr}`};

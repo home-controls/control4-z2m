@@ -9,7 +9,6 @@ import os from "node:os";
 import path from "node:path";
 
 import {afterEach, describe, expect, it, vi} from "vitest";
-// biome-ignore lint/suspicious/noExplicitAny: compiled herdsman
 import * as emberModule from "zigbee-herdsman/dist/adapter/ember/adapter/emberAdapter.js";
 
 import {PROFILE_BUTTON, PROFILE_NETWORK} from "../src/core/constants";
@@ -96,7 +95,10 @@ describe("EmberTransport on the real herdsman EmberAdapter", () => {
         // herdsman's own frame with tag 10, delivered long ago
         ezsp.emit("messageSent", 0, 0, 0x9999, {profileId: 0x0104}, 10);
         await vi.advanceTimersByTimeAsync(5000);
-        const p = t.send(0x1234, frame).then(() => "ok", (e: Error) => e.message);
+        const p = t.send(0x1234, frame).then(
+            () => "ok",
+            (e: Error) => e.message,
+        );
         await vi.advanceTimersByTimeAsync(10);
         // a foreign message reusing tag 10 while ours is in flight
         ezsp.emit("messageSent", 0, 0, 0x7777, {profileId: 0x0104}, 10);
@@ -141,7 +143,9 @@ describe("EmberTransport on the real herdsman EmberAdapter", () => {
         };
         transport = new EmberTransport(adapter, silent);
         transport.start(() => false);
-        await expect(transport.send(0x1234, {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 1, data: Buffer.from("x")})).rejects.toBeInstanceOf(DeliveryError);
+        await expect(transport.send(0x1234, {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 1, data: Buffer.from("x")})).rejects.toBeInstanceOf(
+            DeliveryError,
+        );
     });
 
     it("retries a busy stack, then gives up", async () => {
@@ -153,7 +157,9 @@ describe("EmberTransport on the real herdsman EmberAdapter", () => {
         };
         transport = new EmberTransport(adapter, silent);
         transport.start(() => false);
-        await expect(transport.send(0x1234, {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 1, data: Buffer.from("x")}, {ack: false})).rejects.toBeInstanceOf(DeliveryError);
+        await expect(
+            transport.send(0x1234, {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 1, data: Buffer.from("x")}, {ack: false}),
+        ).rejects.toBeInstanceOf(DeliveryError);
         expect(n).toBe(3);
     });
 

@@ -28,7 +28,8 @@ describe("packages", () => {
         expect(doc.errors.map((e) => e.message)).toEqual([]);
         // The instance checks' own event (control4_instance_notices) is no zha_event payload.
         const own = text(file).replaceAll("trigger.event.data.raised if trigger.id == 'notices'", "");
-        for (const bad of ["zha_event", "zha.", "integration: zha", "zha_c4_patch", "trigger.event.data", "cluster_id", "endpoint_id"]) expect(own.includes(bad), `${file}: ${bad}`).toBe(false);
+        for (const bad of ["zha_event", "zha.", "integration: zha", "zha_c4_patch", "trigger.event.data", "cluster_id", "endpoint_id"])
+            expect(own.includes(bad), `${file}: ${bad}`).toBe(false);
     });
 
     it("send only keys some family accepts", () => {
@@ -82,10 +83,11 @@ describe("packages", () => {
 
     describe("the event dispatcher", () => {
         type Step = Record<string, unknown>;
-        const pkg = () => parseDocument(text("control4_event_dispatcher.yaml"), {uniqueKeys: true}).toJS() as {
-            automation: {id: string; mode: string; triggers: Step[]; actions: Step[]}[];
-            template: {trigger: Step[]; action?: Step[]; sensor: {unique_id: string; attributes: Record<string, string>}[]}[];
-        };
+        const pkg = () =>
+            parseDocument(text("control4_event_dispatcher.yaml"), {uniqueKeys: true}).toJS() as {
+                automation: {id: string; mode: string; triggers: Step[]; actions: Step[]}[];
+                template: {trigger: Step[]; action?: Step[]; sensor: {unique_id: string; attributes: Record<string, string>}[]}[];
+            };
 
         it("re-fires every control4/event message as control4_event, in arrival order", () => {
             const [auto] = pkg().automation;
@@ -137,14 +139,16 @@ describe("packages", () => {
     // #33: one persistent notification per instance while it reports a problem or has gone quiet.
     describe("the instance checks", () => {
         type Step = Record<string, unknown>;
-        const pkg = () => parseDocument(text("control4_instances.yaml"), {uniqueKeys: true}).toJS() as {
-            automation: {id: string; mode: string; triggers: Step[]; actions: Step[]}[];
-            template: {trigger: Step[]; action: Step[]; sensor: {unique_id: string; state: string; attributes: Record<string, string>}[]}[];
-        };
+        const pkg = () =>
+            parseDocument(text("control4_instances.yaml"), {uniqueKeys: true}).toJS() as {
+                automation: {id: string; mode: string; triggers: Step[]; actions: Step[]}[];
+                template: {trigger: Step[]; action: Step[]; sensor: {unique_id: string; state: string; attributes: Record<string, string>}[]}[];
+            };
         const [auto] = pkg().automation;
         const flat = (x: unknown) => JSON.stringify(x);
         const vars = () => auto.actions[0].variables as Record<string, unknown>;
-        const loop = (forEach: string) => (auto.actions.find((a) => flat(a).includes(`for_each":"${forEach}"`)) as {repeat: {sequence: Step[]}}).repeat.sequence;
+        const loop = (forEach: string) =>
+            (auto.actions.find((a) => flat(a).includes(`for_each":"${forEach}"`)) as {repeat: {sequence: Step[]}}).repeat.sequence;
 
         it("keeps each instance's latest status in a sensor fed by the retained control4/status/+", () => {
             const [tpl] = pkg().template;
@@ -176,7 +180,12 @@ describe("packages", () => {
             expect(vars().stale_after).toBe(300);
             expect(flat(vars().due)).toContain("(now() - at).total_seconds() > stale_after");
             expect(flat(vars().due)).toContain("s.problems | count > 0");
-            expect(loop("{{ due }}")).toContainEqual(expect.objectContaining({action: "persistent_notification.create", data: expect.objectContaining({notification_id: "control4_instance_{{ base }}"})}));
+            expect(loop("{{ due }}")).toContainEqual(
+                expect.objectContaining({
+                    action: "persistent_notification.create",
+                    data: expect.objectContaining({notification_id: "control4_instance_{{ base }}"}),
+                }),
+            );
         });
 
         // After every restart of the house's box the broker handed over a status from before it, and this said "stopped reporting".
@@ -189,7 +198,9 @@ describe("packages", () => {
         });
 
         it("dismisses only a notice it raised, a forgotten instance's included, and tracks them in the sensor", () => {
-            expect(loop("{{ raised | reject('in', due) | list }}")).toEqual([{action: "persistent_notification.dismiss", data: {notification_id: "control4_instance_{{ repeat.item }}"}}]);
+            expect(loop("{{ raised | reject('in', due) | list }}")).toEqual([
+                {action: "persistent_notification.dismiss", data: {notification_id: "control4_instance_{{ repeat.item }}"}},
+            ]);
             expect(vars().raised).toBe("{{ tracked if tracked is list else instances | list }}");
             const report = auto.actions.at(-1) as {if: string; then: Step[]};
             expect(report.if).toBe("{{ tracked is not list or (tracked | sort) != (due | sort) }}");
@@ -197,12 +208,14 @@ describe("packages", () => {
             expect(flat(pkg().template[0].action)).toContain("trigger.event.data.raised if trigger.id == 'notices'");
         });
 
-        // Guest Bed and Garage Inside Lights were dead for hours, and the user found them by hand.
+        // Two DIM1-Zs were dead for hours, and the user found them by hand.
         it("names, under devices_unreachable, the devices the instance's status lists as unreachable", () => {
             expect(flat(pkg().template[0].action)).toContain("'unreachable': unreachable | map(attribute='name') | list");
             const [step, create] = loop("{{ due }}") as [{variables: Record<string, string>}, {data: {message: string}}];
             expect(step.variables.unreachable).toBe("{{ instances[base].unreachable if instances[base].unreachable is list else [] }}");
-            expect(create.data.message).toContain("{%- if p == 'devices_unreachable' %}{% for name in unreachable %}\n  - {{ name }}\n{%- endfor %}{% endif %}");
+            expect(create.data.message).toContain(
+                "{%- if p == 'devices_unreachable' %}{% for name in unreachable %}\n  - {{ name }}\n{%- endfor %}{% endif %}",
+            );
         });
 
         // On 2026-11-04 the first real notice failed: `at` (a datetime) reached `age` as a string,

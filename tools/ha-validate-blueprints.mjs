@@ -82,8 +82,8 @@ function substitute(node, values) {
 
 function templates(node, out = []) {
     if (typeof node === "string" && /\{\{|\{%/.test(node)) out.push(node);
-    else if (Array.isArray(node)) node.forEach((x) => templates(x, out));
-    else if (node && typeof node === "object") Object.values(node).forEach((x) => templates(x, out));
+    else if (Array.isArray(node)) for (const x of node) templates(x, out);
+    else if (node && typeof node === "object") for (const x of Object.values(node)) templates(x, out);
     return out;
 }
 
@@ -114,16 +114,22 @@ const {call, receive} = caller((msg) => ws.send(JSON.stringify(msg)));
 ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "auth_required") ws.send(JSON.stringify({type: "auth", access_token: token}));
-    else if (msg.type === "auth_ok") (authed = true, clearTimeout(connectTimer), main()).then(() => {
-        finished = true;
-        ws.close();
-    }, (e) => {
-        finished = true;
-        console.error(e);
-        ws.close();
-        process.exitCode = 1;
-    });
-    else if (msg.type === "auth_invalid") {
+    else if (msg.type === "auth_ok") {
+        authed = true;
+        clearTimeout(connectTimer);
+        main().then(
+            () => {
+                finished = true;
+                ws.close();
+            },
+            (e) => {
+                finished = true;
+                console.error(e);
+                ws.close();
+                process.exitCode = 1;
+            },
+        );
+    } else if (msg.type === "auth_invalid") {
         console.error("auth failed");
         process.exit(1);
     } else {
@@ -133,7 +139,10 @@ ws.onmessage = (ev) => {
 
 async function main() {
     let problems = 0;
-    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".yaml")).sort()) {
+    for (const file of fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".yaml"))
+        .sort()) {
         const doc = parseDocument(fs.readFileSync(path.join(dir, file), "utf8"), {customTags: [inputTag]}).toJS();
         const inputs = inputsOf(doc.blueprint.input);
         const values = Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, placeholder(v)]));
@@ -156,7 +165,11 @@ async function main() {
             }
         }
         problems += bad.length + tplErrors;
-        console.log(`${bad.length || tplErrors ? "FAIL" : "ok  "} ${file}: ${Object.keys(verdict).map((k) => `${k} ${verdict[k].valid ? "valid" : "INVALID"}`).join(", ")}; ${all.length} templates, ${tplErrors} syntax errors`);
+        console.log(
+            `${bad.length || tplErrors ? "FAIL" : "ok  "} ${file}: ${Object.keys(verdict)
+                .map((k) => `${k} ${verdict[k].valid ? "valid" : "INVALID"}`)
+                .join(", ")}; ${all.length} templates, ${tplErrors} syntax errors`,
+        );
         for (const [k, v] of bad) console.log(`  ${k}: ${v.error}`);
     }
     problems += await checkPackages();
@@ -191,12 +204,17 @@ async function checkConformance() {
 async function checkPackages() {
     const pdir = path.join(root, "packages");
     let problems = 0;
-    for (const file of fs.readdirSync(pdir).filter((f) => f.endsWith(".yaml")).sort()) {
+    for (const file of fs
+        .readdirSync(pdir)
+        .filter((f) => f.endsWith(".yaml"))
+        .sort()) {
         const doc = parseDocument(fs.readFileSync(path.join(pdir, file), "utf8")).toJS();
         const units = [];
         for (const [name, sc] of Object.entries(doc.script ?? {})) units.push({name: `script.${name}`, conf: {actions: sc.sequence}, extra: sc});
-        for (const a of doc.automation ?? []) units.push({name: `automation ${a.id}`, conf: {triggers: a.triggers, conditions: a.conditions ?? [], actions: a.actions}, extra: a});
-        for (const [i, t] of (doc.template ?? []).entries()) units.push({name: `template[${i}]`, conf: {triggers: t.trigger, conditions: t.condition ?? [], actions: t.action ?? []}, extra: t});
+        for (const a of doc.automation ?? [])
+            units.push({name: `automation ${a.id}`, conf: {triggers: a.triggers, conditions: a.conditions ?? [], actions: a.actions}, extra: a});
+        for (const [i, t] of (doc.template ?? []).entries())
+            units.push({name: `template[${i}]`, conf: {triggers: t.trigger, conditions: t.condition ?? [], actions: t.action ?? []}, extra: t});
         for (const u of units) {
             const res = await call({type: "validate_config", ...u.conf});
             const verdict = res.result ?? {};
@@ -211,7 +229,11 @@ async function checkPackages() {
                 }
             }
             problems += bad.length + tplErrors;
-            console.log(`${bad.length || tplErrors ? "FAIL" : "ok  "} ${file} ${u.name}: ${Object.keys(verdict).map((k) => `${k} ${verdict[k].valid ? "valid" : "INVALID"}`).join(", ")}; ${all.length} templates, ${tplErrors} syntax errors`);
+            console.log(
+                `${bad.length || tplErrors ? "FAIL" : "ok  "} ${file} ${u.name}: ${Object.keys(verdict)
+                    .map((k) => `${k} ${verdict[k].valid ? "valid" : "INVALID"}`)
+                    .join(", ")}; ${all.length} templates, ${tplErrors} syntax errors`,
+            );
             for (const [k, v] of bad) console.log(`  ${k}: ${v.error}`);
         }
     }

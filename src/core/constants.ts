@@ -455,7 +455,11 @@ export const SR260_BUTTONS: Record<number, string> = {
 export const REMOTE_GESTURES: Gesture[] = ["press", "hold", "release"];
 
 /** The ZHA remote quirks named bb / bh / be short_press / long_press / short_release. */
-export const REMOTE_COMMANDS: Partial<Record<Gesture, string>> = {press: "remote_button_short_press", hold: "remote_button_long_press", release: "remote_button_short_release"};
+export const REMOTE_COMMANDS: Partial<Record<Gesture, string>> = {
+    press: "remote_button_short_press",
+    hold: "remote_button_long_press",
+    release: "remote_button_short_release",
+};
 
 // ---------------------------------------------------------------------------
 // LED palette (index == the ZHA select's enum value)
@@ -551,7 +555,8 @@ const COLD_START_PARAMS: TvParam[] = [
         default: 0,
         key: COLD_START_LEVEL_KEY,
         label: "Cold start level",
-        description: "Turned on from off, the light starts at this level for the cold start time, then goes to its target (0 = off). Set it above min brightness",
+        description:
+            "Turned on from off, the light starts at this level for the cold start time, then goes to its target (0 = off). Set it above min brightness",
     },
     {
         index: 0x0a,
@@ -565,7 +570,7 @@ const COLD_START_PARAMS: TvParam[] = [
 
 export const DIM1Z_TV_PARAMS: TvParam[] = [...DM_TV_PARAMS.map((p) => ({...p, default: DIM1Z_FACTORY[p.key] ?? p.default})), ...COLD_START_PARAMS];
 
-/** An APD120's own factory values where they differ from DM_TV_PARAMS (read from the dining room's, fw 5.1.1, 2026-11-07). */
+/** An APD120's own factory values where they differ from DM_TV_PARAMS (read from one, fw 5.1.1, 2026-11-07). */
 const APD120_FACTORY: Record<string, number> = {min_brightness: 10, hold_ramp_up: 5000, hold_ramp_down: 5000};
 
 /** APD120 dimmer parameters. Its `c4.dm.is` is this table in slot order (00-0a), so one Get reads them all. */

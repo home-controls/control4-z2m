@@ -6,14 +6,33 @@ import path from "node:path";
 import {describe, expect, it} from "vitest";
 
 import {FAN_BUTTONS, OUTLET_BUTTONS} from "../src/core/constants";
-import {buttonConfig, checkKnownTaps, checkMultiTap, drivesLoad, expectedLed, ledNumbers, namedEntities, prepareCall, sceneOf, sceneState, sequences, starts, tapSource, towardOn} from "../tools/c4-scenarios.mjs";
+import {
+    buttonConfig,
+    checkKnownTaps,
+    checkMultiTap,
+    drivesLoad,
+    expectedLed,
+    ledNumbers,
+    namedEntities,
+    prepareCall,
+    sceneOf,
+    sceneState,
+    sequences,
+    starts,
+    tapSource,
+    towardOn,
+} from "../tools/c4-scenarios.mjs";
 import {showEvent} from "./contract";
 
 const TOOL = path.resolve(__dirname, "..", "tools", "c4-scenarios.mjs");
 
 function run(...args: string[]) {
     // Port 9 (discard) is never Home Assistant: a run that got as far as connecting fails differently.
-    const r = spawnSync(process.execPath, [TOOL, "--device", "Kitchen Keypad", ...args], {env: {...process.env, HA_URL: "http://127.0.0.1:9", HA_TOKEN: "x"}, encoding: "utf8", timeout: 20_000});
+    const r = spawnSync(process.execPath, [TOOL, "--device", "Keypad A", ...args], {
+        env: {...process.env, HA_URL: "http://127.0.0.1:9", HA_TOKEN: "x"},
+        encoding: "utf8",
+        timeout: 20_000,
+    });
     return {status: r.status, err: r.stderr};
 }
 
@@ -54,7 +73,14 @@ describe("c4-scenarios command line", () => {
     });
 
     // Accepted command lines get as far as connecting (and fail there: port 9 is no HA).
-    it.each([[["--button", "6", "--only", "tap,idle"]], [["--button", "1"]], [["--only", "unknown,rename,stale"]], [["--only", "known,fallback"]], [["--only", "double,triple,led"]], [[]]])("accepts %j", (args) => {
+    it.each([
+        [["--button", "6", "--only", "tap,idle"]],
+        [["--button", "1"]],
+        [["--only", "unknown,rename,stale"]],
+        [["--only", "known,fallback"]],
+        [["--only", "double,triple,led"]],
+        [[]],
+    ])("accepts %j", (args) => {
         const r = run(...args);
         expect(r.status).toBe(1);
         expect(r.err).toMatch(/websocket error talking to http:\/\/127\.0\.0\.1:9/);
@@ -77,15 +103,47 @@ describe("c4-scenarios sequences", () => {
     it("builds a keypad's known tap, known double tap, not-known tap and hold", () => {
         const s = sequences(dev("KPZ-3B1"), 2);
         expect(show(s.tap)).toEqual(["press@0", "release@100", "tap_known #1@100", "fast_single known=true@650", "single@1700"]);
-        expect(show(s.double)).toEqual(["press@0", "release@100", "tap_known #1@100", "press@200", "release@300", "tap_known #2@300", "fast_double known=true@850", "double@1900"]);
+        expect(show(s.double)).toEqual([
+            "press@0",
+            "release@100",
+            "tap_known #1@100",
+            "press@200",
+            "release@300",
+            "tap_known #2@300",
+            "fast_double known=true@850",
+            "double@1900",
+        ]);
         expect(show(s.unknownTap)).toEqual(["press@0", "release@100", "fast_single known=false@650", "single@1700"]);
         expect(show(s.hold)).toEqual(["press@0", "hold@520", "hold_release@2500"]);
     });
 
     it("builds a triple tap from the known double tap: its second tap once more, counted three", () => {
-        expect(show(sequences(dev("KPZ-3B1"), 1).triple)).toEqual(["press@0", "release@100", "tap_known #1@100", "press@200", "release@300", "tap_known #2@300", "press@400", "release@500", "tap_known #3@500", "fast_triple known=true@1050", "triple@2100"]);
-        expect(show(sequences(dev("C4-DIM1-Z"), 2).triple)).toEqual(["press@0", "tap_known #1@0", "press@200", "tap_known #2@200", "press@400", "tap_known #3@400", "fast_triple known=true@1050", "triple@2100"]);
-        const counts = sequences(dev("C4-KC120277"), 2).triple.slice(-2).map((s) => s.payload);
+        expect(show(sequences(dev("KPZ-3B1"), 1).triple)).toEqual([
+            "press@0",
+            "release@100",
+            "tap_known #1@100",
+            "press@200",
+            "release@300",
+            "tap_known #2@300",
+            "press@400",
+            "release@500",
+            "tap_known #3@500",
+            "fast_triple known=true@1050",
+            "triple@2100",
+        ]);
+        expect(show(sequences(dev("C4-DIM1-Z"), 2).triple)).toEqual([
+            "press@0",
+            "tap_known #1@0",
+            "press@200",
+            "tap_known #2@200",
+            "press@400",
+            "tap_known #3@400",
+            "fast_triple known=true@1050",
+            "triple@2100",
+        ]);
+        const counts = sequences(dev("C4-KC120277"), 2)
+            .triple.slice(-2)
+            .map((s) => s.payload);
         expect(counts).toMatchObject([
             {gesture: "fast_triple", command: "remote_button_fast_triple_press", action: "button_2_fast_triple"},
             {gesture: "triple", command: "remote_button_triple_press", action: "button_2_triple"},
@@ -93,7 +151,16 @@ describe("c4-scenarios sequences", () => {
     });
 
     it("spaces a double tap's presses by the gap it is given", () => {
-        expect(show(sequences(dev("KPZ-3B1"), 1, 450).double)).toEqual(["press@0", "release@100", "tap_known #1@100", "press@450", "release@550", "tap_known #2@550", "fast_double known=true@1100", "double@2150"]);
+        expect(show(sequences(dev("KPZ-3B1"), 1, 450).double)).toEqual([
+            "press@0",
+            "release@100",
+            "tap_known #1@100",
+            "press@450",
+            "release@550",
+            "tap_known #2@550",
+            "fast_double known=true@1100",
+            "double@2150",
+        ]);
     });
 
     it("announces a DIM1-Z's taps at paddle-down, and has no not-known tap or hold", () => {
@@ -115,7 +182,8 @@ describe("c4-scenarios sequences", () => {
     });
 
     it("refuses a model the contract fixture has no events for, instead of playing it another's", () => {
-        for (const model of ["C4-SR260", "C4-Z2IO-ZP", "C4-NOPE", ""]) expect(() => sequences(dev(model), 1), model).toThrow(/the contract fixture has no events for/);
+        for (const model of ["C4-SR260", "C4-Z2IO-ZP", "C4-NOPE", ""])
+            expect(() => sequences(dev(model), 1), model).toThrow(/the contract fixture has no events for/);
     });
 
     it("plays the fan and the outlet a KC120277's c4.dmx button events, a not-known tap and a hold included", () => {
@@ -128,8 +196,12 @@ describe("c4-scenarios sequences", () => {
 
     it("addresses the fan's Buttons 1-6 from the top and the outlet's 1 and 2, as the extension names them", () => {
         const at = (model: string, button: number) => sequences(dev(model), button).tap[0].payload;
-        expect([1, 2, 3, 4, 5, 6].map((n) => at("C4-4SF120", n))).toMatchObject(Object.entries(FAN_BUTTONS).map(([id, name]) => ({button: name, button_id: Number(id), action: `${name}_press`})));
-        expect([1, 2].map((n) => at("LOZ-5S1-W", n))).toMatchObject(Object.entries(OUTLET_BUTTONS).map(([id, name]) => ({button: name, button_id: Number(id)})));
+        expect([1, 2, 3, 4, 5, 6].map((n) => at("C4-4SF120", n))).toMatchObject(
+            Object.entries(FAN_BUTTONS).map(([id, name]) => ({button: name, button_id: Number(id), action: `${name}_press`})),
+        );
+        expect([1, 2].map((n) => at("LOZ-5S1-W", n))).toMatchObject(
+            Object.entries(OUTLET_BUTTONS).map(([id, name]) => ({button: name, button_id: Number(id)})),
+        );
         expect(() => at("LOZ-5S1-W", 3)).toThrow(/LOZ-5S1-W has no Button 3/);
     });
 
@@ -137,7 +209,14 @@ describe("c4-scenarios sequences", () => {
         const kc = Object.values(sequences(dev("C4-KC120277"), 3)).flat();
         expect(kc.length).toBeGreaterThan(0);
         for (const e of kc) {
-            expect(e.payload).toMatchObject({ieee: "0x000fff00000000aa", device: "Hall", model: "C4-KC120277", button: "button_3", button_id: 4, action: `button_3_${e.payload.gesture}`});
+            expect(e.payload).toMatchObject({
+                ieee: "0x000fff00000000aa",
+                device: "Hall",
+                model: "C4-KC120277",
+                button: "button_3",
+                button_id: 4,
+                action: `button_3_${e.payload.gesture}`,
+            });
         }
         expect(sequences(dev("C4-KP6-Z"), 3).tap[0].payload.button_id).toBe(2);
     });
@@ -235,7 +314,12 @@ describe("c4-scenarios known-tap verdict", () => {
         expect(verdict(toggle, FIRED, group, start).ok).toBe(true);
         expect(verdict({...toggle, mode: "room_master"}, FIRED, group, start).ok).toBe(true);
         // Each target flipped on its own: c4_device never does this.
-        const apart = [change(200, "light.a", "on @255", "off"), change(700, "light.a", "off", "on @255"), change(200, "light.b", "off", "on @255"), change(700, "light.b", "on @255", "off")];
+        const apart = [
+            change(200, "light.a", "on @255", "off"),
+            change(700, "light.a", "off", "on @255"),
+            change(200, "light.b", "off", "on @255"),
+            change(700, "light.b", "on @255", "off"),
+        ];
         expect(verdict(toggle, FIRED, apart, start).ok).toBe(false);
     });
 
@@ -303,7 +387,8 @@ describe("c4-scenarios known-tap verdict", () => {
 
     it("steps every Brighten light from the brightest lit one, as c4_device's cur", () => {
         const cfg = {mode: "brighten", targets: ["light.a", "light.b"], tapStep: 10};
-        const both = (t: number, from: string, to: string) => ["light.a", "light.b"].map((e) => change(t, e, e === "light.a" && from === "start" ? "on @100" : from === "start" ? "on @140" : from, to));
+        const both = (t: number, from: string, to: string) =>
+            ["light.a", "light.b"].map((e) => change(t, e, e === "light.a" && from === "start" ? "on @100" : from === "start" ? "on @140" : from, to));
         const changes = [...both(200, "start", "on @166"), ...both(700, "on @166", "on @192")];
         expect(verdict(cfg, FIRED, changes, {"light.a": view("on @100"), "light.b": view("on @140")}).ok).toBe(true);
     });
@@ -352,7 +437,11 @@ describe("c4-scenarios known-tap verdict", () => {
     });
 
     it("fails a Toggle double tap where a tap acted twice", () => {
-        const changes = ["light.a", "light.b"].flatMap((e) => [change(200, e, "off", "on @255"), change(300, e, "on @255", "off"), change(700, e, "off", "on @255")]);
+        const changes = ["light.a", "light.b"].flatMap((e) => [
+            change(200, e, "off", "on @255"),
+            change(300, e, "on @255", "off"),
+            change(700, e, "off", "on @255"),
+        ]);
         expect(verdict(toggle, FIRED, changes).ok).toBe(false);
     });
 
@@ -406,18 +495,34 @@ describe("c4-scenarios known-tap verdict", () => {
 
     it("judges a button with multi-tap actions at the fast count, before its double-tap action runs", () => {
         const toggle = {mode: "toggle", targets: ["light.a", "light.b"], multi: true};
-        const changes = ["light.a", "light.b"].flatMap((e) => [change(200, e, "off", "on @255"), change(700, e, "on @255", "off"), change(1300, e, "off", "on @255")]);
+        const changes = ["light.a", "light.b"].flatMap((e) => [
+            change(200, e, "off", "on @255"),
+            change(700, e, "on @255", "off"),
+            change(1300, e, "off", "on @255"),
+        ]);
         expect(verdict(toggle, FIRED, changes).ok).toBe(true);
     });
 
     it("passes a Toggle double tap on a light that bounces through on as it turns off", () => {
-        const changes = [change(200, "light.a", "off", "on @255"), change(700, "light.a", "on @255", "off"), change(900, "light.a", "off", "on @23"), change(1500, "light.a", "on @23", "off"), change(200, "light.b", "off", "on @255"), change(700, "light.b", "on @255", "off")];
+        const changes = [
+            change(200, "light.a", "off", "on @255"),
+            change(700, "light.a", "on @255", "off"),
+            change(900, "light.a", "off", "on @23"),
+            change(1500, "light.a", "on @23", "off"),
+            change(200, "light.b", "off", "on @255"),
+            change(700, "light.b", "on @255", "off"),
+        ];
         expect(verdict(toggle, FIRED, changes).ok).toBe(true);
     });
 
     it("passes a Room off double tap on a light that bounces as it turns off", () => {
         const cfg = {mode: "room_off", targets: ["light.a", "light.b"]};
-        const changes = [change(240, "light.a", "on @69", "off"), change(280, "light.a", "off", "on @66"), change(790, "light.a", "on @66", "off"), change(315, "light.b", "on @255", "off")];
+        const changes = [
+            change(240, "light.a", "on @69", "off"),
+            change(280, "light.a", "off", "on @66"),
+            change(790, "light.a", "on @66", "off"),
+            change(315, "light.b", "on @255", "off"),
+        ];
         expect(verdict(cfg, FIRED, changes).ok).toBe(true);
     });
 
@@ -472,20 +577,36 @@ describe("c4-scenarios known-tap verdict", () => {
     });
 
     it("fails on a change before the first known tap", () => {
-        const changes = ["light.a", "light.b"].flatMap((e) => [change(50, e, "on @255", "off"), change(200, e, "off", "on @255"), change(700, e, "on @255", "off")]);
+        const changes = ["light.a", "light.b"].flatMap((e) => [
+            change(50, e, "on @255", "off"),
+            change(200, e, "off", "on @255"),
+            change(700, e, "on @255", "off"),
+        ]);
         expect(verdict(toggle, FIRED, changes).ok).toBe(false);
     });
 
     it("fails unless it saw two known taps", () => {
         const changes = ["light.a", "light.b"].flatMap((e) => [change(200, e, "off", "on @255"), change(700, e, "on @255", "off")]);
-        expect(verdict(toggle, FIRED.filter((f) => f.data.tap_index !== 2), changes).ok).toBe(false);
+        expect(
+            verdict(
+                toggle,
+                FIRED.filter((f) => f.data.tap_index !== 2),
+                changes,
+            ).ok,
+        ).toBe(false);
     });
 
     it("judges a Room master across the room like a Toggle", () => {
         const cfg = {mode: "room_master", targets: ["light.a", "light.b"]};
         const twice = ["light.a", "light.b"].flatMap((e) => [change(200, e, "off", "on @255"), change(700, e, "on @255", "off")]);
         expect(verdict(cfg, FIRED, twice).ok).toBe(true);
-        expect(verdict(cfg, FIRED, twice.filter((c) => c.t < 500)).ok).toBe(false);
+        expect(
+            verdict(
+                cfg,
+                FIRED,
+                twice.filter((c) => c.t < 500),
+            ).ok,
+        ).toBe(false);
     });
 });
 
@@ -549,7 +670,14 @@ describe("c4-scenarios button config", () => {
 
 // Where the runner expects a known single tap to act: a copy of c4_device's Direction and early commit.
 describe("c4-scenarios early commit", () => {
-    const button = (mode: string, extra: Record<string, unknown> = {}) => ({mode, targets: ["light.a", "light.b"], custom: false, multi: true, response: "auto", ...extra});
+    const button = (mode: string, extra: Record<string, unknown> = {}) => ({
+        mode,
+        targets: ["light.a", "light.b"],
+        custom: false,
+        multi: true,
+        response: "auto",
+        ...extra,
+    });
 
     it.each([
         ["on", false, true],
@@ -674,7 +802,14 @@ describe("c4-scenarios multi-tap verdict", () => {
 
 // The led scenario's expectation: a copy of c4_device's LED colour for one button.
 describe("c4-scenarios LED colour", () => {
-    const INPUT = {b1_targets: ["light.cans"], b1_led: ["select.kp_led_1_idle_color", "select.kp_led_1_pressed_color"], b1_on: "Cyan", b1_off: "Yellow", b2_targets: ["light.hanging"], b3_led: ["select.kp_button_5_color"]};
+    const INPUT = {
+        b1_targets: ["light.cans"],
+        b1_led: ["select.kp_led_1_idle_color", "select.kp_led_1_pressed_color"],
+        b1_on: "Cyan",
+        b1_off: "Yellow",
+        b2_targets: ["light.hanging"],
+        b3_led: ["select.kp_button_5_color"],
+    };
     const states = (s: Record<string, string>) => (e: string) => (e in s ? {state: s[e], attributes: {}} : undefined);
 
     it("reads the LED numbers from picked colour selects, else names the button where the extension finds its LED (#22)", () => {
@@ -704,7 +839,10 @@ describe("c4-scenarios LED colour", () => {
 
     it("shows the fault colour for a watched entity HA can't see, unless it counts as off", () => {
         expect(expectedLed(INPUT, 1, states({}), "12:00:00")).toEqual({color: "Red", brightness: 75});
-        expect(expectedLed({...INPUT, fault_colour: "Treat as off"}, 1, states({"light.cans": "unavailable"}), "12:00:00")).toEqual({color: "Yellow", brightness: 15});
+        expect(expectedLed({...INPUT, fault_colour: "Treat as off"}, 1, states({"light.cans": "unavailable"}), "12:00:00")).toEqual({
+            color: "Yellow",
+            brightness: 15,
+        });
     });
 
     it("shows a night colour inside the night window, once the room is dark when it must be", () => {
@@ -718,7 +856,12 @@ describe("c4-scenarios LED colour", () => {
         expect(expectedLed(anyway, 1, states({"light.cans": "off"}), "22:00:00")).toEqual({color: "Yellow", brightness: 15});
         // A Night start written without its zeros is the time it is, as c4_device reads it (9:3 is 09:03:00).
         const unpadded = {...anyway, night_start: "9:3", night_end: "17:00"};
-        expect(["09:02:59", "09:03:00", "16:59:59", "17:00:00"].map((t) => expectedLed(unpadded, 1, states({"light.cans": "on"}), t).color)).toEqual(["Cyan", "Red", "Red", "Cyan"]);
+        expect(["09:02:59", "09:03:00", "16:59:59", "17:00:00"].map((t) => expectedLed(unpadded, 1, states({"light.cans": "on"}), t).color)).toEqual([
+            "Cyan",
+            "Red",
+            "Red",
+            "Cyan",
+        ]);
     });
 
     it("watches the LED's own entities when it has them, all of them when it must", () => {
@@ -734,15 +877,23 @@ describe("c4-scenarios LED colour", () => {
 
 // A Scene button's LED: Active while every target is at its level (ADR 0003).
 describe("c4-scenarios Scene", () => {
-    const DINNER = [{action: "scene.apply", metadata: {}, data: {entities: {"light.island": {state: "on", brightness: 204}, "light.table": {state: "on", brightness: 77}, "switch.fan": "off"}}}];
+    const DINNER = [
+        {
+            action: "scene.apply",
+            metadata: {},
+            data: {entities: {"light.island": {state: "on", brightness: 204}, "light.table": {state: "on", brightness: 77}, "switch.fan": "off"}},
+        },
+    ];
     const TARGETS = ["light.island", "light.table", "switch.fan"];
     const INPUT = {b1_targets: TARGETS, b1_mode: "scene", b1_action: DINNER, b1_on: "Cyan", b1_off: "Yellow", b1_led: ["select.kp_led_1_idle_color"]};
-    const at = (island: number | "off", table: number | "off", fan = "off") => (e: string) =>
-        ({
-            "light.island": island === "off" ? {state: "off", attributes: {}} : {state: "on", attributes: {brightness: island}},
-            "light.table": table === "off" ? {state: "off", attributes: {}} : {state: "on", attributes: {brightness: table}},
-            "switch.fan": {state: fan, attributes: {}},
-        })[e];
+    const at =
+        (island: number | "off", table: number | "off", fan = "off") =>
+        (e: string) =>
+            ({
+                "light.island": island === "off" ? {state: "off", attributes: {}} : {state: "on", attributes: {brightness: island}},
+                "light.table": table === "off" ? {state: "off", attributes: {}} : {state: "on", attributes: {brightness: table}},
+                "switch.fan": {state: fan, attributes: {}},
+            })[e];
 
     it("is Active while every target is in its state and each light within 2 points of its level", () => {
         expect(sceneState(DINNER, TARGETS, at(204, 77))).toEqual({active: true, bad: false});
@@ -758,8 +909,11 @@ describe("c4-scenarios Scene", () => {
     });
 
     it("reads an unquoted on / off, a brightness_pct, and leaves colour and non-light levels uncompared", () => {
-        const yaml = [{action: "scene.apply", data: {entities: {"light.a": {state: true, brightness_pct: 40, color_temp_kelvin: 2700}, "switch.b": {state: false}}}}];
-        const s = (bri: number) => (e: string) => (e === "light.a" ? {state: "on", attributes: {brightness: bri, color_temp_kelvin: 5000}} : {state: "off", attributes: {}});
+        const yaml = [
+            {action: "scene.apply", data: {entities: {"light.a": {state: true, brightness_pct: 40, color_temp_kelvin: 2700}, "switch.b": {state: false}}}},
+        ];
+        const s = (bri: number) => (e: string) =>
+            e === "light.a" ? {state: "on", attributes: {brightness: bri, color_temp_kelvin: 5000}} : {state: "off", attributes: {}};
         expect(sceneState(yaml, ["light.a", "switch.b"], s(102))).toEqual({active: true, bad: false});
         expect(sceneState(yaml, ["light.a", "switch.b"], s(120)).active).toBe(false);
         // A light with no level in the Scene matches on its state alone.
@@ -785,7 +939,9 @@ describe("c4-scenarios Scene", () => {
             "light.table": {state: "on", level: 77},
             "switch.fan": {state: "off", level: null},
         });
-        expect(sceneOf([{action: "scene.apply", data: {entities: {"light.a": {state: true, brightness_pct: 40}}}}])).toEqual({"light.a": {state: "on", level: 102}});
+        expect(sceneOf([{action: "scene.apply", data: {entities: {"light.a": {state: true, brightness_pct: 40}}}}])).toEqual({
+            "light.a": {state: "on", level: 102},
+        });
         expect(sceneOf([{action: "scene.turn_on", target: {entity_id: "scene.dinner"}}])).toEqual({});
         expect(buttonConfig({b1_targets: TARGETS}, 1).scene).toBeUndefined();
     });

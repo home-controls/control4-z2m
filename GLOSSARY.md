@@ -104,12 +104,30 @@ Said of a device that keeps re-joining the network again and again (3 times with
 _Avoid_: Flapping
 
 **Remote reboot**:
-Restarting a device's firmware from Home Assistant or the extension, with its load left at its level and its settings kept. On a DIM1-Z it does what 15 taps on the top paddle do.
+Restarting a device's firmware from Home Assistant or the extension, with its load left at its level and its settings kept. On a DIM1-Z it does what 15 taps on the top paddle do. The KC120277 and APD120 reboot on `0i c4.sy.rb` too (tested), but the extension sends that only to the DIM1-Z so far (#12).
 _Avoid_: Reset (that clears settings), restart (that is an instance's)
 
 **Reset reason**:
 What a device's firmware last restarted on, as it reports it: a power-up, a software reboot, a crash on an assert, a watchdog.
 _Avoid_: Boot reason, room info
+
+### Remotes
+
+**Rows**:
+The two text lines of an SR250's or SR260's LCD: the room (row 1, `room_name`) and the source (row 2, `active_source`), sent together as `c4.ln.ri`.
+_Avoid_: Title, status line
+
+**Wake**:
+A remote being picked up or moved, which it reports as `c4.zr.mot` (the `motion_wake` action). The extension answers with the wake refresh: the clock, the rows and, on an SR260, the text colour.
+_Avoid_: Motion (the remote has no motion sensor in that sense), wake-up
+
+**Identity read**:
+A Control4 device reading the coordinator's identity on the network profile (0xC25D), answered with the controller's attributes. An SR260 makes one after every wake, 0.1 to 34 s later.
+_Avoid_: Check-in (that is the device's own report), interview
+
+**Text colour**:
+The SR260's LCD text colour, one RGB332 byte (`c4.zr.tc`: red bits 7-5, green 4-2, blue 1-0, so 256 colours), which also sets how bright the text is.
+_Avoid_: Backlight (that is a keypad's), LCD colour
 
 ### Deployment
 
@@ -125,8 +143,16 @@ The event fields an instance sends and the dispatcher and blueprint read. It cha
 _Avoid_: Version, protocol
 
 **Build**:
-One compile of the extension and converter together, from one source tree, known by its build id. Many builds share a contract.
-_Avoid_: Version, release
+One compile of the extension and converter together, from one source tree, known by its build id: a hash of the two files, which the instance reports in its status. Many builds share a contract.
+_Avoid_: Version (the number a build carries), release (a published version)
+
+**Version**:
+The extension's release number, `package.json`'s `version` (0.2.0), stamped into both files. The instance reports it next to its build; a change to the files raises it.
+_Avoid_: Build (that is the hash), contract
+
+**Release**:
+One version published on GitHub as `v<version>`, with the two files, `control4-z2m.zip` and their checksums; its notes name its build.
+_Avoid_: Build (releases before 0.2.0 were named after theirs)
 
 **Push**:
 Sending a build to one running instance, which hot-loads it. A push the instance does not prove, by reporting the new build as the one it runs, is rolled back to the build it ran before.
@@ -179,11 +205,12 @@ _Avoid_: Cleanup, purge
 - A **Hardware fade** from off skips a dimmer's cold start
 - Each **LED slot** has one **LED mode**; a slot in follow-load mode follows its own device's load
 - An **Unreachable** DIM1-Z, or one **Stuck re-joining**, gets a **Remote reboot**; its **Reset reason** says what it last restarted on
+- A **Wake** brings an SR260's **Rows** and **Text colour** back, and is followed by one **Identity read**
 - A **Tap sequence** ends one **Tap window** after its last **Tap** and yields one **Tap count**
 - An **Early commit** happens on the first **Tap** of a sequence, and only when its **Direction** is toward ON
 - A **Hold** cancels any open **Tap sequence** on its button
 - A button has at most one **Scene**; Scenes on different buttons may share targets, and each is **Active** on its own
-- Each **Instance** runs one **Build**; the **Dispatcher** and the blueprint each read one **Contract**
+- Each **Instance** runs one **Build** of one **Version**; a **Release** is one **Version** with one **Build**; the **Dispatcher** and the blueprint each read one **Contract**
 - A **Push** hot-loads one **Build** onto one **Instance**; a failed **Push** puts back the **Build** that instance ran before
 - A **Hot-load** and a **Restart** both start the extension afresh; only a **Restart** also restarts Zigbee2MQTT and its coordinator
 - A device is on one **Instance** at a time; a **Handoff** happens each time it joins one, and ends with the old instance dropping its **Saved settings** and, if it still has a record of the device, an **Eviction**

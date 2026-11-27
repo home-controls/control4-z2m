@@ -66,7 +66,10 @@ export function parseColour(value: unknown, fallback: Rgb = [0, 0, 0]): Rgb {
         const name = PALETTE_NAMES[value];
         return name ? PALETTE_RGB[name] : fallback;
     }
-    const text = String(value).trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const text = String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
     if (!text) return fallback;
     if (text in PALETTE_RGB) return PALETTE_RGB[text];
     if (text in STATUS_COLOURS) return PALETTE_RGB[STATUS_COLOURS[text]];
@@ -112,7 +115,9 @@ type Frame = Map<number, Rgb | "stored">;
 
 function frame(buttons: number[], pick: (b: number, i: number) => Rgb): Frame {
     const f: Frame = new Map();
-    buttons.forEach((b, i) => f.set(b, pick(b, i)));
+    buttons.forEach((b, i) => {
+        f.set(b, pick(b, i));
+    });
     return f;
 }
 
@@ -472,7 +477,9 @@ export class Animator {
             // Both frames of the pair, or the LED counts as not sent: a second frame dropped
             // from a full queue left the first counted as everything.
             if (this.protocol === "dmx") {
-                queued = this.engine.tx.submit(this.host, `c4.dmx.led ${hex2(btn)} 03 ${pressHex}`, lost) && this.engine.tx.submit(this.host, `c4.dmx.led ${hex2(btn)} 04 ${hex}`, lost);
+                queued =
+                    this.engine.tx.submit(this.host, `c4.dmx.led ${hex2(btn)} 03 ${pressHex}`, lost) &&
+                    this.engine.tx.submit(this.host, `c4.dmx.led ${hex2(btn)} 04 ${hex}`, lost);
             } else {
                 queued = this.engine.tx.submit(this.host, `c4.kp.lv ${hex2(btn)} ${hex}`, lost);
                 if (press && queued) queued = this.engine.tx.submit(this.host, `c4.kp.lo ${hex2(btn)} ${pressHex}`, lost);
@@ -716,20 +723,25 @@ export class Animator {
         }
         if (this.healTimer || !this.host.alive || this.healTries >= LED_HEAL_DELAYS.length) return;
         const delay = LED_HEAL_DELAYS[this.healTries];
-        this.healTimer = setTimeout(() => {
-            this.healTimer = undefined;
-            if (!this.host.alive || !this.needsHeal()) return;
-            // A status effect sends its frame again at every step; an unreachable device waits.
-            if (this.statusRun && !this.statusRun.cancelled) {
+        this.healTimer = setTimeout(
+            () => {
+                this.healTimer = undefined;
+                if (!this.host.alive || !this.needsHeal()) return;
+                // A status effect sends its frame again at every step; an unreachable device waits.
+                if (this.statusRun && !this.statusRun.cancelled) {
+                    this.healLost = false;
+                    return;
+                }
+                if (this.host.unreachable?.()) return;
+                this.healTries++;
                 this.healLost = false;
-                return;
-            }
-            if (this.host.unreachable?.()) return;
-            this.healTries++;
-            this.healLost = false;
-            this.engine.log.debug(`Control4 LED [${this.host.name}]: a status frame was lost or is unconfirmed; painting the status again (${this.healTries}/${LED_HEAL_DELAYS.length})`);
-            void this.applyStatus();
-        }, delay + Math.random() * delay * 0.2);
+                this.engine.log.debug(
+                    `Control4 LED [${this.host.name}]: a status frame was lost or is unconfirmed; painting the status again (${this.healTries}/${LED_HEAL_DELAYS.length})`,
+                );
+                void this.applyStatus();
+            },
+            delay + Math.random() * delay * 0.2,
+        );
         this.healTimer.unref?.();
     }
 

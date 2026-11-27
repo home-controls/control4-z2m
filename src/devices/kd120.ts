@@ -5,16 +5,16 @@
  * from, or set with the `button_layout` option); its load is an APD120's dimmer.
  *
  * Not yet tested on a real one. What it is built on comes from bharat's KD120 work
- * (docs/research/2026-11-07-kc-apd-sw-capability-map.md): the c4.dmx.led params,
+ * (docs/research/kc-apd-sw-capability-map.md): the c4.dmx.led params,
  * the `c4.dmx.btn <wire> 01` behaviour codes (00 on, 01 off, 02 toggle, 03 event
  * only, 04 momentary), the backlight at `c4.dmx.blc 00 05`, and that out of the box
  * every button toggles its load in firmware, so a tap moves no state here: the
  * load's own c4.dmx.ls report does.
  */
 
-import {AUX_BUTTONS, type ButtonBehaviour, BUTTON_BEHAVIOUR_NAMES, KC_POSITIONS} from "../core/constants";
+import {AUX_BUTTONS, BUTTON_BEHAVIOUR_NAMES, type ButtonBehaviour, KC_POSITIONS} from "../core/constants";
+import type {C4Device, Payload, SetMeta} from "./base";
 import type {LoadControl, TvParams} from "./dimming";
-import {C4Device, type Payload, type SetMeta} from "./base";
 import {behaviourRead, DimmerLoad, type SettingRead, writeBehaviour} from "./gen3";
 import {Kc120277} from "./keypad";
 import {PowerSensor} from "./sensors";

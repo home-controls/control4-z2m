@@ -124,6 +124,7 @@ export function parseZclHeader(data: Buffer): ZclHeader | undefined {
     return {frameControl: fc, manufacturerCode, tsn: data[i], commandId: data[i + 1], offset: i + 2};
 }
 
+// biome-ignore format: a byte-size table, kept in rows by type
 const FIXED_SIZES: Record<number, number> = {
     0x08: 1, 0x09: 2, 0x0a: 3, 0x0b: 4,
     0x10: 1, 0x18: 1, 0x19: 2, 0x1a: 3, 0x1b: 4,
@@ -193,7 +194,11 @@ export function parseReadAttributesResponse(payload: Buffer): Map<number, ZclVal
 
 /** `0x00124b0024c0dc0d` -> 8 bytes little-endian. */
 export function ieeeToBytesLE(ieee: string): Buffer {
-    const hex = ieee.toLowerCase().replace(/^0x/, "").replace(/[^0-9a-f]/g, "").padStart(16, "0");
+    const hex = ieee
+        .toLowerCase()
+        .replace(/^0x/, "")
+        .replace(/[^0-9a-f]/g, "")
+        .padStart(16, "0");
     return Buffer.from(hex, "hex").reverse();
 }
 
@@ -234,7 +239,13 @@ export {C4_CLUSTER};
 export type Rgb = [number, number, number];
 
 export function rgbHex(rgb: Rgb): string {
-    return rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")).join("");
+    return rgb
+        .map((c) =>
+            Math.max(0, Math.min(255, Math.round(c)))
+                .toString(16)
+                .padStart(2, "0"),
+        )
+        .join("");
 }
 
 export function hexRgb(hex: string): Rgb {

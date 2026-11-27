@@ -12,8 +12,8 @@
 
 import {parseColour} from "../core/animation";
 import {C4_CLUSTER, type Gesture, REMOTE_COMMANDS, SR250_BUTTONS, SR260_BUTTONS} from "../core/constants";
-import {buildFrame, hex2, hex4, type ParsedFrame, parseHex, sanitize} from "../core/protocol";
 import {isDeliveryFailure} from "../core/link";
+import {buildFrame, hex2, hex4, type ParsedFrame, parseHex, sanitize} from "../core/protocol";
 import {C4Device, type Payload, type SetMeta, toNumber} from "./base";
 
 /**

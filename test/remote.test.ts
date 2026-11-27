@@ -93,14 +93,28 @@ describe("SR250 keys and menus", () => {
         rig.ascii(R250, "0t0002 sa c4.zr.bh 0d 0000 0000");
         rig.ascii(R250, "0t0003 sa c4.zr.be 0d 0000 0000");
         expect(rig.events.map((e) => e.command)).toEqual(["remote_button_short_press", "remote_button_long_press", "remote_button_short_release"]);
-        expect(rig.events[0]).toMatchObject({ieee: R250, model: "C4-SR250B", action: "volume_up_press", button: "volume_up", gesture: "press", button_id: 0x0d});
+        expect(rig.events[0]).toMatchObject({
+            ieee: R250,
+            model: "C4-SR250B",
+            action: "volume_up_press",
+            button: "volume_up",
+            gesture: "press",
+            button_id: 0x0d,
+        });
     });
 
     it("carries the picked item on the menu_select event", async () => {
         await set(R250, "show_list", {title: "Watch", items: ["YouTube", "Netflix"]});
         rig.ascii(R250, "0t0001 sa c4.ln.is 0002 0000");
         await tick(100);
-        expect(rig.events.at(-1)).toMatchObject({action: "menu_select", command: "menu_select", item: "YouTube", title: "Watch", selected_index: 0, list_id: 2});
+        expect(rig.events.at(-1)).toMatchObject({
+            action: "menu_select",
+            command: "menu_select",
+            item: "YouTube",
+            title: "Watch",
+            selected_index: 0,
+            list_id: 2,
+        });
     });
 
     it("shows a list and answers gi with the item count", async () => {
@@ -150,21 +164,41 @@ describe("SR250 keys and menus", () => {
         await set(R250, "show_list", {title: "T", items: Array.from({length: 12}, (_, i) => `i${i}`)});
         rig.ascii(R250, "0t0001 sa c4.zr.bb 0a 0000 0000 00000000");
         await tick(200);
-        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 0005 ");
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.includes("c4.ln.sl"))
+                .at(-1),
+        ).toContain(" 000c 0005 ");
         rig.ascii(R250, "0t0002 sa c4.zr.bb 0a 0000 0000 00000000");
         await tick(200);
         rig.ascii(R250, "0t0003 sa c4.zr.bb 0a 0000 0000 00000000");
         await tick(200);
-        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 000b ");
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.includes("c4.ln.sl"))
+                .at(-1),
+        ).toContain(" 000c 000b ");
         rig.ascii(R250, "0t0004 sa c4.zr.bb 04 0000 0000 00000000");
         await tick(200);
-        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 000c 0006 ");
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.includes("c4.ln.sl"))
+                .at(-1),
+        ).toContain(" 000c 0006 ");
     });
 
     it("reads the battery on wake and caches it", async () => {
         rig.ascii(R250, "0t0001 sa c4.zr.bb 10 0000 0000 00000000");
         await tick(100);
-        expect(rig.texts().filter((t) => t.startsWith("0g")).map((t) => t.split(" ")[1])).toEqual(["c4.zr.bl"]);
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.startsWith("0g"))
+                .map((t) => t.split(" ")[1]),
+        ).toEqual(["c4.zr.bl"]);
         rig.reply(R250, "64");
         expect(rig.last(R250).battery).toBe(100);
     });
@@ -257,7 +291,8 @@ describe("SR260 text colour", () => {
 
     it("doesn't count delivered rows as undelivered when only the colour fails", async () => {
         await set(R260, "text_color", "#00ff00");
-        rig.transport.failWith = (f) => (f.data.toString("latin1").includes("c4.zr.tc") ? Object.assign(new Error("asleep"), {name: "DeliveryError"}) : undefined);
+        rig.transport.failWith = (f) =>
+            f.data.toString("latin1").includes("c4.zr.tc") ? Object.assign(new Error("asleep"), {name: "DeliveryError"}) : undefined;
         await set(R260, "room_name", "Den");
         rig.transport.failWith = undefined;
         const from = rig.transport.sent.length;
@@ -299,10 +334,20 @@ describe("SR260", () => {
         await set(R260, "show_list", {title: "T", items: Array.from({length: 8}, (_, i) => `i${i}`)});
         rig.ascii(R260, "0t0002 sa c4.zr.bb 0a 0000 0000 00000000");
         await tick(200);
-        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 0008 0005 ");
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.includes("c4.ln.sl"))
+                .at(-1),
+        ).toContain(" 0008 0005 ");
         rig.ascii(R260, "0t0003 sa c4.zr.bb 09 0000 0000 00000000");
         await tick(200);
-        expect(rig.texts().filter((t) => t.includes("c4.ln.sl")).at(-1)).toContain(" 0008 0000 ");
+        expect(
+            rig
+                .texts()
+                .filter((t) => t.includes("c4.ln.sl"))
+                .at(-1),
+        ).toContain(" 0008 0000 ");
     });
 
     it("caches the battery it announces", () => {

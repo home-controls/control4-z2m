@@ -1,6 +1,6 @@
 [
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_press",
@@ -11,7 +11,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_release",
@@ -22,7 +22,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_fast_single",
@@ -34,7 +34,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_single",
@@ -45,7 +45,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_press",
@@ -56,7 +56,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_release",
@@ -67,7 +67,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_tap_known",
@@ -79,7 +79,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_fast_single",
@@ -91,7 +91,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_single",
@@ -102,7 +102,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_press",
@@ -113,7 +113,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_release",
@@ -124,7 +124,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_tap_known",
@@ -136,7 +136,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_press",
@@ -147,7 +147,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_release",
@@ -158,7 +158,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_tap_known",
@@ -170,7 +170,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_fast_double",
@@ -182,7 +182,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_1_double",
@@ -193,7 +193,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_2_press",
@@ -204,7 +204,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_2_hold",
@@ -215,7 +215,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2a",
+    "ieee": "0x000fff0000006e2a",
     "device": "name_6e2a",
     "model": "KPZ-3B1",
     "action": "button_2_hold_release",
@@ -226,7 +226,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_press",
@@ -237,7 +237,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_tap_known",
@@ -249,7 +249,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_fast_single",
@@ -261,7 +261,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_single",
@@ -272,7 +272,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_press",
@@ -283,7 +283,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_tap_known",
@@ -295,7 +295,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_press",
@@ -306,7 +306,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_tap_known",
@@ -318,7 +318,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_fast_double",
@@ -330,7 +330,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2b",
+    "ieee": "0x000fff0000006e2b",
     "device": "name_6e2b",
     "model": "C4-DIM1-Z",
     "action": "button_1_double",
@@ -341,7 +341,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_press",
@@ -352,7 +352,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_release",
@@ -363,7 +363,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_fast_single",
@@ -375,7 +375,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_single",
@@ -386,7 +386,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_press",
@@ -397,7 +397,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_release",
@@ -408,7 +408,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_tap_known",
@@ -420,7 +420,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_fast_single",
@@ -432,7 +432,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_single",
@@ -443,7 +443,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_press",
@@ -454,7 +454,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_release",
@@ -465,7 +465,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_tap_known",
@@ -477,7 +477,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_press",
@@ -488,7 +488,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_release",
@@ -499,7 +499,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_tap_known",
@@ -511,7 +511,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_fast_double",
@@ -523,7 +523,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_1_double",
@@ -534,7 +534,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_2_press",
@@ -545,7 +545,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_2_hold",
@@ -556,7 +556,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000636e2c",
+    "ieee": "0x000fff0000006e2c",
     "device": "name_6e2c",
     "model": "C4-KC120277",
     "action": "button_2_hold_release",
@@ -567,7 +567,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_press",
@@ -578,7 +578,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_release",
@@ -589,7 +589,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_fast_single",
@@ -601,7 +601,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_single",
@@ -612,7 +612,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_press",
@@ -623,7 +623,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_release",
@@ -634,7 +634,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_tap_known",
@@ -646,7 +646,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_fast_single",
@@ -658,7 +658,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_single",
@@ -669,7 +669,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_press",
@@ -680,7 +680,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_release",
@@ -691,7 +691,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_tap_known",
@@ -703,7 +703,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_press",
@@ -714,7 +714,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_release",
@@ -725,7 +725,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_tap_known",
@@ -737,7 +737,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_fast_double",
@@ -749,7 +749,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "top_double",
@@ -760,7 +760,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "bottom_press",
@@ -771,7 +771,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "bottom_hold",
@@ -782,7 +782,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000a9d120",
+    "ieee": "0x000fff000000d120",
     "device": "name_d120",
     "model": "C4-APD120",
     "action": "bottom_hold_release",
@@ -793,7 +793,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_press",
@@ -804,7 +804,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_tap_known",
@@ -816,7 +816,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_fast_single",
@@ -828,7 +828,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_single",
@@ -839,7 +839,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_press",
@@ -850,7 +850,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_tap_known",
@@ -862,7 +862,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_press",
@@ -873,7 +873,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_tap_known",
@@ -885,7 +885,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_fast_double",
@@ -897,7 +897,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_1_double",
@@ -908,7 +908,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_2_hold",
@@ -919,7 +919,7 @@
     "base": "zigbee2mqtt"
   },
   {
-    "ieee": "0x000fff0000f51001",
+    "ieee": "0x000fff0000001001",
     "device": "name_1001",
     "model": "C4-FS1-Z",
     "action": "button_2_hold_release",

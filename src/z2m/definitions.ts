@@ -14,22 +14,22 @@ import {
     AUX_BUTTONS,
     BMC_DEFAULTS,
     BUTTON_BEHAVIOUR_NAMES,
+    COUNTER_GESTURES,
     DEFAULT_TAP_WINDOW_MS,
     DIM1Z_TV_PARAMS,
     FAN_BUTTONS,
-    COUNTER_GESTURES,
     type Family,
-    type Gesture,
     GENERIC_MODEL,
+    type Gesture,
     KC_LAYOUT_OPTION,
     KC_LED_SLOTS,
     KC_NUMBERING_OPTION,
     KC_POSITIONS,
     type KcLayout,
     kcButtonNumber,
+    LED_MODE_NAMES,
     MANUFACTURER,
     MAX_TAP_WINDOW_MS,
-    LED_MODE_NAMES,
     MIN_TAP_WINDOW_MS,
     MODELS,
     PADDLE_HALVES,
@@ -41,9 +41,9 @@ import {
     SR260_BUTTONS,
     TAP_GESTURES,
     TAP_WINDOW_OPTION,
+    type TvParam,
     TX_POWER_MAX,
     TX_POWER_MIN,
-    type TvParam,
     Z2IO_CONTACTS_HW,
     Z2IO_DEFAULT_MODE,
     Z2IO_MODES,
@@ -87,6 +87,7 @@ const RUNTIME_POLL_MS = 100;
 
 /** Commands waiting for the extension, in the order they arrived. */
 const waiting: {resolve: (rt: RuntimeApi) => void; reject: (e: Error) => void; deadline: number}[] = [];
+// biome-ignore lint/correctness/noUnusedVariables: read by the ??= guard below, which biome counts as a write only
 let waitTimer: ReturnType<typeof setTimeout> | undefined;
 
 function pollRuntime(): void {
@@ -132,7 +133,7 @@ function converter(keys: string[], endpoints?: string[]): any {
     };
 }
 
-const COMMON_KEYS = ["c4_send", "c4_get", "c4_identify", "c4_model", "send_raw", "send_get"];
+const COMMON_KEYS = ["c4_send", "c4_get", "c4_raw", "c4_identify", "c4_model", "send_raw", "send_get"];
 /** The ZHA LED cluster (0xFC43) commands, on every c4.dmx-family device. */
 const LED_CLUSTER_KEYS = ["set_led_color", "set_led_mode", "set_led_all_same_color", "set_all_led_modes", "set_led_single_on"];
 /** The ZHA ramp cluster (0xFC44) commands, on the dimmers. */
@@ -182,7 +183,9 @@ function ledMode(key: string, label: string): Expose {
     return e
         .enum(key, ea.STATE_SET, [...LED_MODE_NAMES])
         .withLabel(label)
-        .withDescription("How the LED picks its colour: follow_load (on colour while the load is on, off colour while off), push_release (pressed colour while its button is held), or programmed (a colour set from outside, as a status colour)")
+        .withDescription(
+            "How the LED picks its colour: follow_load (on colour while the load is on, off colour while off), push_release (pressed colour while its button is held), or programmed (a colour set from outside, as a status colour)",
+        )
         .withCategory("config");
 }
 
@@ -254,7 +257,11 @@ function ledTransition(): Expose {
 }
 
 function ledNotification(): Expose {
-    return e.binary("led_notification", ea.STATE, true, false).withLabel("LED notification").withDescription("An LED effect owns the LEDs right now").withCategory("diagnostic");
+    return e
+        .binary("led_notification", ea.STATE, true, false)
+        .withLabel("LED notification")
+        .withDescription("An LED effect owns the LEDs right now")
+        .withCategory("diagnostic");
 }
 
 function transitions(): Expose[] {
@@ -297,12 +304,16 @@ function tvParams(params: TvParam[]): Expose[] {
 
 /** A write-only enum with one value: Home Assistant shows it as a button. */
 function rebootButton(): Expose {
-    return e
-        .enum(REBOOT_KEY, ea.SET, ["reboot"])
-        .withLabel("Reboot")
-        .withDescription("Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)")
-        // A settable expose can't be "diagnostic" in Zigbee2MQTT.
-        .withCategory("config");
+    return (
+        e
+            .enum(REBOOT_KEY, ea.SET, ["reboot"])
+            .withLabel("Reboot")
+            .withDescription(
+                "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)",
+            )
+            // A settable expose can't be "diagnostic" in Zigbee2MQTT.
+            .withCategory("config")
+    );
 }
 
 /** DIM1-Z device option: whether the extension reboots the dimmer when it stops answering or keeps re-joining. */
@@ -323,7 +334,12 @@ function paddleLocalControl(): Expose {
 }
 
 function ambient(): Expose {
-    return e.numeric("ambient_light", ea.STATE_GET).withValueMin(0).withValueMax(255).withLabel("Ambient light").withDescription("Raw photodiode reading 0-255 (not lux)");
+    return e
+        .numeric("ambient_light", ea.STATE_GET)
+        .withValueMin(0)
+        .withValueMax(255)
+        .withLabel("Ambient light")
+        .withDescription("Raw photodiode reading 0-255 (not lux)");
 }
 
 /** The load's power reading (c4.dmx.pwr, and after the level in each c4.dmx.ls). */
@@ -334,7 +350,10 @@ function powerSensors(): Expose[] {
         e.current().withAccess(ea.STATE_GET).withDescription("Current the load draws"),
         e.power_apparent().withAccess(ea.STATE_GET).withDescription("Apparent power the load draws"),
         e.power_factor().withAccess(ea.STATE_GET).withDescription("Power factor of the load"),
-        e.energy().withAccess(ea.STATE_GET).withDescription("Energy the load has used: the device's lifetime counter (about 1.27 Wh a count), carried across its reboots"),
+        e
+            .energy()
+            .withAccess(ea.STATE_GET)
+            .withDescription("Energy the load has used: the device's lifetime counter (about 1.27 Wh a count), carried across its reboots"),
     ];
 }
 
@@ -356,7 +375,11 @@ const MULTICLICK_KEYS = BMC_DEFAULTS.map((_, i) => `multiclick_time_${i + 1}`);
 /** What the Gen3 board (KC120277 / APD120 / SW120277) tells about itself, and its radio power. */
 function gen3Health(fault: boolean): Expose[] {
     const out: Expose[] = [
-        e.text("reset_reason", ea.STATE).withLabel("Reset reason").withDescription("Why the device last restarted (c4.sy.ri; EmberZNet's code in brackets)").withCategory("diagnostic"),
+        e
+            .text("reset_reason", ea.STATE)
+            .withLabel("Reset reason")
+            .withDescription("Why the device last restarted (c4.sy.ri; EmberZNet's code in brackets)")
+            .withCategory("diagnostic"),
         e.text("firmware_version", ea.STATE).withLabel("Firmware version").withDescription("c4.sy.fwv").withCategory("diagnostic"),
         e.text("bootloader_version", ea.STATE).withLabel("Bootloader version").withDescription("c4.sy.blv").withCategory("diagnostic"),
         e
@@ -369,7 +392,14 @@ function gen3Health(fault: boolean): Expose[] {
             .withDescription("Radio transmit power (c4.sy.zpw); Control4 provisions 0. Put back after a re-join if the device has lost it")
             .withCategory("config"),
     ];
-    if (fault) out.push(e.binary("fault", ea.STATE, true, false).withLabel("Fault").withDescription("The device reports a fault on its load: a short circuit or an overload (c4.dmx.warn)").withCategory("diagnostic"));
+    if (fault)
+        out.push(
+            e
+                .binary("fault", ea.STATE, true, false)
+                .withLabel("Fault")
+                .withDescription("The device reports a fault on its load: a short circuit or an overload (c4.dmx.warn)")
+                .withCategory("diagnostic"),
+        );
     return out;
 }
 const GEN3_KEYS = [...MULTICLICK_KEYS, "tx_power"];
@@ -393,7 +423,11 @@ function paddleLeds(): Expose[] {
     const out: Expose[] = [];
     for (const h of PADDLE_HALVES) {
         const name = h.half === "top" ? "Top" : "Bottom";
-        out.push(ledColor(`led_${h.half}_on_color`, `${name} LED on colour`), ledColor(`led_${h.half}_off_color`, `${name} LED off colour`), ledMode(`led_${h.half}_mode`, `${name} LED mode`));
+        out.push(
+            ledColor(`led_${h.half}_on_color`, `${name} LED on colour`),
+            ledColor(`led_${h.half}_off_color`, `${name} LED off colour`),
+            ledMode(`led_${h.half}_mode`, `${name} LED mode`),
+        );
     }
     return out;
 }
@@ -430,7 +464,11 @@ function z2ioExposes(mode: number): Expose[] {
     }
     out.push(
         e.temperature(),
-        e.numeric("external_temperature", ea.STATE).withUnit("°C").withLabel("External temperature").withDescription("External probe (absent when no probe is connected)"),
+        e
+            .numeric("external_temperature", ea.STATE)
+            .withUnit("°C")
+            .withLabel("External temperature")
+            .withDescription("External probe (absent when no probe is connected)"),
         e.humidity(),
         e
             .numeric("pulse_duration", ea.STATE_SET)
@@ -467,7 +505,12 @@ const KC_KEYS = [
     "led_brightness",
     "led_transition",
     // led_N_bound stays as a key: on = push_release, off = programmed.
-    ...Array.from({length: KC_LED_SLOTS}, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
+    ...Array.from({length: KC_LED_SLOTS}, (_, i) => [
+        `led_${i + 1}_idle_color`,
+        `led_${i + 1}_pressed_color`,
+        `led_${i + 1}_mode`,
+        `led_${i + 1}_bound`,
+    ]).flat(),
     "backlight_color",
     "backlight_brightness",
     "ambient_light",
@@ -517,7 +560,11 @@ const FAMILIES: Record<Family, FamilyDef> = {
     dim1z: {
         exposes: [
             e.light_brightness(),
-            actions(["button_1", "button_2"], ["press", "single", "double", "triple", "quadruple", "hold", "hold_release", ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+            actions(
+                ["button_1", "button_2"],
+                ["press", "single", "double", "triple", "quadruple", "hold", "hold_release", ...COUNTER_GESTURES],
+                ["led_notification_start", "led_notification_end"],
+            ),
             ...transitions(),
             ...tvParams(DIM1Z_TV_PARAMS),
             paddleLocalControl(),
@@ -563,7 +610,19 @@ const FAMILIES: Record<Family, FamilyDef> = {
             ...gen3Health(true),
         ],
         // paddle_local_control stays as a key (on = top load_on / bottom load_off, off = both event_only).
-        keys: ["state", "paddle_local_control", ...BEHAVIOUR_KEYS, ...LED_CLUSTER_KEYS, ...PADDLE_LED_KEYS, "led_brightness", "led_transition", ...LED_ENGINE_KEYS, "ambient_light", ...POWER_KEYS, ...GEN3_KEYS],
+        keys: [
+            "state",
+            "paddle_local_control",
+            ...BEHAVIOUR_KEYS,
+            ...LED_CLUSTER_KEYS,
+            ...PADDLE_LED_KEYS,
+            "led_brightness",
+            "led_transition",
+            ...LED_ENGINE_KEYS,
+            "ambient_light",
+            ...POWER_KEYS,
+            ...GEN3_KEYS,
+        ],
         options: [...pollOptions(true), tapWindowOption()],
     },
     fs1z: {
@@ -696,12 +755,18 @@ export function kdExposes(layout: KcLayout): Expose[] {
  */
 function kcKeypadExposes(layout: KcLayout, extraButtons: string[] = []): Expose[] {
     const wires = layout.wires;
-    const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({length: KC_POSITIONS}, (_, i) => `button_${i + 1}`);
+    const buttonNames = wires
+        ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))]
+        : Array.from({length: KC_POSITIONS}, (_, i) => `button_${i + 1}`);
     // A button lights the LED slots of the positions it covers: from its own wire down to the
     // next fitted button's, at most three (a triple-height button).
     const leds: Expose[] = [];
     const add = (slot: number, label: string) =>
-        leds.push(ledColor(`led_${slot + 1}_idle_color`, `${label} idle colour`), ledColor(`led_${slot + 1}_pressed_color`, `${label} pressed colour`), ledMode(`led_${slot + 1}_mode`, `${label} mode`));
+        leds.push(
+            ledColor(`led_${slot + 1}_idle_color`, `${label} idle colour`),
+            ledColor(`led_${slot + 1}_pressed_color`, `${label} pressed colour`),
+            ledMode(`led_${slot + 1}_mode`, `${label} mode`),
+        );
     if (wires) {
         wires.forEach((w, i) => {
             const n = kcButtonNumber(w, layout);
@@ -733,7 +798,11 @@ function kcKeypadExposes(layout: KcLayout, extraButtons: string[] = []): Expose[
 }
 
 function keypadFamily(n: number): FamilyDef {
-    const ex2: Expose[] = [actions(keypadNames(n), [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]), ledBrightness(), ledTransition()];
+    const ex2: Expose[] = [
+        actions(keypadNames(n), [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+        ledBrightness(),
+        ledTransition(),
+    ];
     const keys = ["led_brightness", "led_transition", ...LED_ENGINE_KEYS, ...LED_CLUSTER_KEYS];
     for (let i = 1; i <= n; i++) {
         ex2.push(ledColor(`button_${i}_idle_color`, `Button ${i} idle colour`), ledColor(`button_${i}_pressed_color`, `Button ${i} pressed colour`));
@@ -752,7 +821,14 @@ function remoteFamily(buttons: Record<number, string>, sr260: boolean): FamilyDe
     ];
     if (sr260) {
         exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
-        exposes.push(e.text("text_color", ea.STATE_SET).withLabel("Text colour").withDescription("#RRGGBB (or a palette name, or the 0-255 byte), matched to the remote's 256 colours (c4.zr.tc); empty stops re-sending it, and the remote keeps the last colour it was sent"));
+        exposes.push(
+            e
+                .text("text_color", ea.STATE_SET)
+                .withLabel("Text colour")
+                .withDescription(
+                    "#RRGGBB (or a palette name, or the 0-255 byte), matched to the remote's 256 colours (c4.zr.tc); empty stops re-sending it, and the remote keeps the last colour it was sent",
+                ),
+        );
     }
     return {
         exposes,

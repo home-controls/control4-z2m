@@ -2,7 +2,7 @@
 
 Issues and specs for this repo live in GitHub Issues on `home-controls/control4-z2m`. Use the `gh` CLI (`gh auth login` once).
 
-The repo is private but readable by testers: an issue, a comment or a PR body is as public to them as the code. Before posting, write the body to a scratch file and run `node tools/privacy-check.mjs --text body.md`; post only when it reports clean.
+The repo is public: an issue, a comment or a PR body is as public as the code. Before posting, write the body to a scratch file and run `node tools/privacy-check.mjs --text body.md`; post only when it reports clean.
 
 ## Setup for every command
 
@@ -27,7 +27,7 @@ Write multi-line bodies to a scratch file and pass them with `--body-file`, so M
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
 
-Contributors without write access open PRs from their forks.
+Contributors open PRs from their forks. A fork's PR gets no secrets, so CI skips the privacy check there: before merging one, run `node tools/privacy-check.mjs --range <base>..<head>` on it.
 
 ## When a skill says "publish to the issue tracker"
 

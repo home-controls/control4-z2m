@@ -68,7 +68,8 @@ function stepsOf(steps: unknown): unknown[] {
  * mapping of PERIOD_UNITS, none negative; undefined for any other.
  */
 function periodSeconds(d: unknown): number | undefined {
-    const amount = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : typeof x === "string" && /^\d+(\.\d+)?$/.test(x) ? Number(x) : undefined);
+    const amount = (x: unknown) =>
+        typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : typeof x === "string" && /^\d+(\.\d+)?$/.test(x) ? Number(x) : undefined;
     if (typeof d === "string") {
         const clock = /^(\d+):(\d+)(?::(\d+(?:\.\d+)?))?$/.exec(d);
         return clock ? Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3] ?? 0) : amount(d);
@@ -138,7 +139,8 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
         try {
             return render();
         } catch (error) {
-            if (step.continue_on_error === true && error instanceof C4TemplateError) unmodelled(`${String(step.action)} whose template fails under continue_on_error, which Home Assistant goes past (${error.message})`);
+            if (step.continue_on_error === true && error instanceof C4TemplateError)
+                unmodelled(`${String(step.action)} whose template fails under continue_on_error, which Home Assistant goes past (${error.message})`);
             throw error;
         }
     };
@@ -148,7 +150,10 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
         const data = step.data;
         if (!hasKeys(data, "topic", "payload")) unmodelled(`mqtt.publish with data ${JSON.stringify(data)}`);
         if (typeof data.topic !== "string" || typeof data.payload !== "string") unmodelled("mqtt.publish whose topic or payload is no text");
-        const [topic, payload] = renderData(step, () => [renderText(env, data.topic as string, now, "led step", "topic"), renderText(env, data.payload as string, now, "led step", "payload")]);
+        const [topic, payload] = renderData(step, () => [
+            renderText(env, data.topic as string, now, "led step", "topic"),
+            renderText(env, data.payload as string, now, "led step", "payload"),
+        ]);
         if (topic !== setTopic) unmodelled(`mqtt.publish on ${topic}, not the device's ${setTopic}`);
         let body: unknown;
         try {
@@ -166,7 +171,8 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
         const raw = step.data ?? {};
         const data = renderData(step, () => renderValue(env, raw, now, "led step", action));
         // cv.string: a template's result is its text, but a list or a mapping that no template wrote is refused.
-        const isText = (k: string, v: unknown) => v !== null && v !== undefined && (!(Array.isArray(v) || isMapping(v)) || (isMapping(raw) && isTemplate(raw[k])));
+        const isText = (k: string, v: unknown) =>
+            v !== null && v !== undefined && (!(Array.isArray(v) || isMapping(v)) || (isMapping(raw) && isTemplate(raw[k])));
         const ok = isMapping(data) && takes[0] in data && Object.entries(data).every(([k, v]) => takes.includes(k) && isText(k, v));
         if (!ok) runEnds(`${action} with data ${JSON.stringify(data)}`);
     };
@@ -181,7 +187,8 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
             if ("enabled" in step && step.enabled !== true) unmodelled(`enabled: ${JSON.stringify(step.enabled)}`);
             const keys = Object.keys(step);
             const kind = keys.find((k) => Object.hasOwn(KINDS, k));
-            if (!kind || keys.some((k) => k !== kind && !COMMON.includes(k) && !KINDS[kind].includes(k))) unmodelled(keys.length ? keys.join(", ") : "an empty step");
+            if (!kind || keys.some((k) => k !== kind && !COMMON.includes(k) && !KINDS[kind].includes(k)))
+                unmodelled(keys.length ? keys.join(", ") : "an empty step");
             if (kind === "delay") {
                 // Home Assistant ends the run on a delay that renders to no time period (_get_pos_time_period_template);
                 // this takes fewer forms than it does, so it refuses the rest without saying which Home Assistant runs.
@@ -218,7 +225,8 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
                 const action = step.action as string;
                 if ("metadata" in step && !isMapping(step.metadata)) unmodelled(`metadata ${JSON.stringify(step.metadata)}`);
                 // cv.boolean takes yes, on and 1 as well; the yaml package reads them otherwise than Home Assistant's loader.
-                if ("continue_on_error" in step && typeof step.continue_on_error !== "boolean") unmodelled(`continue_on_error: ${JSON.stringify(step.continue_on_error)}`);
+                if ("continue_on_error" in step && typeof step.continue_on_error !== "boolean")
+                    unmodelled(`continue_on_error: ${JSON.stringify(step.continue_on_error)}`);
                 if (action === "mqtt.publish") publish(step, now);
                 else if (Object.hasOwn(NOTIFICATIONS, action)) notify(action, step, now);
                 else unmodelled(`action ${JSON.stringify(step.action)}`);

@@ -29,7 +29,11 @@ function answer(r: Rig, status: string, values = ""): void {
     r.ascii(UNK, `0r${head.slice(2, 6)} ${status} ${prop.join(" ")} ${values}`.trim());
 }
 
-const gets = (r: Rig, from = 0) => r.texts(from).filter((t) => t.startsWith("0g")).map((t) => t.replace(/^0g[0-9a-f]{4} /, ""));
+const gets = (r: Rig, from = 0) =>
+    r
+        .texts(from)
+        .filter((t) => t.startsWith("0g"))
+        .map((t) => t.replace(/^0g[0-9a-f]{4} /, ""));
 
 describe("a check-in naming a model this build doesn't support", () => {
     it("keeps the device ours and generic: the identity answered, the model learned, the record left generic", async () => {
