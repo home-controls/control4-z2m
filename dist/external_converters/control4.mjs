@@ -767,7 +767,7 @@ function remoteFamily(buttons, sr260) {
   ];
   if (sr260) {
     exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
-    exposes.push(e.text("text_color", ea.STATE_SET).withLabel("Text colour").withDescription("#RRGGBB, matched to the remote's 256 colours (c4.zr.tc); empty leaves its own"));
+    exposes.push(e.text("text_color", ea.STATE_SET).withLabel("Text colour").withDescription("#RRGGBB (or a palette name, or the 0-255 byte), matched to the remote's 256 colours (c4.zr.tc); empty stops re-sending it, and the remote keeps the last colour it was sent"));
   }
   return {
     exposes,

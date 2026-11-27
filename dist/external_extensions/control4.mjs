@@ -5782,18 +5782,22 @@ var Sr260 = class extends Remote {
       });
     }
   }
-  /** The rows, then the text colour when one is set: every path that pushes rows (setup, wake, /set) re-applies it. */
+  /**
+   * The rows, then the text colour when one is set: every path that pushes rows (setup,
+   * wake, /set) re-applies it. The colour going undelivered doesn't make the rows count as
+   * undelivered; the next push sends it again.
+   */
   async sendRoomInfo(room, source) {
     await super.sendRoomInfo(room, source);
     const color = this.setting("text_color_byte");
-    if (typeof color === "number") await this.set(`c4.zr.tc ${hex2(color)}`);
+    if (typeof color === "number") await this.trySet(`c4.zr.tc ${hex2(color)}`);
   }
   async setValue(key, value, meta) {
     if (key === "text_color") {
       const byte2 = rgb332(value);
       this.saveSetting("text_color_byte", byte2);
       if (byte2 !== void 0) await this.set(`c4.zr.tc ${hex2(byte2)}`);
-      return { text_color: byte2 === void 0 ? "" : String(value) };
+      return { text_color: byte2 === void 0 ? "" : rgb332Hex(byte2) };
     }
     if (key === "show_message") {
       const obj = value && typeof value === "object" ? value : { message: value };
@@ -5804,19 +5808,23 @@ var Sr260 = class extends Remote {
   }
 };
 function rgb332(value) {
-  let rgb2;
-  if (typeof value === "number") return Math.max(0, Math.min(255, Math.round(value)));
-  if (typeof value === "string" && /^#?[0-9a-f]{6}$/i.test(value.trim())) {
-    const h = value.trim().replace("#", "");
-    rgb2 = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
-  } else if (Array.isArray(value) && value.length === 3) rgb2 = value.map(Number);
-  else if (value && typeof value === "object") {
-    const v = value;
-    rgb2 = [v.r, v.g, v.b].map(Number);
+  if (value === void 0 || value === null || typeof value === "string" && !value.trim()) return void 0;
+  if (typeof value === "number" || typeof value === "string" && /^\s*\d+\s*$/.test(value)) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 255) throw new Error(`text colour byte ${value} is not 0-255`);
+    return n;
   }
-  if (!rgb2 || rgb2.some((c) => !Number.isFinite(c))) return void 0;
-  const [r, g, b] = rgb2.map((c) => Math.max(0, Math.min(255, Math.round(c))));
+  const obj = value;
+  const rgb2 = typeof value === "object" && !Array.isArray(value) ? [obj.r, obj.g, obj.b] : value;
+  if (Array.isArray(rgb2) && rgb2.some((c) => c === void 0 || c === null || !Number.isFinite(Number(c)))) {
+    throw new Error(`text colour ${JSON.stringify(value)} needs numeric r, g and b`);
+  }
+  const [r, g, b] = parseColour(rgb2);
   return r & 224 | (g & 224) >> 3 | b >> 6;
+}
+function rgb332Hex(byte2) {
+  const part = (v, max) => hex2(Math.round(v * 255 / max));
+  return `#${part(byte2 >> 5 & 7, 7)}${part(byte2 >> 2 & 7, 7)}${part(byte2 & 3, 3)}`;
 }
 
 // src/devices/rosw120.ts
