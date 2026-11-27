@@ -39,7 +39,7 @@
     "esbuild": "^0.28.2",
     "minijinja-js": "3.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.7",
+    "vitest": "^4.1.11",
     "yaml": "^2.9.1",
     "zigbee-herdsman": "10.10.0",
     "zigbee-herdsman-converters": "26.115.1"
