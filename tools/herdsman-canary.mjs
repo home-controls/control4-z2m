@@ -36,6 +36,13 @@ async function json(url, init) {
     return res.status === 204 ? undefined : res.json();
 }
 
+/**
+ * What a Zigbee2MQTT ref and a pinned version may look like. Both come from GitHub (the latest release's
+ * tag, Zigbee2MQTT's package.json) and end up in commands, so anything else stops the run.
+ */
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const SAFE_VERSION = /^[~^]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
 const github = (p) => json(`https://api.github.com/repos/${Z2M}/${p}`, {headers: {"User-Agent": "control4-z2m-canary", Accept: "application/vnd.github+json"}});
 
 /** The Zigbee2MQTT ref for the target, its commit, and the herdsman packages it pins there. */
@@ -45,14 +52,20 @@ async function resolveTarget() {
     const pkg = await json(`https://raw.githubusercontent.com/${Z2M}/${sha}/package.json`);
     const pins = Object.fromEntries(PACKAGES.map((p) => [p, pkg.dependencies?.[p]]));
     for (const [p, v] of Object.entries(pins)) if (!v) throw new Error(`Zigbee2MQTT ${ref} does not depend on ${p}`);
+    if (!SAFE_REF.test(ref)) throw new Error(`unexpected Zigbee2MQTT ref ${JSON.stringify(ref)}`);
+    for (const [p, v] of Object.entries(pins)) if (!SAFE_VERSION.test(v)) throw new Error(`unexpected version ${JSON.stringify(v)} for ${p}`);
     return {ref, sha, pins};
 }
 
-/** Run a shell command in the repo, streaming its output and keeping a copy. */
-function run(cmd) {
+/**
+ * Run a command in the repo, its arguments as a list (no shell, so nothing in them is interpreted),
+ * streaming its output and keeping a copy. Windows needs a shell to start npm and npx; every argument
+ * that came from outside has passed SAFE_REF / SAFE_VERSION by then.
+ */
+function run(file, args) {
     return new Promise((resolve) => {
-        console.log(`\n$ ${cmd}`);
-        const child = spawn(cmd, {cwd: root, shell: true, env: {...process.env, FORCE_COLOR: "0", NO_COLOR: "1"}});
+        console.log(`\n$ ${[file, ...args].join(" ")}`);
+        const child = spawn(file, args, {cwd: root, shell: process.platform === "win32", env: {...process.env, FORCE_COLOR: "0", NO_COLOR: "1"}});
         let output = "";
         const take = (chunk) => {
             output += chunk;
@@ -69,13 +82,13 @@ const installed = (p) => JSON.parse(fs.readFileSync(path.join(root, "node_module
 
 async function check({ref, pins}) {
     const steps = [];
-    const install = await run(`npm install --no-save --no-audit --no-fund ${PACKAGES.map((p) => `${p}@${pins[p]}`).join(" ")}`);
+    const install = await run("npm", ["install", "--no-save", "--no-audit", "--no-fund", ...PACKAGES.map((p) => `${p}@${pins[p]}`)]);
     steps.push({name: "install", ...install});
     if (!install.ok) return steps;
     console.log(`\nZigbee2MQTT ${ref}: running against ${PACKAGES.map((p) => `${p} ${installed(p)}`).join(", ")}`);
-    steps.push({name: "typecheck", ...(await run("npx tsc --noEmit"))});
-    steps.push({name: "vitest", ...(await run("npx vitest run"))});
-    steps.push({name: "harness", ...(await run(`node tools/z2m-harness.mjs ${ref}`))});
+    steps.push({name: "typecheck", ...(await run("npx", ["tsc", "--noEmit"]))});
+    steps.push({name: "vitest", ...(await run("npx", ["vitest", "run"]))});
+    steps.push({name: "harness", ...(await run(process.execPath, ["tools/z2m-harness.mjs", ref]))});
     return steps;
 }
 
@@ -179,5 +192,5 @@ try {
     console.error(e?.stack ?? e);
     process.exitCode = 2;
 } finally {
-    if (!process.env.CI && steps.length) await run("npm ci --no-audit --no-fund");
+    if (!process.env.CI && steps.length) await run("npm", ["ci", "--no-audit", "--no-fund"]);
 }
