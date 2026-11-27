@@ -413,11 +413,11 @@ export class Runtime {
 
     private async sendRaw(ieee: string, frame: OutFrame, options?: {ack?: boolean}): Promise<void> {
         const transport = this.host.transport;
-        if (!transport) throw new Error("Control4: no supported coordinator (an Ember / EFR32 adapter is required)");
+        if (!transport) throw new Error("Control4: no supported coordinator (an Ember adapter, or the legacy ezsp one, is required)");
         const info = this.host.deviceInfo(ieee);
         if (!info) throw new Error(`Control4: unknown device ${ieee}`);
         try {
-            await transport.send(info.nwk, frame, options);
+            await transport.send(info.nwk, frame, {...options, sleepy: info.type === "EndDevice"});
             this.link.noteTx(ieee, true);
             // Without an ack the send never waits for messageSent.
             this.traffic.sent(options?.ack === false ? undefined : true);
@@ -578,7 +578,12 @@ export class Runtime {
         this.unknownTsn = (this.unknownTsn + 1) & 0xff;
         const data = buildIdentityFrame(coordinator, readResponseTsn ?? this.unknownTsn, readResponseTsn !== undefined);
         try {
-            await this.link.transmit(`nwk:${nwk}`, () => transport.send(nwk, {profile: PROFILE_NETWORK, cluster: C4_CLUSTER, srcEp: 2, dstEp: 2, data}), true);
+            // Not known yet: most likely a remote that just re-joined, so sent the way a sleeping end device needs.
+            await this.link.transmit(
+                `nwk:${nwk}`,
+                () => transport.send(nwk, {profile: PROFILE_NETWORK, cluster: C4_CLUSTER, srcEp: 2, dstEp: 2, data}, {sleepy: true}),
+                true,
+            );
             this.traffic.sent(true);
             this.log.info(`Control4: answered a check-in from network address ${nwk}, which Zigbee2MQTT does not know yet, with the controller identity`);
         } catch (error) {

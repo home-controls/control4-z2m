@@ -614,3 +614,18 @@ describe("link health", () => {
         expect(rig.runtime.link.keepaliveCandidates(Date.now() + 19 * 60_000)).toEqual([]);
     });
 });
+describe("send options", () => {
+    it("marks sends to end devices as sleepy, and none to routers", async () => {
+        vi.useFakeTimers();
+        const r = new Rig();
+        const remote = r.add("0x000fff00000000e2", "C4-SR260", {type: "EndDevice"});
+        const keypad = r.add("0x000fff00000000a1", "C4-KP6-Z", {type: "Router"});
+        r.start();
+        await tick(40_000); // the start-up identity sends (a keypad's start 12-32 s in), and the remote's commissioning
+        const sleepy = (ieee: string) => [...new Set(r.transport.sent.filter((s) => s.nwk === r.nwk(ieee)).map((s) => s.sleepy))];
+        expect(sleepy(remote)).toEqual([true]);
+        expect(sleepy(keypad)).toEqual([false]);
+        r.stop();
+        vi.useRealTimers();
+    });
+});

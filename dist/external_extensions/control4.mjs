@@ -1,4 +1,4 @@
-// control4-z2m 0.2.1 - Zigbee2MQTT external extension
+// control4-z2m 0.3.1 - Zigbee2MQTT external extension
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -2334,6 +2334,11 @@ var SL_MAX_MESSAGE_LIMIT = 3075;
 var INCOMING_UNICAST = 0;
 var INCOMING_UNICAST_REPLY = 1;
 var HIGH_RAM_CONCENTRATOR = 65529;
+var EMBER_SUCCESS = 0;
+var EMBER_NO_BUFFERS = 24;
+var EMBER_MAX_MESSAGE_LIMIT_REACHED = 114;
+var EMBER_NETWORK_DOWN = 145;
+var EMBER_NETWORK_BUSY = 161;
 var SEND_ATTEMPTS = 3;
 var BUSY_DEFER_MS = 500;
 var NETWORK_DOWN_DEFER_MS = 1500;
@@ -2341,6 +2346,52 @@ var SENT_TIMEOUT_MS = 12e3;
 var EARLY_MAX_AGE_MS = 1e3;
 var EARLY_MAX = 64;
 var wait = (ms) => new Promise((r) => setTimeout(r, ms));
+var Confirmations = class {
+  pending = /* @__PURE__ */ new Map();
+  early = /* @__PURE__ */ new Map();
+  /** A messageSent from the stack, for any send (herdsman's own included). */
+  sent(tag, nwk, profile, ok, status) {
+    const p = this.pending.get(tag);
+    if (p && p.nwk === nwk && p.profile === profile) {
+      this.settle(tag, ok, status);
+      return;
+    }
+    this.early.delete(tag);
+    this.early.set(tag, { ok, status, nwk, profile, at: Date.now() });
+    if (this.early.size > EARLY_MAX) this.early.delete(this.early.keys().next().value);
+  }
+  wait(tag, nwk, profile) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(tag);
+        reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
+      }, SENT_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(tag, { nwk, profile, resolve, reject, timer });
+      const early = this.early.get(tag);
+      if (early !== void 0) {
+        this.early.delete(tag);
+        if (early.nwk === nwk && early.profile === profile && Date.now() - early.at <= EARLY_MAX_AGE_MS) this.settle(tag, early.ok, early.status);
+      }
+    });
+  }
+  /** Fail every send still waiting. */
+  stop() {
+    for (const [tag, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new DeliveryError("transport stopped", "stopped"));
+      this.pending.delete(tag);
+    }
+  }
+  settle(tag, ok, status) {
+    const p = this.pending.get(tag);
+    if (!p) return;
+    this.pending.delete(tag);
+    clearTimeout(p.timer);
+    if (ok) p.resolve();
+    else p.reject(new DeliveryError(`delivery failed (status 0x${status.toString(16)})`, "failed"));
+  }
+};
 var EmberTransport = class {
   constructor(adapter, log) {
     this.adapter = adapter;
@@ -2352,17 +2403,9 @@ var EmberTransport = class {
   name = "ember";
   ezsp;
   original;
-  pending = /* @__PURE__ */ new Map();
-  early = /* @__PURE__ */ new Map();
+  confirmations = new Confirmations();
   onSent = (status, _type, dst, aps, tag) => {
-    const p = this.pending.get(tag);
-    if (p && p.nwk === dst && p.profile === aps?.profileId) {
-      this.settle(tag, status);
-      return;
-    }
-    this.early.delete(tag);
-    this.early.set(tag, { status, nwk: dst, profile: aps?.profileId, at: Date.now() });
-    if (this.early.size > EARLY_MAX) this.early.delete(this.early.keys().next().value);
+    this.confirmations.sent(tag, dst, aps?.profileId, status === SL_OK, status);
   };
   static supports(adapter) {
     return typeof adapter?.ezsp?.ezspIncomingMessageHandler === "function" && typeof adapter?.ezsp?.send === "function";
@@ -2402,19 +2445,7 @@ var EmberTransport = class {
       this.original = void 0;
     }
     this.ezsp.off?.("messageSent", this.onSent);
-    for (const [tag, p] of this.pending) {
-      clearTimeout(p.timer);
-      p.reject(new DeliveryError("transport stopped", "stopped"));
-      this.pending.delete(tag);
-    }
-  }
-  settle(tag, status) {
-    const p = this.pending.get(tag);
-    if (!p) return;
-    this.pending.delete(tag);
-    clearTimeout(p.timer);
-    if (status === SL_OK) p.resolve();
-    else p.reject(new DeliveryError(`delivery failed (status 0x${status.toString(16)})`, "failed"));
+    this.confirmations.stop();
   }
   async send(nwk, frame2, options = {}) {
     const ack = options.ack !== false;
@@ -2438,7 +2469,7 @@ var EmberTransport = class {
           this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
         }
         if (status === SL_OK) {
-          if (ack) sent = this.waitSent(tag, nwk, frame2.profile);
+          if (ack) sent = this.confirmations.wait(tag, nwk, frame2.profile);
           return;
         }
         if (attempt === SEND_ATTEMPTS) break;
@@ -2453,26 +2484,121 @@ var EmberTransport = class {
     else await run();
     if (sent) await sent;
   }
-  waitSent(tag, nwk, profile) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(tag);
-        reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
-      }, SENT_TIMEOUT_MS);
-      timer.unref?.();
-      this.pending.set(tag, { nwk, profile, resolve, reject, timer });
-      const early = this.early.get(tag);
-      if (early !== void 0) {
-        this.early.delete(tag);
-        if (early.nwk === nwk && early.profile === profile && Date.now() - early.at <= EARLY_MAX_AGE_MS) this.settle(tag, early.status);
-      }
-    });
-  }
   async mtorr(radius) {
     if (typeof this.ezsp.ezspSendManyToOneRouteRequest !== "function") return false;
     try {
       const status = await this.ezsp.ezspSendManyToOneRouteRequest(HIGH_RAM_CONCENTRATOR, radius);
       return status === SL_OK;
+    } catch (error) {
+      this.log.warning(`Control4 route refresh failed: ${error}`);
+      return false;
+    }
+  }
+};
+var EzspTransport = class {
+  constructor(adapter, log) {
+    this.adapter = adapter;
+    this.log = log;
+    this.driver = adapter.driver;
+  }
+  adapter;
+  log;
+  name = "ezsp";
+  driver;
+  originalEmit;
+  /** The Ezsp the messageSentHandler listener is on. */
+  listened;
+  confirmations = new Confirmations();
+  onEzspFrame = (frameName, f) => {
+    if (frameName !== "messageSentHandler") return;
+    this.confirmations.sent(f.messageTag, f.indexOrDestination, f.apsFrame?.profileId, f.status === EMBER_SUCCESS, Number(f.status));
+  };
+  static supports(adapter) {
+    return typeof adapter?.driver?.emit === "function" && typeof adapter?.driver?.ezsp?.sendUnicast === "function";
+  }
+  start(onFrame) {
+    if (this.originalEmit) return;
+    const original = this.driver.emit;
+    this.originalEmit = original;
+    const log = this.log;
+    this.driver.emit = function(event, frame2, ...rest) {
+      if (event === "incomingMessage" && C4_PROFILES.has(frame2?.apsFrame?.profileId)) {
+        try {
+          const consumed = onFrame({
+            nwk: frame2.sender,
+            profile: frame2.apsFrame.profileId,
+            cluster: frame2.apsFrame.clusterId,
+            srcEp: frame2.apsFrame.sourceEndpoint,
+            dstEp: frame2.apsFrame.destinationEndpoint,
+            data: Buffer.from(frame2.message),
+            lqi: frame2.lqi,
+            rssi: frame2.rssi,
+            unicast: frame2.messageType === INCOMING_UNICAST || frame2.messageType === INCOMING_UNICAST_REPLY
+          });
+          if (consumed) return true;
+        } catch (error) {
+          log.warning(`Control4 receive hook failed: ${error.stack ?? error}`);
+        }
+      }
+      return original.call(this, event, frame2, ...rest);
+    };
+    this.follow();
+  }
+  /** Keep the messageSentHandler listener on the Ezsp herdsman uses now (it makes a new one on reset). */
+  follow() {
+    const current = this.driver.ezsp;
+    if (current === this.listened) return;
+    this.listened?.off?.("frame", this.onEzspFrame);
+    current?.on?.("frame", this.onEzspFrame);
+    this.listened = current;
+  }
+  stop() {
+    if (this.originalEmit) {
+      this.driver.emit = this.originalEmit;
+      this.originalEmit = void 0;
+    }
+    this.listened?.off?.("frame", this.onEzspFrame);
+    this.listened = void 0;
+    this.confirmations.stop();
+  }
+  async send(nwk, frame2, options = {}) {
+    const ack = options.ack !== false;
+    let sent;
+    const run = async () => {
+      for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+        this.follow();
+        const aps = this.driver.makeApsFrame(frame2.cluster, !ack);
+        aps.profileId = frame2.profile;
+        aps.sourceEndpoint = frame2.srcEp;
+        aps.destinationEndpoint = frame2.dstEp;
+        aps.options = APS_ENABLE_ROUTE_DISCOVERY | (ack && !options.sleepy ? APS_RETRY : 0);
+        const tag = aps.sequence & 255;
+        let status = -1;
+        try {
+          status = (await this.driver.ezsp.sendUnicast(OUTGOING_DIRECT, nwk, aps, tag, frame2.data)).status;
+        } catch (error) {
+          this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
+        }
+        if (status === EMBER_SUCCESS) {
+          if (ack) sent = this.confirmations.wait(tag, nwk, frame2.profile);
+          return;
+        }
+        if (attempt === SEND_ATTEMPTS) break;
+        if ([EMBER_NO_BUFFERS, EMBER_MAX_MESSAGE_LIMIT_REACHED, EMBER_NETWORK_BUSY, -1].includes(status)) await wait(BUSY_DEFER_MS);
+        else if (status === EMBER_NETWORK_DOWN) await wait(NETWORK_DOWN_DEFER_MS);
+        else break;
+      }
+      throw new DeliveryError(`could not queue frame to 0x${nwk.toString(16)}`, "unqueued");
+    };
+    const queue = this.adapter.queue;
+    if (queue && typeof queue.execute === "function") await queue.execute(run, nwk);
+    else await run();
+    if (sent) await sent;
+  }
+  async mtorr(radius) {
+    try {
+      const res = await this.driver.ezsp.execCommand("sendManyToOneRouteRequest", { concentratorType: HIGH_RAM_CONCENTRATOR, radius });
+      return res?.status === EMBER_SUCCESS;
     } catch (error) {
       this.log.warning(`Control4 route refresh failed: ${error}`);
       return false;
@@ -6665,11 +6791,11 @@ var Runtime = class {
   // -- transmit ---------------------------------------------------------------
   async sendRaw(ieee, frame2, options) {
     const transport = this.host.transport;
-    if (!transport) throw new Error("Control4: no supported coordinator (an Ember / EFR32 adapter is required)");
+    if (!transport) throw new Error("Control4: no supported coordinator (an Ember adapter, or the legacy ezsp one, is required)");
     const info = this.host.deviceInfo(ieee);
     if (!info) throw new Error(`Control4: unknown device ${ieee}`);
     try {
-      await transport.send(info.nwk, frame2, options);
+      await transport.send(info.nwk, frame2, { ...options, sleepy: info.type === "EndDevice" });
       this.link.noteTx(ieee, true);
       this.traffic.sent(options?.ack === false ? void 0 : true);
     } catch (error) {
@@ -6820,7 +6946,11 @@ var Runtime = class {
     this.unknownTsn = this.unknownTsn + 1 & 255;
     const data = buildIdentityFrame(coordinator, readResponseTsn ?? this.unknownTsn, readResponseTsn !== void 0);
     try {
-      await this.link.transmit(`nwk:${nwk}`, () => transport.send(nwk, { profile: PROFILE_NETWORK, cluster: C4_CLUSTER, srcEp: 2, dstEp: 2, data }), true);
+      await this.link.transmit(
+        `nwk:${nwk}`,
+        () => transport.send(nwk, { profile: PROFILE_NETWORK, cluster: C4_CLUSTER, srcEp: 2, dstEp: 2, data }, { sleepy: true }),
+        true
+      );
       this.traffic.sent(true);
       this.log.info(`Control4: answered a check-in from network address ${nwk}, which Zigbee2MQTT does not know yet, with the controller identity`);
     } catch (error) {
@@ -7170,7 +7300,7 @@ var Store = class {
 };
 
 // src/core/version.ts
-var VERSION = true ? "0.2.1" : "dev";
+var VERSION = true ? "0.3.1" : "dev";
 
 // src/z2m/global.ts
 var RUNTIME_KEY = "__control4_z2m_runtime__";
@@ -7359,9 +7489,11 @@ var Control4Extension = class {
     let transport;
     if (EmberTransport.supports(adapter)) {
       transport = new EmberTransport(adapter, this.log);
+    } else if (EzspTransport.supports(adapter)) {
+      transport = new EzspTransport(adapter, this.log);
     } else {
       this.log.error(
-        "Control4: this coordinator is not driven by the 'ember' adapter. Control4 devices need an Ember (Silicon Labs EFR32) coordinator with `adapter: ember` - the frames on profiles 0xC25C/D/E cannot be received otherwise."
+        "Control4: this coordinator is not driven by the 'ember' or 'ezsp' adapter. Control4 devices need an Ember (Silicon Labs) coordinator with `adapter: ember` (or `adapter: ezsp` for EmberZNet before 7.4) - the frames on profiles 0xC25C/D/E cannot be received otherwise."
       );
     }
     this.radio = transport !== void 0;
@@ -7440,7 +7572,7 @@ var Control4Extension = class {
     );
     const kind = hotLoad ? "hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap" : "first start since Zigbee2MQTT started";
     this.log.info(
-      `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`
+      `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? transport.name : "no radio access"}, ${runtime.devices.size} devices, store ${file})`
     );
     this.publishDiscovery();
     this.publishStatus();
