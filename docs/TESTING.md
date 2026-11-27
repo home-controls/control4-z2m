@@ -172,9 +172,14 @@ Plug a dimmable lamp into each outlet. In HA it has two lights, `l1` and `l2`.
 
 ## What to send back
 
-Send each device's report and its log **privately** (a direct message on Discord, as in the forum thread, or as
-an attachment to a private GitHub issue in the tester repo). Logs hold your device names and Zigbee addresses, so
-don't post them publicly.
+Send each device's report and its log **privately**: a direct message to **curtis8523** on the Home Assistant
+Community forum or on Discord, or a private GitHub issue in the tester repo. Logs hold your device names and Zigbee
+addresses, so don't post them publicly.
+
+A forum message takes only images (JPG, PNG or GIF, up to 3 MB) as attachments, and up to 32,000 characters of
+text. Paste the report into it and attach the photos, then send the log file on Discord or attached to a GitHub
+issue. If the log's `Control4` lines are short enough, you can paste them into the forum message in a code block
+instead.
 
 1. **The report**, filled in from this template:
 

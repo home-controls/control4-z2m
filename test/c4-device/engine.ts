@@ -55,8 +55,26 @@ export function intOfText(text: string): number | undefined {
     return /^[+-]?\d+$/.test(t) ? Number.parseInt(t, 10) : undefined;
 }
 
-/** Jinja2's do_int, as HA's int filter / function uses it: int(value), else int(float(value)), else the default. */
-function toInt(value: unknown, fallback: unknown = NO_DEFAULT): unknown {
+/**
+ * Jinja2's do_int, as HA's int filter / function uses it: int(value), else int(float(value)), else the default.
+ * With base= (a keyword argument, which arrives as a trailing object), text is read in that base, as
+ * Python's int(text, base) reads it (a 0x / 0o / 0b prefix of that base allowed); else the default.
+ */
+function toInt(value: unknown, fallback: unknown = NO_DEFAULT, kwargs?: unknown): unknown {
+    if (fallback !== null && typeof fallback === "object" && !Array.isArray(fallback) && kwargs === undefined) {
+        kwargs = fallback;
+        fallback = (fallback as {default?: unknown}).default ?? NO_DEFAULT;
+    }
+    const base = Number((kwargs as {base?: unknown} | undefined)?.base ?? 10);
+    if (base !== 10) {
+        const digits = "0123456789abcdefghijklmnopqrstuvwxyz".slice(0, base);
+        const prefix = {16: "0x", 8: "0o", 2: "0b"}[base] ?? "";
+        const t = typeof value === "string" ? value.replace(NUMBER_STRIP, "").toLowerCase() : "";
+        const m = new RegExp(`^([+-]?)(?:${prefix})?([${digits}]+)$`).exec(t);
+        if (m) return (m[1] === "-" ? -1 : 1) * Number.parseInt(m[2], base);
+        if (fallback === NO_DEFAULT) throw new Error(`int got invalid input '${String(value)}' but no default was specified`);
+        return fallback;
+    }
     if (typeof value === "boolean") return value ? 1 : 0;
     if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
     if (typeof value === "string") {

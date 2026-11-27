@@ -183,6 +183,12 @@ function dropIeeeVars(lines) {
     }
 }
 
+/** text.replace that fails the port when the original no longer has what it replaces. */
+function mustReplace(text, re, by, file) {
+    if (!re.test(text)) fail(file, `nothing matching ${re}`);
+    return text.replace(re, by);
+}
+
 function insertAfter(lines, re, add, file) {
     const i = lines.findIndex((l) => re.test(l));
     if (i < 0) fail(file, `no line matching ${re}`);
@@ -218,6 +224,29 @@ export function port(text, file) {
     // defaults to [] (an empty list is a valid, inert trigger; "" is not).
     s = s.replace(/(\n(\s+)default: )\[\](\n\2selector:\n\2  target:)/g, "$1{}$3");
     if (file === "c4_sr250_room_display.yaml") s = s.replace(/(\n    room_helper:[\s\S]*?\n      default: )""/, "$1[]");
+    // Mute only a volume target that can mute: HA refuses media_player.volume_mute on one
+    // without MediaPlayerEntityFeature.VOLUME_MUTE (8), an Apple TV for one, and each press
+    // of the key then ends the run in an error.
+    if (file === "c4_sr260_media_player.yaml") {
+        s = mustReplace(
+            s,
+            /\n(\s+)- conditions: "\{\{ button == 'volume_mute' \}\}"\n/,
+            (_m, ind) =>
+                `\n${ind}- conditions:\n${ind}    - "{{ button == 'volume_mute' }}"\n${ind}    # A player without mute (feature 8) gets nothing: HA refuses volume_mute on it.\n${ind}    - "{{ ((state_attr(volume_target, 'supported_features') | int(0)) // 8) % 2 == 1 }}"\n`,
+            file,
+        );
+    }
+    // A press of the show key while the menu is up shows it again at once. Queued, that
+    // press waited behind the open menu and showed it a second time after the pick.
+    if (file === "c4_sr260_menu_dispatcher.yaml") {
+        s = mustReplace(s, /\nmode: queued\nmax: 5\n/, "\nmode: restart\n", file);
+        s = mustReplace(
+            s,
+            /instead of blocking until selection_timeout — otherwise the\n(\s+)# {4}next show-trigger press would queue behind a stuck run for up\n\s+# {4}to selection_timeout seconds\./,
+            "instead of blocking until selection_timeout (a show-trigger\n$1#    press meanwhile restarts the run and shows the menu afresh).",
+            file,
+        );
+    }
 
     const lines = s.split("\n");
     // The device input the blueprint addresses (remote, sr260_device ...).

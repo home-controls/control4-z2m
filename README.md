@@ -561,6 +561,31 @@ Copy to `/config/blueprints/automation/control4-z2m/`. They use the shared
 | `c4_kp_led_notify.yaml` | Keypad LED notification |
 | `c4_sr250_room_display.yaml`, `c4_sr250_now_playing.yaml`, `c4_sr250_menu.yaml`, `c4_sr250_color_menus.yaml`, `c4_sr250_media_player.yaml` | SR250 |
 | `c4_sr260_media_player.yaml`, `c4_sr260_menu_dispatcher.yaml` | SR260 |
+| `c4_sr260_screen.yaml` | SR260 LCD colour and now playing, below (written here, not ported) |
+
+**SR260 LCD colour and now playing (`c4_sr260_screen`).** One form makes
+the SR260's LCD follow a media player. The text colour is a colour picker each
+for playing, paused and idle or off, and the alert colour, at full brightness,
+while any alert entity is on, open or unlocked. While its **Dark** entity is on
+the colours dim to the night level: the remote's text colour (`c4.zr.tc`, one
+RGB332 byte) also sets how bright the text is. The level is a percentage or an
+input_number helper, to tune it from a dashboard. RGB332 has 8 levels of red
+and green and 4 of blue, so not every step shows, and a lit channel never dims
+below the remote's lowest step: the text dims, it never goes black. Line 2
+(optional) shows the player's app, like `c4_sr250_now_playing`; after a pick
+in one of the remote's menus it shows the pick for a few seconds (**Back to the
+app after a menu pick**, 0 keeps it), then the app again. It sends only what
+the remote would show differently, read from the remote's text colour and LCD
+source entities (the colour as the byte, whether the entity holds `#rrggbb` or
+the byte), so a run that finds nothing new costs no Zigbee frame. Use it
+instead of `c4_sr250_now_playing` on an SR260, not with it.
+
+Two fixes in the ported SR260 blueprints, made by `tools/port-zha-blueprints.mjs`
+so a regeneration keeps them: `c4_sr260_media_player` sends Mute only to a
+volume target that can mute (an Apple TV cannot, and HA refused the call on
+every press), and `c4_sr260_menu_dispatcher` restarts instead of queueing, so
+pressing its show key while the menu is up shows it again at once instead of a
+second time after the pick.
 
 **Paddle halves in `c4_device`.** Each half either drives its device's own
 load or only sends its taps. A DIM1-Z's halves follow its **Paddle controls

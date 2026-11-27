@@ -10,7 +10,7 @@ import {commandOf, eventEntityConfig, eventTypeOf} from "../src/z2m/extension";
 import {EVENTS_NOTE, port, remoteEventType} from "../tools/port-zha-blueprints.mjs";
 import {renderTemplate} from "./c4-device";
 import {inputTag, kindOf, substitute} from "./c4-device/blueprint";
-import {conditionPasses, haEnvironment, type HaWorld, renderValue, renderVariables} from "./c4-device/engine";
+import {conditionPasses, haEnvironment, type HaState, type HaWorld, renderValue, renderVariables} from "./c4-device/engine";
 import {CONTRACT_EVENTS, CONTRACT_FIELDS} from "./contract";
 import {Rig, tick} from "./rig";
 
@@ -64,6 +64,7 @@ describe("blueprints", () => {
                 "c4_sr250_room_display.yaml",
                 "c4_sr260_media_player.yaml",
                 "c4_sr260_menu_dispatcher.yaml",
+                "c4_sr260_screen.yaml",
             ].sort(),
         );
     });
@@ -412,6 +413,7 @@ describe("blueprints", () => {
             "c4_sr250_media_player.yaml": "remote",
             "c4_sr260_media_player.yaml": "remote",
             "c4_sr260_menu_dispatcher.yaml": "sr260_device",
+            "c4_sr260_screen.yaml": "remote",
         };
         const hearing = Object.entries(HEARS);
         const text = (file: string) => fs.readFileSync(path.join(DIR, file), "utf8");
@@ -654,6 +656,27 @@ describe("blueprints", () => {
                 expect(heard(waitOf(a), ieee)?.id).toBe("cancel");
             });
 
+            it("SR260 media player: Mute mutes only a volume target that can mute", () => {
+                const a = automation("c4_sr260_media_player.yaml", {remote: DEVICE[R260], volume_target: "media_player.tv"});
+                const mute = find(a.action, (o) => Array.isArray(o.conditions) && o.conditions[0] === "{{ button == 'volume_mute' }}") as Record<string, Any>;
+                expect(mute.sequence[0].action).toBe("media_player.volume_mute");
+                const runs = (features: number | undefined) => {
+                    const e = haEnvironment({...world, states: {"media_player.tv": {state: "playing", attributes: features === undefined ? {} : {supported_features: features}}}});
+                    const vars = {button: "volume_mute", volume_target: "media_player.tv"};
+                    return mute.conditions.every((c: string) => conditionPasses(e, c, vars));
+                };
+                // An Apple TV: volume step and set, no mute (448439 has no 8).
+                expect(runs(448439)).toBe(false);
+                expect(runs(undefined)).toBe(false);
+                expect(runs(4 | 8 | 1024)).toBe(true);
+            });
+
+            it("SR260 menu dispatcher: a show-trigger press while the menu is up restarts the run, never queues a second menu", () => {
+                const a = automation("c4_sr260_menu_dispatcher.yaml", {sr260_device: DEVICE[R260]});
+                expect(a.mode).toBe("restart");
+                expect(a.max).toBeUndefined();
+            });
+
             it("SR260 menu dispatcher: the picked item's label is what it dispatches on", async () => {
                 const a = automation("c4_sr260_menu_dispatcher.yaml", {sr260_device: DEVICE[R260], item_1: "Movie", item_2: "Dinner"});
                 const shown = rig.runtime.set(R260, "show_list", {title: "Scenes", items: ["Movie", "Dinner"]}, {message: {}});
@@ -673,6 +696,128 @@ describe("blueprints", () => {
         });
     });
 
+    describe("c4_sr260_screen", () => {
+        const R260 = "0x000fff00000000e2";
+        const COLOR = "text.bedroom_remote_color";
+        const SOURCE = "text.bedroom_remote_active_source";
+        // biome-ignore lint/suspicious/noExplicitAny: automation shapes
+        type Any = Record<string, any>;
+        /** The blueprint set up with `values` over the defaults, run by `trigger` in a world holding `states`. */
+        function run(values: Record<string, unknown>, states: Record<string, string | HaState>, trigger: Record<string, unknown> = {platform: null}) {
+            const {blueprint, ...body} = load("c4_sr260_screen.yaml") as {blueprint: {input: unknown}} & Record<string, unknown>;
+            const a = substitute(body, {...inputDefaults(blueprint.input), remote: "d_sr260", ...values}) as Any;
+            const world: HaWorld = {
+                devices: {
+                    d_sr260: {
+                        identifiers: [["mqtt", `zigbee2mqtt_${R260}`]],
+                        model_id: "C4-SR260",
+                        name: "Bedroom remote",
+                        entities: ["sensor.bedroom_remote_battery", "text.bedroom_remote_room_name", SOURCE, COLOR],
+                    },
+                },
+                states: Object.fromEntries(Object.entries(states).map(([e, st]) => [e, typeof st === "string" ? {state: st, attributes: {}} : st])),
+                time: "12:00:00",
+            };
+            const env = haEnvironment(world);
+            const vars: Record<string, unknown> = {...renderVariables(env, a.variables, {trigger}), trigger};
+            const runs = (a.condition as Any[]).every((c) => conditionPasses(env, c.value_template, vars));
+            const [, pick, color, line2] = a.action as Any[];
+            const sent: Record<string, unknown> = {};
+            for (const step of [color, line2]) {
+                if (!conditionPasses(env, step.if[0].value_template, vars)) continue;
+                const topic = String(renderValue(env, step.then[0].data.topic, vars, "variable", "topic"));
+                expect(topic.startsWith(`control4/${R260}/set/`)).toBe(true);
+                sent[topic.replace(`control4/${R260}/set/`, "")] = renderValue(env, step.then[0].data.payload, vars, "variable", "payload");
+            }
+            const delay = conditionPasses(env, pick.if[0].value_template, vars) ? renderValue(env, pick.then[0].delay.seconds, vars, "variable", "delay") : 0;
+            return {vars, runs, sent, delay, a};
+        }
+        const tv = {player: "media_player.tv"};
+        const night = {...tv, dark_entity: "binary_sensor.dark"};
+        const playing = (app = "YouTube"): HaState => ({state: "playing", attributes: {app_name: app}});
+
+        it("follows the player by day: green playing, amber paused, white idle, off or with no player", () => {
+            const color = (values: Record<string, unknown>, states: Record<string, string | HaState>) => {
+                const {vars} = run(values, states);
+                return [vars.color_hex, vars.color_byte];
+            };
+            expect(color(tv, {"media_player.tv": "playing"})).toEqual(["#00ff00", 0x1c]);
+            expect(color(tv, {"media_player.tv": "paused"})).toEqual(["#ffc000", 0xf8]);
+            expect(color(tv, {"media_player.tv": "idle"})).toEqual(["#ffffff", 0xff]);
+            expect(color(tv, {"media_player.tv": "off"})).toEqual(["#ffffff", 0xff]);
+            expect(color({}, {})).toEqual(["#ffffff", 0xff]);
+        });
+
+        it("dims to the night level while dark, from its number or its helper, and never to black", () => {
+            const color = (values: Record<string, unknown>, states: Record<string, string | HaState>) => run(values, states).vars.color_hex;
+            const dark = {"binary_sensor.dark": "on"};
+            expect(color(night, {...dark, "media_player.tv": "playing"})).toBe("#006600");
+            expect(color(night, {...dark, "media_player.tv": "paused"})).toBe("#664d00");
+            expect(color(night, {...dark, "media_player.tv": "idle"})).toBe("#666666");
+            expect(color(night, {"binary_sensor.dark": "off", "media_player.tv": "playing"})).toBe("#00ff00");
+            const helper = {...night, night_level_entity: "input_number.night"};
+            expect(color(helper, {...dark, "media_player.tv": "playing", "input_number.night": "80"})).toBe("#00cc00");
+            // At 10 % each lit channel stays at the remote's lowest step: dim, not black.
+            expect(run(helper, {...dark, "media_player.tv": "idle", "input_number.night": "10"}).vars).toMatchObject({color_hex: "#202040", color_byte: 0x25});
+            // A helper with no number yet falls back to the fixed level.
+            expect(color(helper, {...dark, "media_player.tv": "playing", "input_number.night": "unknown"})).toBe("#006600");
+        });
+
+        it("shows the alert colour at full brightness while an alert entity is on, open or unlocked, dark or not", () => {
+            const values = {...night, alert_entities: ["lock.front", "binary_sensor.window"]};
+            const base = {"binary_sensor.dark": "on", "media_player.tv": "playing", "binary_sensor.window": "off"};
+            expect(run(values, {...base, "lock.front": "locked"}).vars.color_hex).toBe("#006600");
+            expect(run(values, {...base, "lock.front": "unlocked"}).vars).toMatchObject({color_hex: "#ff0000", color_byte: 0xe0});
+            expect(run(values, {...base, "lock.front": "locked", "binary_sensor.window": "on"}).vars.color_hex).toBe("#ff0000");
+        });
+
+        it("sends the colour only when the colour the remote would show changes, however its entity writes it", () => {
+            const sentColor = (values: Record<string, unknown>, states: Record<string, string | HaState>) => run(values, {...states, [SOURCE]: "YouTube"}).sent.text_color;
+            const tvOn = {"media_player.tv": playing()};
+            expect(sentColor(tv, tvOn)).toBe("#00ff00");
+            expect(sentColor(tv, {...tvOn, [COLOR]: "#ffffff"})).toBe("#00ff00");
+            expect(sentColor(tv, {...tvOn, [COLOR]: "#00ff00"})).toBeUndefined();
+            expect(sentColor(tv, {...tvOn, [COLOR]: "28"})).toBeUndefined();
+            // Night green goes as #006600; the remote stores the byte, which may read back as #006d00.
+            const dark = {"binary_sensor.dark": "on", "media_player.tv": playing()};
+            expect(sentColor(night, {...dark, [COLOR]: "#006d00"})).toBeUndefined();
+            expect(sentColor(night, {...dark, [COLOR]: "#006600"})).toBeUndefined();
+        });
+
+        it("shows the player's app on line 2 while it is on, cut to its length, and clears it when off", () => {
+            const line2 = (values: Record<string, unknown>, states: Record<string, string | HaState>) => run(values, {[COLOR]: "#ffffff", ...states}).sent.active_source;
+            expect(line2(tv, {"media_player.tv": playing(), [SOURCE]: ""})).toBe("YouTube");
+            expect(line2(tv, {"media_player.tv": playing(), [SOURCE]: "YouTube"})).toBeUndefined();
+            expect(line2({...tv, max_length: 7}, {"media_player.tv": playing("Paramount+ with Showtime"), [SOURCE]: ""})).toBe("Paramou");
+            expect(line2(tv, {"media_player.tv": {state: "on", attributes: {source: "HDMI 2"}}, [SOURCE]: ""})).toBe("HDMI 2");
+            expect(line2(tv, {"media_player.tv": "off", [SOURCE]: "YouTube"})).toBe("");
+            expect(line2({...tv, show_app: false}, {"media_player.tv": playing(), [SOURCE]: "Apple"})).toBeUndefined();
+        });
+
+        it("lets a menu pick show on line 2 for its seconds, then puts the app back; 0 keeps the pick", () => {
+            const pick = {id: "pick", platform: "event.received"};
+            const after = run(tv, {"media_player.tv": playing(), [COLOR]: "#00ff00", [SOURCE]: "Green Lamp"}, pick);
+            expect(after).toMatchObject({runs: true, delay: 5, sent: {active_source: "YouTube"}});
+            expect(run({...tv, pick_return: 0}, {"media_player.tv": playing(), [SOURCE]: "Green Lamp"}, pick).runs).toBe(false);
+            expect(run(tv, {"media_player.tv": playing()}, {id: "1", platform: "state"}).delay).toBe(0);
+        });
+
+        it("runs on every change of what picks the colour or line 2, on a menu pick, and at Home Assistant start", () => {
+            const {a} = run({...night, alert_entities: ["lock.front"], night_level_entity: "input_number.night"}, {});
+            const watched = (a.trigger as Any[]).filter((t) => kindOf(t) === "state").map((t) => [t.entity_id, t.attribute ?? null]);
+            expect(watched).toEqual([
+                ["media_player.tv", null],
+                ["media_player.tv", "app_name"],
+                ["media_player.tv", "source"],
+                [["lock.front"], null],
+                ["binary_sensor.dark", null],
+                ["input_number.night", null],
+            ]);
+            expect((a.trigger as Any[]).some((t) => kindOf(t) === "homeassistant" && t.event === "start")).toBe(true);
+            expect((a.trigger as Any[]).find((t) => t.id === "pick")?.options).toEqual({event_type: ["remote_menu_select"]});
+        });
+    });
+
     it.each(files)("%s talks only to the shared control4/ namespace", (file) => {
         const text = fs.readFileSync(path.join(DIR, file), "utf8");
         for (const m of text.matchAll(/topic: "?([^"\n]+)"?/g)) expect(m[1], `${file}: ${m[1]}`).toMatch(/^(control4\/|\{\{ set_topic \}\}$)/);
@@ -680,7 +825,7 @@ describe("blueprints", () => {
     });
 
     it("send to the extension's keys only", () => {
-        const known = ["room_name", "active_source", "display_message", "show_list", "close_list", "led_status", "led_effect", "led_stop"];
+        const known = ["room_name", "active_source", "display_message", "text_color", "show_list", "close_list", "led_status", "led_effect", "led_stop"];
         for (const file of files) {
             const text = fs.readFileSync(path.join(DIR, file), "utf8");
             for (const m of text.matchAll(/\/set\/(\w+)"/g)) expect(known, `${file}: /set/${m[1]}`).toContain(m[1]);
