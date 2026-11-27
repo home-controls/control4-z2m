@@ -685,6 +685,7 @@ export class Runtime {
         if (hdr.commandId === 0x00) {
             // The device polling for its controller: answer with the identity.
             void this.sendIdentity(ieee, "read_attributes", hdr.tsn);
+            this.devices.get(ieee)?.onIdentityRead();
             return;
         }
         let attrs: Map<number, ZclValue> | undefined;

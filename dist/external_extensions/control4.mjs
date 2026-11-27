@@ -3029,6 +3029,9 @@ var C4Device = class {
   }
   onReply(_frame) {
   }
+  /** The device read the controller identity (0xC25D attributes 8/9/A), which it does after a re-join. */
+  onIdentityRead() {
+  }
   onOther(frame2) {
     this.log.debug(`Control4 ${this.name}: frame ${frame2.text}`);
   }
@@ -5334,6 +5337,7 @@ function remoteEventType(command) {
 var DEFAULT_ROOM = "Home";
 var LOCALE = "en_US";
 var WAKE_REFRESH_MIN = 5e3;
+var WAKE_TRIES = [0, 1500, 4e3, 8e3];
 var DIAG_POLL = 30 * 6e4;
 var PAGE_SIZE = 5;
 var GI_MAX_FRAME = 70;
@@ -5372,6 +5376,7 @@ var Remote = class extends C4Device {
   listId = 0;
   rowsPending = false;
   lastRefresh = Number.NEGATIVE_INFINITY;
+  refreshing = false;
   lastDiag = Number.NEGATIVE_INFINITY;
   bootstrapped = false;
   start(hotLoad = false) {
@@ -5516,23 +5521,57 @@ var Remote = class extends C4Device {
     if (ns === "c4.zr.mot") this.wakeRefresh(true);
     else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh(false);
   }
-  wakeRefresh(sendTime) {
+  /**
+   * An SR260 reads the controller identity as it wakes, and after a re-join (which it does
+   * on a wake after a few minutes asleep, with no announce): then its screen says
+   * "rejoining network" until the clock and rows come again, and it has dropped any open
+   * menu. So the read refreshes the screen, inside the wake debounce, unless a refresh is
+   * already under way.
+   */
+  onIdentityRead() {
+    if (!this.refreshing) this.wakeRefresh(true, true);
+  }
+  /** One refresh at a time, tried again (WAKE_TRIES) while it goes undelivered. */
+  wakeRefresh(sendTime, force = false) {
     const now = this.ctx.now();
-    if (now - this.lastRefresh < WAKE_REFRESH_MIN) return;
+    if (this.refreshing || !force && now - this.lastRefresh < WAKE_REFRESH_MIN) return;
     this.lastRefresh = now;
+    this.refreshing = true;
     this.spawn(
       (async () => {
-        if (sendTime) {
-          try {
-            await this.sendTime();
-          } catch (error) {
-            this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+        try {
+          for (const delay of WAKE_TRIES) {
+            if (delay) await this.sleep(delay);
+            if (!this.alive || await this.refreshScreen(sendTime)) return;
           }
-          await this.sleep(200);
+        } finally {
+          this.refreshing = false;
         }
-        await this.pushRoomInfo();
       })()
     );
+  }
+  /** Clock (when asked), rows, and the open menu, which the remote drops while asleep; false when they were not delivered. */
+  async refreshScreen(sendTime) {
+    const menu = this.menu;
+    if (sendTime) {
+      try {
+        await this.sendTime();
+      } catch (error) {
+        this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+      }
+      await this.sleep(200);
+    }
+    if (!await this.pushRoomInfo()) return false;
+    if (!menu?.header) return true;
+    await this.sleep(200);
+    if (this.menu !== menu) return true;
+    try {
+      await this.sendText(`0i${hex4(this.nextSeq())} ${menu.header}`);
+    } catch (error) {
+      this.log.debug(`Control4 ${this.name}: menu re-show failed: ${error}`);
+      return false;
+    }
+    return true;
   }
   diagPoll() {
     const now = this.ctx.now();
@@ -5560,11 +5599,11 @@ var Remote = class extends C4Device {
     const sel = Math.max(0, Math.min(items.length - 1, Math.trunc(selectedIndex) || 0));
     const listId = this.nextListId();
     this.menu = { listId, title, items, selectedIndex: sel };
-    const head = (seq) => `0i${seq} c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 255)}`;
-    const shown = fitLcd((s) => `${head(SEQ0)}${s}"`, sanitize(title));
-    const cmd = `${head(hex4(this.nextSeq()))}${shown}"`;
+    const head = `c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 255)}`;
+    const shown = fitLcd((s) => `0i${SEQ0} ${head}${s}"`, sanitize(title));
+    this.menu.header = `${head}${shown}"`;
     try {
-      await this.sendText(cmd);
+      await this.sendText(`0i${hex4(this.nextSeq())} ${this.menu.header}`);
     } catch (error) {
       this.menu = void 0;
       if (isDeliveryFailure(error)) {
@@ -6703,6 +6742,7 @@ var Runtime = class {
     const payload = frame2.data.subarray(hdr.offset);
     if (hdr.commandId === 0) {
       void this.sendIdentity(ieee, "read_attributes", hdr.tsn);
+      this.devices.get(ieee)?.onIdentityRead();
       return;
     }
     let attrs;

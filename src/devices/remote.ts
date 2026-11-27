@@ -37,6 +37,12 @@ export function remoteEventType(command: string): string {
 export const DEFAULT_ROOM = "Home";
 const LOCALE = "en_US";
 const WAKE_REFRESH_MIN = 5_000;
+/**
+ * When a wake's clock, rows and open menu go out (again). Right at a wake the
+ * first sends can fail at once (DELIVERY_FAILED) while the remote re-joins, so
+ * an undelivered refresh is tried again.
+ */
+export const WAKE_TRIES = [0, 1_500, 4_000, 8_000];
 const DIAG_POLL = 30 * 60_000;
 const PAGE_SIZE = 5;
 const GI_MAX_FRAME = 70;
@@ -84,6 +90,8 @@ interface Menu {
     icons?: (number | undefined)[];
     selectedIndex: number;
     cursor?: number;
+    /** The c4.ln.sl that showed it, without the sequence: re-sent after a wake. */
+    header?: string;
 }
 
 export class Remote extends C4Device {
@@ -95,6 +103,7 @@ export class Remote extends C4Device {
     private listId = 0;
     private rowsPending = false;
     private lastRefresh = Number.NEGATIVE_INFINITY;
+    private refreshing = false;
     private lastDiag = Number.NEGATIVE_INFINITY;
     private bootstrapped = false;
 
@@ -258,23 +267,60 @@ export class Remote extends C4Device {
         else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh(false);
     }
 
-    private wakeRefresh(sendTime: boolean): void {
+    /**
+     * An SR260 reads the controller identity as it wakes, and after a re-join (which it does
+     * on a wake after a few minutes asleep, with no announce): then its screen says
+     * "rejoining network" until the clock and rows come again, and it has dropped any open
+     * menu. So the read refreshes the screen, inside the wake debounce, unless a refresh is
+     * already under way.
+     */
+    override onIdentityRead(): void {
+        if (!this.refreshing) this.wakeRefresh(true, true);
+    }
+
+    /** One refresh at a time, tried again (WAKE_TRIES) while it goes undelivered. */
+    private wakeRefresh(sendTime: boolean, force = false): void {
         const now = this.ctx.now();
-        if (now - this.lastRefresh < WAKE_REFRESH_MIN) return;
+        if (this.refreshing || (!force && now - this.lastRefresh < WAKE_REFRESH_MIN)) return;
         this.lastRefresh = now;
+        this.refreshing = true;
         this.spawn(
             (async () => {
-                if (sendTime) {
-                    try {
-                        await this.sendTime();
-                    } catch (error) {
-                        this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+                try {
+                    for (const delay of WAKE_TRIES) {
+                        if (delay) await this.sleep(delay);
+                        if (!this.alive || (await this.refreshScreen(sendTime))) return;
                     }
-                    await this.sleep(200);
+                } finally {
+                    this.refreshing = false;
                 }
-                await this.pushRoomInfo();
             })(),
         );
+    }
+
+    /** Clock (when asked), rows, and the open menu, which the remote drops while asleep; false when they were not delivered. */
+    private async refreshScreen(sendTime: boolean): Promise<boolean> {
+        // Only the menu open as the wake began: one shown since went out fresh, one picked or closed since must stay shut.
+        const menu = this.menu;
+        if (sendTime) {
+            try {
+                await this.sendTime();
+            } catch (error) {
+                this.log.debug(`Control4 ${this.name}: wake tm failed: ${error}`);
+            }
+            await this.sleep(200);
+        }
+        if (!(await this.pushRoomInfo())) return false;
+        if (!menu?.header) return true;
+        await this.sleep(200);
+        if (this.menu !== menu) return true;
+        try {
+            await this.sendText(`0i${hex4(this.nextSeq())} ${menu.header}`);
+        } catch (error) {
+            this.log.debug(`Control4 ${this.name}: menu re-show failed: ${error}`);
+            return false;
+        }
+        return true;
     }
 
     private diagPoll(): void {
@@ -306,11 +352,11 @@ export class Remote extends C4Device {
         const sel = Math.max(0, Math.min(items.length - 1, Math.trunc(selectedIndex) || 0));
         const listId = this.nextListId();
         this.menu = {listId, title, items, selectedIndex: sel};
-        const head = (seq: string) => `0i${seq} c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 0xff)}`;
-        const shown = fitLcd((s) => `${head(SEQ0)}${s}"`, sanitize(title));
-        const cmd = `${head(hex4(this.nextSeq()))}${shown}"`;
+        const head = `c4.ln.sl ${hex4(listId)} ${hex4(items.length)} ${hex4(sel)} "${String.fromCharCode(titleIcon & 0xff)}`;
+        const shown = fitLcd((s) => `0i${SEQ0} ${head}${s}"`, sanitize(title));
+        this.menu.header = `${head}${shown}"`;
         try {
-            await this.sendText(cmd);
+            await this.sendText(`0i${hex4(this.nextSeq())} ${this.menu.header}`);
         } catch (error) {
             this.menu = undefined;
             if (isDeliveryFailure(error)) {
