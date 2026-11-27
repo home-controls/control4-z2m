@@ -11,6 +11,9 @@ updates:
     ignore:
       - dependency-name: zigbee-herdsman
       - dependency-name: zigbee-herdsman-converters
+      # The types follow the oldest Node the extension supports (package.json engines), not the newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-tools:
         patterns: ["*"]
