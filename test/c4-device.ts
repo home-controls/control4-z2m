@@ -23,8 +23,8 @@ import {type LedCall, type LedLook, ledLook, type Run, readRun} from "../tools/c
 import {sequences} from "../tools/c4-scenarios.mjs";
 import {c4DeviceBlueprint, kindOf, substitute} from "./c4-device/blueprint";
 import {checkTime, fires, later, parseTime} from "./c4-device/clock";
-import {conditionPasses, type HaState, type HaWorld, haEnvironment, renderVariables} from "./c4-device/engine";
-import {ledFeedback} from "./c4-device/led-feedback";
+import {conditionPasses, type HaEntityEntry, type HaState, type HaWorld, haEnvironment, renderVariables} from "./c4-device/engine";
+import {ledFeedback, type NumberWrite} from "./c4-device/led-feedback";
 
 export type {Does, LedCall, LedLook, Run} from "../tools/c4-device-run.mjs";
 export {C4TemplateError} from "./c4-device/engine";
@@ -70,6 +70,12 @@ export interface DeviceSetup {
     eventsEntity?: boolean | string[];
     /** What now() says, "HH:MM:SS". Default 12:00:00. */
     time?: string;
+    /** The device's area; none unless given. */
+    area?: string;
+    /** Entity registry entries (an entity's area, its labels), e.g. a room's Night Mode input_boolean labelled room_night; none unless given. */
+    registry?: Record<string, HaEntityEntry>;
+    /** The device's backlight brightness number entity (a KC120277's), in that state; none unless given. */
+    backlight?: number | string;
 }
 
 /** Something that happens to the device or around it. */
@@ -83,7 +89,7 @@ export type Happening =
       }
     | {readonly kind: "event"; readonly payload: Record<string, unknown>}
     | {readonly kind: "change"; readonly entity: string; readonly to: StateSpec; readonly from?: StateSpec}
-    | {readonly kind: "boot" | "reload"}
+    | {readonly kind: "boot" | "reload" | "ledRefresh"}
     | {readonly kind: "clock"; readonly time?: string};
 
 /** A run, with what it sends the LEDs when it reaches the LED feedback. */
@@ -92,6 +98,8 @@ export type DeviceRun = Run & {
     leds: LedCall[];
     /** Boot / reload only: the device has its Control4 events entity. */
     hears?: boolean;
+    /** The number.set_value writes it makes (the backlight), when it makes any. */
+    numbers?: NumberWrite[];
 };
 
 export interface Reaction {
@@ -105,6 +113,8 @@ export interface Reaction {
     led(name: string): LedLook | undefined;
     /** On boot / reload: the device has its Control4 events entity. */
     hears?: boolean;
+    /** The number.set_value writes it makes (the backlight); [] when none. */
+    numbers: NumberWrite[];
     /** Every run it started, in trigger order. */
     runs: DeviceRun[];
 }
@@ -137,6 +147,7 @@ const DEVICE_NAME = "Test keypad";
 const EVENTS_ENTITY = "event.test_keypad_control4_events";
 const PADDLE_SWITCH = "switch.test_keypad_paddle_local_control";
 const BEHAVIOUR_SELECT = (half: string) => `select.test_keypad_${half}_button_behaviour`;
+export const BACKLIGHT = "number.test_keypad_backlight_brightness";
 
 /** A Tap action that does something; what it does is never rendered here. */
 export const anyAction: unknown[] = [{action: "script.turn_on", target: {entity_id: "script.any"}}];
@@ -213,12 +224,23 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
         entities.push(BEHAVIOUR_SELECT(half));
         states[BEHAVIOUR_SELECT(half)] = {state: String(behaviour), attributes: {}};
     }
+    if (setup.backlight !== undefined) {
+        entities.push(BACKLIGHT);
+        states[BACKLIGHT] = {state: String(setup.backlight), attributes: {}};
+    }
     for (const [entity, spec] of Object.entries(setup.states ?? {})) {
         if (spec === null) delete states[entity];
         else states[entity] = haState(spec);
     }
-    const device = {identifiers: [["mqtt", `zigbee2mqtt_${ieee}`]] as [string, string][], model_id: model, name: DEVICE_NAME, entities};
-    const worldOf = (now: Record<string, HaState>, time = setup.time ?? "12:00:00"): HaWorld => ({devices: {[DEVICE_ID]: device}, states: now, time});
+    const device = {
+        identifiers: [["mqtt", `zigbee2mqtt_${ieee}`]] as [string, string][],
+        model_id: model,
+        name: DEVICE_NAME,
+        entities,
+        area_id: setup.area ?? null,
+    };
+    const registry = {...setup.registry};
+    const worldOf = (now: Record<string, HaState>, time = setup.time ?? "12:00:00"): HaWorld => ({devices: {[DEVICE_ID]: device}, states: now, registry, time});
 
     const chooseOf = (a: Automation) => (a.action.find((s) => "choose" in s)?.choose ?? []) as Step[];
     const options = chooseOf(automation);
@@ -334,6 +356,17 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
                 const idx = triggerIdx((t) => kindOf(t) === "event" && t.event_type === "automation_reloaded");
                 return [run(worldOf(states), {platform: "event", event: {event_type: "automation_reloaded", data: {}}, id: "reload", idx: String(idx)})];
             }
+            case "ledRefresh": {
+                const idx = triggerIdx((t) => kindOf(t) === "event" && t.event_type === "c4_led_refresh");
+                return [
+                    run(worldOf(states), {
+                        platform: "event",
+                        event: {event_type: "c4_led_refresh", data: {}},
+                        id: String(automation.trigger[idx].id),
+                        idx: String(idx),
+                    }),
+                ];
+            }
             case "clock": {
                 const time = h.time ?? setup.time ?? "12:00:00";
                 checkTime(time);
@@ -359,6 +392,7 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
             leds,
             led: (name) => ledLook(leds, name),
             ...(one && "hears" in one ? {hears: one.hears} : {}),
+            numbers: one?.numbers ?? [],
             runs: all,
         };
     };
@@ -465,6 +499,11 @@ export function boot(): Happening {
 /** The automations are reloaded (or this one is saved). */
 export function reload(): Happening {
     return {kind: "reload"};
+}
+
+/** Something fires the event c4_led_refresh (a room's Night Mode switch changed). */
+export function ledRefresh(): Happening {
+    return {kind: "ledRefresh"};
 }
 
 /** The clock reaches `time` (default: the setup's): each time trigger due then fires (Night start / end, the LED re-check). */
