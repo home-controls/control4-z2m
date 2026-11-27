@@ -59,7 +59,8 @@ npm run canary -- dev   # our checks against the herdsman that Zigbee2MQTT dev p
 A pull request says what changed and why, names the issue it closes, and says how it was checked
 (tests, and on hardware if it touches a device). CI must pass: `check` (lint, typecheck, tests, build, `dist/`,
 the version raise) and `privacy`. Pushes to this repo run on the project's self-hosted runner; a fork's
-pull request runs on GitHub's hosted runners, so its code never runs on project hardware.
+pull request runs on GitHub's hosted runners, so its code never runs on project hardware. Releases run on
+the self-hosted runner too.
 
 ## Releases
 

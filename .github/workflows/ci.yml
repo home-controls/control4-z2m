@@ -17,8 +17,8 @@ permissions:
   contents: read
 
 # Runners: the project's self-hosted runner takes the runs this repo's own people start (pushes,
-# manual runs). A pull request from a fork runs untrusted code, so it goes to GitHub's hosted
-# runners, never the self-hosted one. The release job stays hosted too (it needs gh and zip).
+# manual runs, and the release). A pull request from a fork runs untrusted code, so it goes to
+# GitHub's hosted runners, never the self-hosted one.
 jobs:
   check:
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'self-hosted' }}
@@ -71,7 +71,9 @@ jobs:
   release:
     needs: [check, privacy]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    # Only a push to main (or a manual run) gets here, never a fork's code. It needs gh and zip,
+    # which the self-hosted runner has.
+    runs-on: self-hosted
     permissions:
       contents: write
     concurrency:
