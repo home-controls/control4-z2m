@@ -37,15 +37,27 @@
 
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-
-import {buildIdOf, fileHash} from "../core/build";
-import {CONTRACT, definitionModel, type Family, GENERIC_MODEL, GESTURES, type Gesture, isC4Ieee, isValidModel, MANUFACTURER, modelInfo, REMOTE_COMMANDS} from "../core/constants";
 import {ledEffect, ledStatus} from "../core/animation";
+import {buildIdOf, fileHash} from "../core/build";
+import {
+    CONTRACT,
+    definitionModel,
+    type Family,
+    GENERIC_MODEL,
+    GESTURES,
+    type Gesture,
+    isC4Ieee,
+    isValidModel,
+    MANUFACTURER,
+    modelInfo,
+    REMOTE_COMMANDS,
+} from "../core/constants";
 import {Handoff, type HandoffHost, type HandoffStep} from "../core/handoff";
 import {type Logger, wrapZ2mLogger} from "../core/log";
 import {Runtime, type RuntimeHost} from "../core/runtime";
 import {type Json, type Profile, Store} from "../core/store";
 import {EmberTransport, type Transport} from "../core/transport";
+import {VERSION} from "../core/version";
 import {remoteEventType} from "../devices/remote";
 import {CONVERTER_KEY, type ConverterInfo, HOT_LOAD_KEY, RUNTIME_API, RUNTIME_KEY} from "./global";
 import {discoveryConfigs, type InstanceStatus, problemsOf, STATUS_INTERVAL} from "./status";
@@ -301,7 +313,9 @@ export default class Control4Extension {
         const kind = hotLoad
             ? "hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap"
             : "first start since Zigbee2MQTT started";
-        this.log.info(`Control4: extension started: ${kind} (${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`);
+        this.log.info(
+            `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`,
+        );
 
         this.publishDiscovery();
         this.publishStatus();
@@ -441,7 +455,9 @@ export default class Control4Extension {
             });
             this.hooks.ping = true;
         } else {
-            this.log.warning("Control4: herdsman has no ping hook - with availability on, Control4 devices may show offline (they never answer herdsman's own ping)");
+            this.log.warning(
+                "Control4: herdsman has no ping hook - with availability on, Control4 devices may show offline (they never answer herdsman's own ping)",
+            );
         }
     }
 
@@ -470,7 +486,8 @@ export default class Control4Extension {
             c4Devices: () => this.c4ZhDevices().map((d) => String(d.ieeeAddr).toLowerCase()),
             publish: (ieee, payload) => {
                 const dev = this.z2mDevice(ieee);
-                if (dev) void Promise.resolve(this.publishEntityState(dev, payload)).catch((error: unknown) => this.log.debug(`Control4: publish failed: ${error}`));
+                if (dev)
+                    void Promise.resolve(this.publishEntityState(dev, payload)).catch((error: unknown) => this.log.debug(`Control4: publish failed: ${error}`));
             },
             publishEvent: (ieee, payload) => {
                 const event: Record<string, unknown> = {...payload, base: this.baseTopic()};
@@ -548,8 +565,8 @@ export default class Control4Extension {
             now: () => Date.now(),
             // skipReceive off: Zigbee2MQTT would ignore this topic from every instance once it published on it.
             send: (ieee, step, body) =>
-                void Promise.resolve(this.mqtt.publish(`handoff/${ieee}/${step}`, JSON.stringify(body), {baseTopic: SHARED_TOPIC, skipReceive: false})).catch((error: unknown) =>
-                    this.log.warning(`Control4: handoff ${step} for ${ieee} not sent: ${error}`),
+                void Promise.resolve(this.mqtt.publish(`handoff/${ieee}/${step}`, JSON.stringify(body), {baseTopic: SHARED_TOPIC, skipReceive: false})).catch(
+                    (error: unknown) => this.log.warning(`Control4: handoff ${step} for ${ieee} not sent: ${error}`),
                 ),
             has: (ieee) => !!this.zhDevice(ieee),
             lastSeen: (ieee) => {
@@ -675,9 +692,9 @@ export default class Control4Extension {
     private sendEventEntity(prefix: string, ieee: string, payload: string): void {
         if (this.eventEntities.get(ieee) === payload) return;
         this.eventEntities.set(ieee, payload);
-        void Promise.resolve(this.mqtt.publish(`event/${ieee}/control4_event/config`, payload, {clientOptions: {retain: true, qos: 1}, baseTopic: prefix})).catch(
-            (error: unknown) => this.log.debug(`Control4: event entity publish failed for ${ieee}: ${error}`),
-        );
+        void Promise.resolve(
+            this.mqtt.publish(`event/${ieee}/control4_event/config`, payload, {clientOptions: {retain: true, qos: 1}, baseTopic: prefix}),
+        ).catch((error: unknown) => this.log.debug(`Control4: event entity publish failed for ${ieee}: ${error}`));
     }
 
     // -- instance status -----------------------------------------------------------
@@ -701,12 +718,17 @@ export default class Control4Extension {
     private currentStatus(): InstanceStatus | undefined {
         const rt = this.runtime;
         if (!rt) return undefined;
-        const unreachable = rt.link
-            .unreachable()
-            .map((u) => ({ieee: u.ieee, name: rt.host.friendlyName(u.ieee), model: u.model, quiet_min: u.quietMin, ...(u.rebootMin === undefined ? {} : {reboot_min: u.rebootMin})}));
+        const unreachable = rt.link.unreachable().map((u) => ({
+            ieee: u.ieee,
+            name: rt.host.friendlyName(u.ieee),
+            model: u.model,
+            quiet_min: u.quietMin,
+            ...(u.rebootMin === undefined ? {} : {reboot_min: u.rebootMin}),
+        }));
         return {
             base: this.baseTopic(),
             at: new Date().toISOString(),
+            version: VERSION,
             build: this.build(),
             contract: CONTRACT,
             problems: problemsOf({
@@ -728,9 +750,9 @@ export default class Control4Extension {
     private publishStatus(): void {
         const status = this.currentStatus();
         if (!status) return;
-        void Promise.resolve(this.mqtt.publish(`status/${status.base}`, JSON.stringify(status), {baseTopic: SHARED_TOPIC, clientOptions: {retain: true}})).catch(
-            (error: unknown) => this.log.debug(`Control4: status publish failed: ${error}`),
-        );
+        void Promise.resolve(
+            this.mqtt.publish(`status/${status.base}`, JSON.stringify(status), {baseTopic: SHARED_TOPIC, clientOptions: {retain: true}}),
+        ).catch((error: unknown) => this.log.debug(`Control4: status publish failed: ${error}`));
     }
 
     /** The status entities on this instance's Zigbee2MQTT Bridge device, when Home Assistant discovery is on. */
@@ -739,9 +761,15 @@ export default class Control4Extension {
         const coordinatorIeee = this.controller?.getDevicesByType?.("Coordinator")?.[0]?.ieeeAddr;
         if (ha?.enabled !== true || !coordinatorIeee) return;
         const prefix = ha.discovery_topic ?? "homeassistant";
-        for (const [topic, config] of discoveryConfigs({base: this.baseTopic(), statusTopic: this.statusTopic(), coordinatorIeee, build: this.build()})) {
-            void Promise.resolve(this.mqtt.publish(topic, JSON.stringify(config), {baseTopic: prefix, clientOptions: {retain: true, qos: 1}})).catch((error: unknown) =>
-                this.log.debug(`Control4: discovery publish failed: ${error}`),
+        for (const [topic, config] of discoveryConfigs({
+            base: this.baseTopic(),
+            statusTopic: this.statusTopic(),
+            coordinatorIeee,
+            build: this.build(),
+            version: VERSION,
+        })) {
+            void Promise.resolve(this.mqtt.publish(topic, JSON.stringify(config), {baseTopic: prefix, clientOptions: {retain: true, qos: 1}})).catch(
+                (error: unknown) => this.log.debug(`Control4: discovery publish failed: ${error}`),
             );
         }
     }
@@ -832,7 +860,8 @@ export default class Control4Extension {
     async bridgeRequest(action: string, msg: Any): Promise<Any> {
         const rt = this.runtime;
         if (!rt) throw new Error("Control4 runtime is not running");
-        const refs: unknown[] = msg.devices === undefined ? (msg.device === undefined ? [] : [msg.device]) : Array.isArray(msg.devices) ? msg.devices : [msg.devices];
+        const refs: unknown[] =
+            msg.devices === undefined ? (msg.device === undefined ? [] : [msg.device]) : Array.isArray(msg.devices) ? msg.devices : [msg.devices];
         // No `devices` / `device` at all = every keypad; an explicit empty list = none.
         const everyone = msg.devices === undefined && msg.device === undefined;
         const animators = () => {

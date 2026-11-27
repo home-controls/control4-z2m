@@ -38,7 +38,9 @@ function instance(kept: Files, o: Behaviour = {}) {
     let converter = kept.converter;
     let extension: string | undefined = kept.extension;
     const status = (): Msg[] =>
-        !extension || o.noStatus?.(extension) ? [] : [[`control4/status/${BASE}`, {base: BASE, build: buildId(extension, converter), problems: o.problems?.(extension, converter) ?? []}]];
+        !extension || o.noStatus?.(extension)
+            ? []
+            : [[`control4/status/${BASE}`, {base: BASE, build: buildId(extension, converter), problems: o.problems?.(extension, converter) ?? []}]];
     const list = (kind: "converter" | "extension"): Msg => [`${BASE}/bridge/${kind}s`, [{name: "control4.mjs", code: files[kind]}]];
     // biome-ignore lint/suspicious/noExplicitAny: a parsed request
     const handle = (topic: string, p: any): Msg[] => {
@@ -47,7 +49,10 @@ function instance(kept: Files, o: Behaviour = {}) {
             const kind = save[1] as "converter" | "extension";
             if (o.silent?.(kind, p.code)) return [];
             files[kind] = p.code;
-            const reply = (s: string, error?: string): Msg => [`${BASE}/bridge/response/${kind}/save`, {status: s, data: {}, transaction: p.transaction, ...(error ? {error} : {})}];
+            const reply = (s: string, error?: string): Msg => [
+                `${BASE}/bridge/response/${kind}/save`,
+                {status: s, data: {}, transaction: p.transaction, ...(error ? {error} : {})},
+            ];
             if (o.importFails?.(kind, p.code)) return [reply("error", "control4.mjs contains invalid code: boom")];
             if (kind === "converter") {
                 converter = p.code;
@@ -58,7 +63,9 @@ function instance(kept: Files, o: Behaviour = {}) {
             return [...status(), list(kind), reply("ok")];
         }
         if (topic === `${BASE}/bridge/request/control4/republish`) {
-            return o.republishes === false ? [] : [[`${BASE}/bridge/response/control4/republish`, {status: "ok", data: {devices: 3}, transaction: p.transaction}]];
+            return o.republishes === false
+                ? []
+                : [[`${BASE}/bridge/response/control4/republish`, {status: "ok", data: {devices: 3}, transaction: p.transaction}]];
         }
         return [];
     };
@@ -161,8 +168,13 @@ describe("deploy: one instance", () => {
     });
 
     it("checks a rollback to a build that publishes no status by the save answers and file lists", async () => {
-        const r = await push({startFails: (code) => code === NEW.extension, noStatus: (code) => code === OLD.extension}, {before: null, statusBefore: undefined});
-        expect(r.row.result).toBe(`failed (no status with build ${NEW.build} within 45 s); rolled back (this build publishes no status: proven by the save answers and file lists only)`);
+        const r = await push(
+            {startFails: (code) => code === NEW.extension, noStatus: (code) => code === OLD.extension},
+            {before: null, statusBefore: undefined},
+        );
+        expect(r.row.result).toBe(
+            `failed (no status with build ${NEW.build} within 45 s); rolled back (this build publishes no status: proven by the save answers and file lists only)`,
+        );
         expect(r.row.now).toBeNull();
         expect(r.files).toEqual(OLD);
     });
@@ -170,7 +182,9 @@ describe("deploy: one instance", () => {
     it("says so when a rollback can't be proven", async () => {
         // The old code doesn't start either: no status ever shows the old build.
         const r = await push({startFails: () => true});
-        expect(r.row.result).toBe(`failed (no status with build ${NEW.build} within 45 s); rollback NOT proven (no status with build ${OLD_BUILD} within 75 s): check ${BASE} by hand`);
+        expect(r.row.result).toBe(
+            `failed (no status with build ${NEW.build} within 45 s); rollback NOT proven (no status with build ${OLD_BUILD} within 75 s): check ${BASE} by hand`,
+        );
         expect(r.row.now).toBeNull();
     });
 
@@ -200,8 +214,13 @@ describe("deploy: judging a status", () => {
 });
 
 describe("deploy: plan", () => {
-    const files = (code: string) => JSON.stringify([{name: "other.mjs", code: "// someone else's"}, {name: "control4.mjs", code}]);
-    const info = (externalJs?: boolean) => JSON.stringify({version: "2.14.2", config: {advanced: externalJs === undefined ? {} : {enable_external_js: externalJs}}});
+    const files = (code: string) =>
+        JSON.stringify([
+            {name: "other.mjs", code: "// someone else's"},
+            {name: "control4.mjs", code},
+        ]);
+    const info = (externalJs?: boolean) =>
+        JSON.stringify({version: "2.14.2", config: {advanced: externalJs === undefined ? {} : {enable_external_js: externalJs}}});
     const retained = new Map<string, string>([
         ["zigbee2mqtt/bridge/state", JSON.stringify({state: "online"})],
         // On the build already.
@@ -263,11 +282,12 @@ describe("deploy: requests and table", () => {
     });
 
     it("lines the table up", () => {
-        expect(table([{base: "zigbee2mqtt", before: "aaa", now: "bbb", result: "pushed"}, {base: "z2", before: null, now: null, result: "report: x"}]).split("\n")).toEqual([
-            "base         before  now  result",
-            "zigbee2mqtt  aaa     bbb  pushed",
-            "z2           -       -    report: x",
-        ]);
+        expect(
+            table([
+                {base: "zigbee2mqtt", before: "aaa", now: "bbb", result: "pushed"},
+                {base: "z2", before: null, now: null, result: "report: x"},
+            ]).split("\n"),
+        ).toEqual(["base         before  now  result", "zigbee2mqtt  aaa     bbb  pushed", "z2           -       -    report: x"]);
     });
 });
 
@@ -275,7 +295,11 @@ describe("deploy: requests and table", () => {
 // connection step (port 9 is no Home Assistant), so nothing is pushed.
 describe("deploy command line", () => {
     const run = (args: string[], env: Record<string, string> = {HA_URL: "http://127.0.0.1:9", HA_TOKEN: "x"}) => {
-        const r = spawnSync(process.execPath, [TOOL, ...args], {env: {...process.env, HA_URL: "", HA_TOKEN: "", HA_TOKEN_FILE: "", ...env}, encoding: "utf8", timeout: 20_000});
+        const r = spawnSync(process.execPath, [TOOL, ...args], {
+            env: {...process.env, HA_URL: "", HA_TOKEN: "", HA_TOKEN_FILE: "", ...env},
+            encoding: "utf8",
+            timeout: 20_000,
+        });
         return {status: r.status, err: r.stderr};
     };
 

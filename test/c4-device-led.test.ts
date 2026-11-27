@@ -5,7 +5,7 @@ import {describe, expect, it} from "vitest";
 import {C4TemplateError, haEnvironment} from "./c4-device/engine";
 import {ledFeedback, ledSteps} from "./c4-device/led-feedback";
 
-const TOPIC = "control4/0x000fff0000636e2a/set";
+const TOPIC = "control4/0x000fff0000006e2a/set";
 const CALLS = [
     {buttons: "button_1", color: "Green", brightness: 75},
     {buttons: "button_2", color: "Off", brightness: 15},
@@ -98,7 +98,7 @@ describe("the LED feedback's steps", () => {
     });
 
     it("refuse a publish on another topic, which may reach the LEDs some other way", () => {
-        for (const topic of ["zigbee2mqtt/0x000fff0000636e2a/set", "{{ set_topic }}/led_status", TOPIC.toUpperCase()]) {
+        for (const topic of ["zigbee2mqtt/0x000fff0000006e2a/set", "{{ set_topic }}/led_status", TOPIC.toUpperCase()]) {
             expect(() => led([send([publish(undefined, topic)])]), topic).toThrow(REFUSED);
         }
     });
@@ -127,7 +127,9 @@ describe("the LED feedback's steps", () => {
     });
 
     it("end the run where a notification's template fails, before the calls go out", () => {
-        expect(() => led([{action: "persistent_notification.create", data: {notification_id: "x", message: "{{ 'x' | int }}"}}, send()])).toThrow(C4TemplateError);
+        expect(() => led([{action: "persistent_notification.create", data: {notification_id: "x", message: "{{ 'x' | int }}"}}, send()])).toThrow(
+            C4TemplateError,
+        );
     });
 
     it("refuse a step that is no mapping", () => {
@@ -159,7 +161,12 @@ describe("the LED feedback's steps", () => {
 
     it("take the metadata mapping the automation editor writes on an action, and refuse metadata anywhere else", () => {
         expect(led([send([{...publish(), metadata: {}}])]).leds).toEqual(CALLS);
-        for (const steps of [[{delay: 0, metadata: {}}, send()], [{...send(), metadata: {}}], [{variables: {}, metadata: {}}, send()], [send([{...publish(), metadata: "qa"}])]]) {
+        for (const steps of [
+            [{delay: 0, metadata: {}}, send()],
+            [{...send(), metadata: {}}],
+            [{variables: {}, metadata: {}}, send()],
+            [send([{...publish(), metadata: "qa"}])],
+        ]) {
             expect(() => led(steps), JSON.stringify(steps)).toThrow(REFUSED);
         }
     });
@@ -167,7 +174,14 @@ describe("the LED feedback's steps", () => {
     it("end the run where a notification's data is what its service refuses, before the calls go out", () => {
         const create = (data?: Record<string, unknown>) => ({action: "persistent_notification.create", ...(data ? {data} : {})});
         const dismiss = (data?: Record<string, unknown>) => ({action: "persistent_notification.dismiss", ...(data ? {data} : {})});
-        for (const step of [create(), create({title: "t"}), create({message: "{{ none }}"}), create({message: "m", mesage: "m"}), dismiss(), dismiss({notification_id: "{{ none }}"})]) {
+        for (const step of [
+            create(),
+            create({title: "t"}),
+            create({message: "{{ none }}"}),
+            create({message: "m", mesage: "m"}),
+            dismiss(),
+            dismiss({notification_id: "{{ none }}"}),
+        ]) {
             expect(() => led([step, send()]), JSON.stringify(step)).toThrow(/refuses persistent_notification/);
         }
         expect(led([create({notification_id: "n", title: "t", message: "{{ 'm' }}"}), dismiss({notification_id: "n"}), send()]).leds).toEqual(CALLS);
@@ -222,7 +236,10 @@ describe("the LED feedback's steps", () => {
     });
 
     it("fail a payload where to_json meets an undefined value, as Home Assistant's does", () => {
-        for (const payload of ["{{ {'led_status': {'buttons': repeat.item.button, 'color': 'Green'}} | to_json }}", "{{ {'led_status': repeat.item, 'x': nope} | to_json }}"]) {
+        for (const payload of [
+            "{{ {'led_status': {'buttons': repeat.item.button, 'color': 'Green'}} | to_json }}",
+            "{{ {'led_status': repeat.item, 'x': nope} | to_json }}",
+        ]) {
             const {continue_on_error: _, ...step} = publish(payload);
             expect(() => led([send([step])]), payload).toThrow(C4TemplateError);
         }
@@ -254,7 +271,12 @@ describe("the LED feedback's steps", () => {
     });
 
     it("refuse a repeat other than for_each over a list", () => {
-        for (const repeat of [{count: 2, sequence: []}, {for_each: "{{ calls }}", while: "{{ true }}", sequence: []}, {for_each: "{{ 'ab' }}", sequence: []}, "qa"]) {
+        for (const repeat of [
+            {count: 2, sequence: []},
+            {for_each: "{{ calls }}", while: "{{ true }}", sequence: []},
+            {for_each: "{{ 'ab' }}", sequence: []},
+            "qa",
+        ]) {
             expect(() => led([{repeat}]), JSON.stringify(repeat)).toThrow(REFUSED);
         }
     });

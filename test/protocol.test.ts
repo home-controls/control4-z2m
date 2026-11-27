@@ -67,7 +67,7 @@ describe("models", () => {
     });
 
     it("recognises Control4 IEEEs", () => {
-        expect(isC4Ieee("0x000fff0000636e2a")).toBe(true);
+        expect(isC4Ieee("0x000fff0000006e2a")).toBe(true);
         expect(isC4Ieee("0x00124b0024c0dc0d")).toBe(false);
     });
 });

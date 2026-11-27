@@ -119,7 +119,12 @@ function main(argv) {
         if (opts.range) {
             const [from, to] = opts.range.split("..");
             if (!to) throw new Error("--range takes <from>..<to>");
-            const commits = /^0+$/.test(from) || !from ? [git(["rev-parse", to]).trim()] : git(["rev-list", `${from}..${to}`]).split("\n").filter(Boolean);
+            const commits =
+                /^0+$/.test(from) || !from
+                    ? [git(["rev-parse", to]).trim()]
+                    : git(["rev-list", `${from}..${to}`])
+                          .split("\n")
+                          .filter(Boolean);
             for (const c of commits) {
                 const text = git(["log", "-1", "--format=%an <%ae>%n%cn <%ce>%n%B", c]);
                 for (const h of hitsIn(text, patterns)) found.push(describe(`commit ${c.slice(0, 7)} message`, h));

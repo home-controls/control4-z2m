@@ -69,7 +69,16 @@ describe("C4-APD120", () => {
 
     it("takes power, voltage, current and energy from the reading in each c4.dmx.ls", () => {
         rig.ascii(APD, "0t5902 sa c4.dmx.ls 00 00 64 007d 013f 001c 0028 02bb 07d0 0000");
-        expect(rig.last(APD)).toMatchObject({state: "ON", brightness: 254, voltage: 125, current: 0.319, power: 28, power_apparent: 40, power_factor: 0.699, energy: 2.54});
+        expect(rig.last(APD)).toMatchObject({
+            state: "ON",
+            brightness: 254,
+            voltage: 125,
+            current: 0.319,
+            power: 28,
+            power_apparent: 40,
+            power_factor: 0.699,
+            energy: 2.54,
+        });
     });
 
     it("turns on at the last settled level with the on-fade", async () => {
@@ -267,7 +276,14 @@ describe("C4-APD120", () => {
         p = set(APD, "set_all_led_modes", {num_buttons: 2, mode: 0, behavior: 1, color_mode: 2});
         await tick(1000);
         await p;
-        expect(rig.cmds(from)).toEqual(["c4.dmx.led 00 00 00", "c4.dmx.led 00 01 01", "c4.dmx.led 00 02 02", "c4.dmx.led 01 00 00", "c4.dmx.led 01 01 01", "c4.dmx.led 01 02 02"]);
+        expect(rig.cmds(from)).toEqual([
+            "c4.dmx.led 00 00 00",
+            "c4.dmx.led 00 01 01",
+            "c4.dmx.led 00 02 02",
+            "c4.dmx.led 01 00 00",
+            "c4.dmx.led 01 01 01",
+            "c4.dmx.led 01 02 02",
+        ]);
     });
 
     it("keeps send_raw / send_get as aliases of c4_send / c4_get", async () => {
@@ -301,12 +317,15 @@ describe("C4-APD120", () => {
         await tick(100);
         expect(rig.texts(from)).toEqual([]);
         // Any frame type letter, a digit in place of the leading 0, and no APS ack on request.
-        for (const [type, head] of [["x", "0x"], ["1g", "1g"]]) {
+        for (const [type, head] of [
+            ["x", "0x"],
+            ["1g", "1g"],
+        ]) {
             from = rig.transport.sent.length;
             p = set(APD, "c4_send", {cmd: "c4.sy.fwv", type});
             await tick(100);
             await p;
-            expect(rig.texts(from)).toEqual([expect.stringMatching(new RegExp(`^${head}[0-9a-f]{4} c4\.sy\.fwv$`))]);
+            expect(rig.texts(from)).toEqual([expect.stringMatching(new RegExp(`^${head}[0-9a-f]{4} c4.sy.fwv$`))]);
         }
         from = rig.transport.sent.length;
         p = set(APD, "c4_send", {cmd: "c4.sy.rb", type: "i", ack: false});
@@ -324,7 +343,9 @@ describe("C4-APD120", () => {
         await tick(100);
         await p;
         const sent = rig.transport.sent.slice(from);
-        expect(sent.map((x) => [x.frame.profile, x.frame.cluster, x.frame.srcEp, x.frame.dstEp, x.frame.data.toString("hex"), x.ack])).toEqual([[0xc25d, 1, 2, 2, "0001001500", false]]);
+        expect(sent.map((x) => [x.frame.profile, x.frame.cluster, x.frame.srcEp, x.frame.dstEp, x.frame.data.toString("hex"), x.ack])).toEqual([
+            [0xc25d, 1, 2, 2, "0001001500", false],
+        ]);
         rig.inject(APD, 0xc25d, Buffer.from("18010115000028ff", "hex"), true, 2);
         expect(rig.log.lines).toContainEqual(expect.stringMatching(/^warning: Control4 RAW .*profile 0xc25d cluster 1 ep 2->1: 18010115000028ff/));
         await expect(set(APD, "c4_raw", {profile: 260, data: "00"})).rejects.toThrow(/only the Control4 profiles/);
@@ -411,12 +432,22 @@ describe("C4-APD120", () => {
         const second = set(APD, "led_top_off_color", "blue");
         await tick(12_000);
         await Promise.all([first, second]);
-        expect(rig.cmds().filter((c) => /^c4.dmx.led 01 04 [0-9a-f]{6}$/.test(c)).at(-1)).toBe("c4.dmx.led 01 04 0000ff");
+        expect(
+            rig
+                .cmds()
+                .filter((c) => /^c4.dmx.led 01 04 [0-9a-f]{6}$/.test(c))
+                .at(-1),
+        ).toBe("c4.dmx.led 01 04 0000ff");
         const from = rig.transport.sent.length;
         p = set(APD, "led_top_off_color", "red");
         await tick(12_000);
         await p;
-        expect(rig.cmds(from).filter((c) => /^c4.dmx.led 01 04 [0-9a-f]{6}$/.test(c)).at(-1)).toBe("c4.dmx.led 01 04 ff0000");
+        expect(
+            rig
+                .cmds(from)
+                .filter((c) => /^c4.dmx.led 01 04 [0-9a-f]{6}$/.test(c))
+                .at(-1),
+        ).toBe("c4.dmx.led 01 04 ff0000");
     });
 
     it("keeps the newer colour as sent when an older write is confirmed after it", async () => {
@@ -459,7 +490,8 @@ describe("C4-APD120", () => {
         // Counting writes still on their way, the three write no more than the first colour each and the rest once (not 12 frames).
         expect(writes.length).toBeLessThanOrEqual(6);
         // What the LEDs end on is the last brightness: 60 % of white.
-        for (const slot of ["01 03", "01 04", "04 03", "04 04"]) expect(writes.filter((w) => w.startsWith(`c4.dmx.led ${slot}`)).at(-1)).toBe(`c4.dmx.led ${slot} 999999`);
+        for (const slot of ["01 03", "01 04", "04 03", "04 04"])
+            expect(writes.filter((w) => w.startsWith(`c4.dmx.led ${slot}`)).at(-1)).toBe(`c4.dmx.led ${slot} 999999`);
     });
 
     it("moves the old bound switches of its two LEDs to their modes", () => {
@@ -511,13 +543,19 @@ describe("C4-APD120", () => {
         rig.add(APD, "C4-APD120");
         rig.start();
         await tick(80_000);
-        const amb = rig.texts().reverse().find((t) => t.includes("c4.dmx.amb 00")) as string;
+        const amb = rig
+            .texts()
+            .reverse()
+            .find((t) => t.includes("c4.dmx.amb 00")) as string;
         expect(amb).toBeDefined();
         rig.ascii(APD, `0r${amb.slice(2, 6)} 000 c4.dmx.amb ff`);
         expect(rig.last(APD).ambient_light).toBe(255);
         rig.ascii(APD, "0rffff 000 c4.dmx.amb 1e");
         expect(rig.last(APD).ambient_light).toBe(255);
-        const pwr = rig.texts().reverse().find((t) => t.endsWith("c4.dmx.pwr")) as string;
+        const pwr = rig
+            .texts()
+            .reverse()
+            .find((t) => t.endsWith("c4.dmx.pwr")) as string;
         rig.ascii(APD, `0r${pwr.slice(2, 6)} 000 c4.dmx.pwr 0084 0168 001f 0030 028c 0016 0000`);
         expect(rig.last(APD)).toMatchObject({voltage: 132, current: 0.36, power: 31, power_apparent: 48, power_factor: 0.652, energy: 0.028});
         expect(rig.last(APD).device_temperature).toBeUndefined();

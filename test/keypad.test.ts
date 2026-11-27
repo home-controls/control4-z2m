@@ -52,7 +52,12 @@ describe("KP3-Z / KP6-Z c4.kp.* frames", () => {
         await tick(600);
         rig.ascii(KP6, "0t0002 sa c4.kp.bc 05");
         expect(rig.actions(KP6).slice(-4)).toEqual(["button_6_press", "button_6_release", "button_6_tap_known", "button_6_fast_single"]);
-        expect(rig.events.filter((e) => e.ieee === KP6).map((e) => e.action).slice(-4)).toEqual(["button_6_press", "button_6_release", "button_6_tap_known", "button_6_fast_single"]);
+        expect(
+            rig.events
+                .filter((e) => e.ieee === KP6)
+                .map((e) => e.action)
+                .slice(-4),
+        ).toEqual(["button_6_press", "button_6_release", "button_6_tap_known", "button_6_fast_single"]);
     });
 
     it("counts a tap after a lost release as a new single tap", async () => {

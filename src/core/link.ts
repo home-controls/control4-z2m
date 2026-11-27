@@ -22,7 +22,7 @@ export const SEND_GAP_GLOBAL = 20;
 /**
  * Most Control4 frames awaiting delivery at once, across all devices. The NCP
  * holds each unicast until its APS ack; with only the gaps above, a slow mesh
- * fills up (21:00 on the house: ~23 dimmers repainting, "adapter has run out
+ * fills up (21:00 on a test site: ~23 dimmers repainting, "adapter has run out
  * of buffers"). A load command and the controller identity never wait for it.
  */
 export const TX_WINDOW = 4;
@@ -397,7 +397,8 @@ export class Link {
                 const out: Unreachable = {ieee: d.ieee, model: d.model, quietMin: Math.round(this.quietFor(d.ieee, now) / 60_000)};
                 // A reboot since it last sent anything direct: one of this silence.
                 const rebootedAt = this.lastReboot.get(d.ieee);
-                if (rebootedAt !== undefined && rebootedAt >= (this.lastUnicast.get(d.ieee) ?? this.startedAt)) out.rebootMin = Math.round((now - rebootedAt) / 60_000);
+                if (rebootedAt !== undefined && rebootedAt >= (this.lastUnicast.get(d.ieee) ?? this.startedAt))
+                    out.rebootMin = Math.round((now - rebootedAt) / 60_000);
                 return out;
             })
             .sort((a, b) => b.quietMin - a.quietMin);
@@ -663,7 +664,7 @@ export class Link {
             for (let attempt = 0; attempt < 2; attempt++) {
                 if (!current()) return;
                 const reply = await this.get(dev, readProp);
-                if (!reply || reply.status !== "000") {
+                if (reply?.status !== "000") {
                     this.host.log.debug(`Control4 verify ${label} on ${dev.ieee}: no usable reply`);
                     return;
                 }

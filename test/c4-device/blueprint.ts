@@ -39,7 +39,11 @@ export function c4DeviceBlueprint(): Blueprint {
     const inputs = new Map<string, InputDeclaration>();
     const walk = (node: Record<string, unknown>) => {
         for (const [name, decl] of Object.entries(node)) {
-            const d = decl as {input?: Record<string, unknown>; selector?: {entity?: unknown; device?: {filter?: {model_id?: string}[]}; time?: unknown}; default?: unknown};
+            const d = decl as {
+                input?: Record<string, unknown>;
+                selector?: {entity?: unknown; device?: {filter?: {model_id?: string}[]}; time?: unknown};
+                default?: unknown;
+            };
             if (d.input && !d.selector) walk(d.input);
             else {
                 const models = (d.selector?.device?.filter ?? []).flatMap((f) => (f.model_id ? [f.model_id] : []));
@@ -54,7 +58,8 @@ export function c4DeviceBlueprint(): Blueprint {
 
 /** A trigger's platform, written trigger: (as the automation editor writes it) or platform:. */
 export function kindOf(trigger: Record<string, unknown>): unknown {
-    if ("platform" in trigger && "trigger" in trigger) throw new Error(`c4-device: Home Assistant refuses a trigger with both platform: and trigger: (${JSON.stringify(trigger)})`);
+    if ("platform" in trigger && "trigger" in trigger)
+        throw new Error(`c4-device: Home Assistant refuses a trigger with both platform: and trigger: (${JSON.stringify(trigger)})`);
     return trigger.platform ?? trigger.trigger;
 }
 

@@ -22,8 +22,8 @@ import {
     type LedMode,
     PADDLE_BUTTONS,
     PADDLE_HALVES,
-    type PaddleHalf,
     PALETTE_HEX,
+    type PaddleHalf,
     type PaletteName,
     TX_POWER_MAX,
     TX_POWER_MIN,
@@ -32,7 +32,7 @@ import {LED_BRIGHTNESS_KEY, type LedSelect, LedWriter} from "../core/leds";
 import type {StateReadResult} from "../core/link";
 import {buildZclCommand, CLUSTER_ON_OFF, hex2, lastValue, parseHex, pctToBrightness, scaleHex} from "../core/protocol";
 import {AnimationKeys} from "./animkeys";
-import {C4Device, type Payload, type SetMeta, toBool, toNumber} from "./base";
+import {type C4Device, type Payload, type SetMeta, toBool, toNumber} from "./base";
 import {FadeHold, LoadControl, OFF_TRANSITION_KEY, ON_TRANSITION_KEY, TvParams} from "./dimming";
 import {SETTINGS_READ_DELAY, SETTINGS_READ_KEY} from "./dm";
 import {DmxDevice} from "./dmx";
@@ -51,7 +51,6 @@ export const FIRMWARE_VERSION_KEY = "firmware_version";
 export const BOOTLOADER_VERSION_KEY = "bootloader_version";
 export const FAULT_KEY = "fault";
 export const DIMMING_PHASE_KEY = "dimming_phase";
-
 
 // ---------------------------------------------------------------------------
 // Reset reason (c4.sy.ri)
@@ -157,12 +156,20 @@ export async function writeBehaviour(dev: C4Device, wire: number, key: string, v
     const cmd = `c4.dmx.btn ${hex2(wire)} 01 ${code}`;
     await dev.set(cmd);
     dev.saveSetting(key, behaviour);
-    void dev.ctx.link.scheduleVerify(dev, `dmx btn ${hex2(wire)}`, `c4.dmx.btn ${hex2(wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => dev.trySet(cmd), 500, (v) => {
-        const actual = behaviourFromCode(lastValue(v));
-        if (!actual) return;
-        dev.saveSetting(key, actual);
-        dev.publish({[key]: actual});
-    });
+    void dev.ctx.link.scheduleVerify(
+        dev,
+        `dmx btn ${hex2(wire)}`,
+        `c4.dmx.btn ${hex2(wire)} 01`,
+        (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour],
+        () => dev.trySet(cmd),
+        500,
+        (v) => {
+            const actual = behaviourFromCode(lastValue(v));
+            if (!actual) return;
+            dev.saveSetting(key, actual);
+            dev.publish({[key]: actual});
+        },
+    );
     return {[key]: behaviour};
 }
 
@@ -241,7 +248,8 @@ export abstract class Gen3Device extends DmxDevice {
                 prop: `c4.dmx.led ${hex2(slot)} 01`,
                 parse: (v) => {
                     const mode = modeFromCode(lastValue(v));
-                    if (!mode) this.log.info(`Control4 ${this.name}: LED slot ${slot} is in a mode the extension doesn't name (${lastValue(v)}); left as it is`);
+                    if (!mode)
+                        this.log.info(`Control4 ${this.name}: LED slot ${slot} is in a mode the extension doesn't name (${lastValue(v)}); left as it is`);
                     return mode ? {[key]: mode} : undefined;
                 },
             });
@@ -294,7 +302,8 @@ export abstract class Gen3Device extends DmxDevice {
         const changed = Object.keys(read).filter((k) => shown[k] !== read[k]);
         for (const [key, value] of Object.entries(read)) this.saveSetting(key, value);
         this.publish(read);
-        if (changed.length) this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k] ?? "-"} -> ${read[k]}`).join(", ")}`);
+        if (changed.length)
+            this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k] ?? "-"} -> ${read[k]}`).join(", ")}`);
         else this.log.debug(`Control4 ${this.name}: settings read from the device, as shown`);
     }
 
@@ -339,7 +348,8 @@ export abstract class Gen3Device extends DmxDevice {
         const was = this.setting<boolean>(FAULT_KEY);
         this.saveSetting(FAULT_KEY, fault);
         this.publish({[FAULT_KEY]: fault});
-        if (fault && was !== true) this.log.warning(`Control4 ${this.name}: the device reports a fault (c4.dmx.warn 00 = ${hex}): a short circuit or overload on its load?`);
+        if (fault && was !== true)
+            this.log.warning(`Control4 ${this.name}: the device reports a fault (c4.dmx.warn 00 = ${hex}): a short circuit or overload on its load?`);
         else if (!fault && was === true) this.log.info(`Control4 ${this.name}: its fault has cleared`);
     }
 
@@ -358,12 +368,20 @@ export abstract class Gen3Device extends DmxDevice {
         await send();
         this.saveSetting(TX_POWER_KEY, dbm);
         this.saveSetting(TX_POWER_SET_KEY, true);
-        void this.ctx.link.scheduleVerify(this, "sy.zpw", "c4.sy.zpw", (v) => signedByte(lastValue(v)) === dbm, send, 500, (v) => {
-            const actual = signedByte(lastValue(v));
-            if (actual === undefined) return;
-            this.saveSetting(TX_POWER_KEY, actual);
-            this.publish({[TX_POWER_KEY]: actual});
-        });
+        void this.ctx.link.scheduleVerify(
+            this,
+            "sy.zpw",
+            "c4.sy.zpw",
+            (v) => signedByte(lastValue(v)) === dbm,
+            send,
+            500,
+            (v) => {
+                const actual = signedByte(lastValue(v));
+                if (actual === undefined) return;
+                this.saveSetting(TX_POWER_KEY, actual);
+                this.publish({[TX_POWER_KEY]: actual});
+            },
+        );
         return {[TX_POWER_KEY]: dbm};
     }
 
@@ -373,7 +391,7 @@ export abstract class Gen3Device extends DmxDevice {
         const want = this.setting<number>(TX_POWER_KEY);
         if (typeof want !== "number") return;
         const reply = await this.get("c4.sy.zpw");
-        if (!reply || reply.status !== "000") return;
+        if (reply?.status !== "000") return;
         const have = signedByte(lastValue(reply.values));
         if (have === undefined || have === want) return;
         this.log.info(`Control4 ${this.name}: its TX power is ${have} dBm, not the ${want} dBm set: putting it back`);
@@ -392,7 +410,10 @@ export abstract class Gen3Device extends DmxDevice {
         const slots = new Set(this.borrowedSlots());
         if (borrowed) slots.add(slot);
         else slots.delete(slot);
-        this.saveSetting(LED_BORROWED_KEY, [...slots].sort((a, b) => a - b));
+        this.saveSetting(
+            LED_BORROWED_KEY,
+            [...slots].sort((a, b) => a - b),
+        );
     }
 
     // -- keys -------------------------------------------------------------------
@@ -492,7 +513,8 @@ export abstract class PaddleDevice extends Gen3Device {
         }
         for (const h of PADDLE_HALVES) {
             const bound = this.setting<boolean>(`led_${h.slot + 1}_bound`);
-            if (typeof bound === "boolean" && this.setting<string>(`led_${h.half}_mode`) === undefined) this.saveSetting(`led_${h.half}_mode`, bound ? "push_release" : "programmed");
+            if (typeof bound === "boolean" && this.setting<string>(`led_${h.half}_mode`) === undefined)
+                this.saveSetting(`led_${h.half}_mode`, bound ? "push_release" : "programmed");
         }
     }
 
@@ -805,4 +827,3 @@ export class Sw120277 extends PaddleDevice {
         return super.setValue(key, value, meta);
     }
 }
-

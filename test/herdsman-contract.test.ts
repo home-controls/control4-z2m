@@ -83,7 +83,15 @@ class Reader {
         return v;
     }
     aps(): EmberApsFrame {
-        return {profileId: this.u16(), clusterId: this.u16(), sourceEndpoint: this.u8(), destinationEndpoint: this.u8(), options: this.u16(), groupId: this.u16(), sequence: this.u8()};
+        return {
+            profileId: this.u16(),
+            clusterId: this.u16(),
+            sourceEndpoint: this.u8(),
+            destinationEndpoint: this.u8(),
+            options: this.u16(),
+            groupId: this.u16(),
+            sequence: this.u8(),
+        };
     }
     payload(): Buffer {
         const n = this.u8();
@@ -185,7 +193,15 @@ function makeAdapter() {
     );
 }
 
-const aps = (profileId: number, src = 197): EmberApsFrame => ({profileId, clusterId: 1, sourceEndpoint: src, destinationEndpoint: 1, options: 0, groupId: 0, sequence: 1});
+const aps = (profileId: number, src = 197): EmberApsFrame => ({
+    profileId,
+    clusterId: 1,
+    sourceEndpoint: src,
+    destinationEndpoint: 1,
+    options: 0,
+    groupId: 0,
+    sequence: 1,
+});
 const out: OutFrame = {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 197, data: Buffer.from("0s0042 c4.dmx.led 00 ff0000\r\n")};
 
 let transport: EmberTransport | undefined;
@@ -237,7 +253,14 @@ describe.each([13, 14] as const)("EmberTransport under herdsman's EZSP v%i dispa
         );
         expect(ncp.unexpected).toEqual([]);
         expect(outcome).toBe("delivered");
-        expect(ncp.unicasts).toEqual([{nwk: 0x1234, aps: expect.objectContaining({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 197}), tag: expect.any(Number), data: out.data}]);
+        expect(ncp.unicasts).toEqual([
+            {
+                nwk: 0x1234,
+                aps: expect.objectContaining({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 197}),
+                tag: expect.any(Number),
+                data: out.data,
+            },
+        ]);
         expect(ncp.unicasts[0].aps.options & 0x0040).toBe(0x0040); // APS retry: an ACK is requested
     });
 

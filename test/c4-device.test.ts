@@ -10,8 +10,8 @@ import {readRun} from "../tools/c4-device-run.mjs";
 import {sequences} from "../tools/c4-scenarios.mjs";
 import {
     anyAction,
-    boot,
     type ButtonNumber,
+    boot,
     C4TemplateError,
     c4Device,
     change,
@@ -159,7 +159,8 @@ describe("hold to dim", () => {
         const both = {1: lights, 2: lights};
 
         it("never on a half that drives the load: any behaviour but event_only", () => {
-            for (const top of ["load_on", "load_off", "toggle", "momentary"]) expect(c4Device({model, buttons: both, buttonBehaviour: {top}}).on(press(1)).does, top).toBe("nothing");
+            for (const top of ["load_on", "load_off", "toggle", "momentary"])
+                expect(c4Device({model, buttons: both, buttonBehaviour: {top}}).on(press(1)).does, top).toBe("nothing");
         });
 
         it("never on a half with no behaviour select yet: it drives the load, as from the factory", () => {
@@ -209,7 +210,9 @@ describe("the fan and the outlet", () => {
     it("numbers the fan's buttons 1-6 from the top, as the extension names them", () => {
         const fan = c4Device({model: "C4-4SF120", buttons: sixButtons});
         const tap = fan.runs(knownTap(1))[0].variables.evt as Record<string, unknown>;
-        const wires = Object.keys(FAN_BUTTONS).map(Number).sort((a, b) => a - b);
+        const wires = Object.keys(FAN_BUTTONS)
+            .map(Number)
+            .sort((a, b) => a - b);
         expect(wires.map((w) => fan.on(event({...tap, button: FAN_BUTTONS[w], button_id: w})).button)).toEqual([1, 2, 3, 4, 5, 6]);
         expect([1, 2, 3, 4, 5, 6].map((n) => fan.on(knownTap(n as ButtonNumber)).targets)).toEqual([1, 2, 3, 4, 5, 6].map((n) => [`light.l${n}`]));
     });
@@ -235,7 +238,11 @@ describe("the Room modes", () => {
     });
 
     it.each(["room_off", "room_master"])("%s's LED shows the whole room: lit while anything in it is on", (mode) => {
-        expect(c4Device({...room(mode), states: {"switch.c": "on"}}).on(boot()).led("button_1")?.color).toBe("Green");
+        expect(
+            c4Device({...room(mode), states: {"switch.c": "on"}})
+                .on(boot())
+                .led("button_1")?.color,
+        ).toBe("Green");
         expect(c4Device(room(mode)).on(boot()).led("button_1")?.color).toBe("Off");
     });
 });
@@ -271,7 +278,11 @@ describe("the LEDs", () => {
     it("a brightness change alone repaints only while the LED follows the lights", () => {
         const states = {"light.hall": 100};
         expect(c4Device({buttons: {1: hall}, states}).on(change("light.hall", 200)).does).toBe("nothing");
-        expect(c4Device({buttons: {1: hall}, states, inputs: {led_follow: true}}).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 78});
+        expect(
+            c4Device({buttons: {1: hall}, states, inputs: {led_follow: true}})
+                .on(change("light.hall", 200))
+                .led("button_1"),
+        ).toEqual({color: "Green", brightness: 78});
     });
 
     it("a lit button shows its ON colour at the ON brightness, an unlit one its OFF colour at the OFF brightness", () => {
@@ -296,7 +307,10 @@ describe("the LEDs", () => {
     });
 
     it("picked colour selects name the LEDs they set, over the button's name", () => {
-        const kp = c4Device({model: "C4-KC120277", buttons: {3: {targets: ["light.hall"], led: ["select.test_keypad_led_5_on_color", "select.test_keypad_led_6_on_color"]}}});
+        const kp = c4Device({
+            model: "C4-KC120277",
+            buttons: {3: {targets: ["light.hall"], led: ["select.test_keypad_led_5_on_color", "select.test_keypad_led_6_on_color"]}},
+        });
         expect(kp.on(change("light.hall", 200)).leds).toEqual([{buttons: "5,6", color: "Green", brightness: 75}]);
     });
 
@@ -339,12 +353,20 @@ describe("the LEDs", () => {
     it("led_match all: lit only while every watched entity is on", () => {
         const both = {buttons: {1: {targets: ["light.hall", "light.kitchen"]}}, states: {"light.kitchen": "off"}};
         expect(c4Device(both).on(change("light.hall", 200)).led("button_1")?.color).toBe("Green");
-        expect(c4Device({...both, inputs: {led_match: "all"}}).on(change("light.hall", 200)).led("button_1")?.color).toBe("Off");
+        expect(
+            c4Device({...both, inputs: {led_match: "all"}})
+                .on(change("light.hall", 200))
+                .led("button_1")?.color,
+        ).toBe("Off");
     });
 
     it("follow: the ON brightness is the brightest lit light's, in percent, and never under 5", () => {
         const follow = {inputs: {led_follow: true}, buttons: {1: {targets: ["light.hall", "light.lamp"]}}};
-        expect(c4Device({...follow, states: {"light.lamp": 100}}).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 78});
+        expect(
+            c4Device({...follow, states: {"light.lamp": 100}})
+                .on(change("light.hall", 200))
+                .led("button_1"),
+        ).toEqual({color: "Green", brightness: 78});
         expect(c4Device(follow).on(change("light.hall", 5)).led("button_1")).toEqual({color: "Green", brightness: 5});
         expect(c4Device(follow).on(change("light.hall", "on")).led("button_1")).toEqual({color: "Green", brightness: 100});
     });
@@ -352,7 +374,11 @@ describe("the LEDs", () => {
     it("a watched entity unavailable shows the Fault colour at the ON brightness, unless Fault is treated as off", () => {
         const fan = {buttons: {1: {targets: ["light.hall", "switch.fan"]}}, states: {"switch.fan": "unavailable"}};
         expect(c4Device(fan).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Red", brightness: 75});
-        expect(c4Device({...fan, inputs: {fault_colour: "Treat as off"}}).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 75});
+        expect(
+            c4Device({...fan, inputs: {fault_colour: "Treat as off"}})
+                .on(change("light.hall", 200))
+                .led("button_1"),
+        ).toEqual({color: "Green", brightness: 75});
     });
 
     it("so does a watched entity Home Assistant does not have", () => {
@@ -362,10 +388,22 @@ describe("the LEDs", () => {
 
     it("at night, a button's night colour at the night brightness; by day, or with Night needs dark and a room light on, its day colour", () => {
         const night = {buttons: {1: {...hall, night_on: "Blue"}}, inputs: {night_enabled: true, night_needs_dark: false}};
-        expect(c4Device({...night, time: "22:30:00"}).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Blue", brightness: 10});
-        expect(c4Device({...night, time: "12:00:00"}).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 75});
+        expect(
+            c4Device({...night, time: "22:30:00"})
+                .on(change("light.hall", 200))
+                .led("button_1"),
+        ).toEqual({color: "Blue", brightness: 10});
+        expect(
+            c4Device({...night, time: "12:00:00"})
+                .on(change("light.hall", 200))
+                .led("button_1"),
+        ).toEqual({color: "Green", brightness: 75});
         // The hourly LED re-check at night.
-        expect(c4Device({...night, states: {"light.hall": 200}}).on(clock("23:00:00")).led("button_1")).toEqual({color: "Blue", brightness: 10});
+        expect(
+            c4Device({...night, states: {"light.hall": 200}})
+                .on(clock("23:00:00"))
+                .led("button_1"),
+        ).toEqual({color: "Blue", brightness: 10});
         const dark = {...night, inputs: {night_enabled: true}, time: "22:30:00"};
         expect(c4Device(dark).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 75});
     });
@@ -377,10 +415,19 @@ describe("the LEDs", () => {
             states: {"light.hall": 200},
         });
         // A reload paints at whatever time it is.
-        const at = (time: string, inputs?: Record<string, unknown>) => c4Device({...night(inputs), time}).on(reload()).led("button_1")?.color;
+        const at = (time: string, inputs?: Record<string, unknown>) =>
+            c4Device({...night(inputs), time})
+                .on(reload())
+                .led("button_1")?.color;
         expect([at("20:59:59"), at("21:00:00"), at("05:59:59"), at("06:00:00")]).toEqual(["Green", "Blue", "Blue", "Green"]);
         const small = {night_start: "01:00:00", night_end: "05:00:00"};
-        expect([at("00:59:59", small), at("01:00:00", small), at("03:00:00", small), at("04:59:59", small), at("05:00:00", small)]).toEqual(["Green", "Blue", "Blue", "Blue", "Green"]);
+        expect([at("00:59:59", small), at("01:00:00", small), at("03:00:00", small), at("04:59:59", small), at("05:00:00", small)]).toEqual([
+            "Green",
+            "Blue",
+            "Blue",
+            "Blue",
+            "Green",
+        ]);
         // A window that ends when it starts is empty: never night.
         const none = {night_start: "05:00:00", night_end: "05:00:00"};
         expect([at("04:59:59", none), at("05:00:00", none), at("17:00:00", none)]).toEqual(["Green", "Green", "Green"]);
@@ -388,20 +435,34 @@ describe("the LEDs", () => {
         const day = {night_start: "9:3", night_end: "17:00"};
         expect([at("09:02:59", day), at("09:03:00", day), at("16:59:59", day), at("17:00:00", day)]).toEqual(["Green", "Blue", "Blue", "Green"]);
         const overnight = {night_start: "21:00", night_end: "5:00"};
-        expect([at("20:59:59", overnight), at("21:00:00", overnight), at("04:59:59", overnight), at("05:00:00", overnight)]).toEqual(["Green", "Blue", "Blue", "Green"]);
+        expect([at("20:59:59", overnight), at("21:00:00", overnight), at("04:59:59", overnight), at("05:00:00", overnight)]).toEqual([
+            "Green",
+            "Blue",
+            "Blue",
+            "Green",
+        ]);
     });
 
     it("refuses a Night start or Night end in a form of time it does not model, whatever the happening", () => {
         // Home Assistant takes 2_1:00 (Python's int() reads 2_1 as 21); the engine's int does not, so the harness refuses it by name.
         for (const night_start of ["2_1:00", "﻿21:00", "21:00:00:00", 2100]) {
-            expect(() => c4Device({buttons: {1: hall}, inputs: {night_enabled: true, night_start}}), String(night_start)).toThrow(/night_start .* is no time of day this harness models/);
+            expect(() => c4Device({buttons: {1: hall}, inputs: {night_enabled: true, night_start}}), String(night_start)).toThrow(
+                /night_start .* is no time of day this harness models/,
+            );
         }
         expect(() => c4Device({buttons: {1: hall}, inputs: {night_end: "6"}})).toThrow(/night_end .* is no time of day this harness models/);
     });
 
     it("tells day from night after the LED delay: 90 s on boot, the LED delay otherwise", () => {
-        const night = (inputs: Record<string, unknown> = {}) => ({buttons: {1: {...hall, night_on: "Blue"}}, inputs: {night_enabled: true, night_needs_dark: false, ...inputs}, states: {"light.hall": 200}});
-        const colour = (time: string, h: Happening, inputs?: Record<string, unknown>) => c4Device({...night(inputs), time}).on(h).led("button_1")?.color;
+        const night = (inputs: Record<string, unknown> = {}) => ({
+            buttons: {1: {...hall, night_on: "Blue"}},
+            inputs: {night_enabled: true, night_needs_dark: false, ...inputs},
+            states: {"light.hall": 200},
+        });
+        const colour = (time: string, h: Happening, inputs?: Record<string, unknown>) =>
+            c4Device({...night(inputs), time})
+                .on(h)
+                .led("button_1")?.color;
         expect([colour("20:59:00", boot()), colour("20:58:29", boot()), colour("05:59:00", boot())]).toEqual(["Blue", "Green", "Green"]);
         // The delay runs past midnight into the next day's 00:00:30.
         expect(colour("23:59:00", boot(), {night_start: "00:00:00", night_end: "05:00:00"})).toBe("Blue");
@@ -414,13 +475,19 @@ describe("the LEDs", () => {
     });
 
     it("fires a Night start or Night end written as HH:MM at that minute, as Home Assistant's time trigger does", () => {
-        const kp = c4Device({buttons: {1: {...hall, night_on: "Blue"}}, inputs: {night_enabled: true, night_needs_dark: false, night_start: "21:03"}, states: {"light.hall": 200}});
+        const kp = c4Device({
+            buttons: {1: {...hall, night_on: "Blue"}},
+            inputs: {night_enabled: true, night_needs_dark: false, night_start: "21:03"},
+            states: {"light.hall": 200},
+        });
         expect(kp.runs(clock("21:03:00")).flatMap((r) => r.leds)).toContainEqual({buttons: "button_1", color: "Blue", brightness: 10});
     });
 
     it("a pressed colour goes with every call, at the ON brightness (the night brightness at night)", () => {
         const kp = c4Device({buttons: {1: hall}, inputs: {pressed_colour: "White"}});
-        expect(kp.on(change("light.hall", 200)).leds).toEqual([{buttons: "button_1", color: "Green", brightness: 75, pressed_color: "White", pressed_brightness: 75}]);
+        expect(kp.on(change("light.hall", 200)).leds).toEqual([
+            {buttons: "button_1", color: "Green", brightness: 75, pressed_color: "White", pressed_brightness: 75},
+        ]);
         const night = c4Device({buttons: {1: hall}, inputs: {pressed_colour: "White", night_enabled: true, night_needs_dark: false}, time: "22:30:00"});
         expect(night.on(change("light.hall", 200)).led("button_1")).toMatchObject({pressed_color: "White", pressed_brightness: 10});
     });
@@ -429,37 +496,91 @@ describe("the LEDs", () => {
         const scene = (level: number | "off" = 128) => ({buttons: {1: {mode: "scene", targets: ["light.den"], action: sceneApply({"light.den": level})}}});
 
         it("is lit while its Scene is Active: every target at its level, to within 2 points", () => {
-            const look = (den: StateSpec) => c4Device({...scene(), states: {"light.den": den}}).on(boot()).led("button_1")?.color;
+            const look = (den: StateSpec) =>
+                c4Device({...scene(), states: {"light.den": den}})
+                    .on(boot())
+                    .led("button_1")?.color;
             // 2 points of 100 are 5.1 of 255: 5 off is Active, 6 off is not.
-            expect([look(128), look(133), look(123), look(134), look(122), look("off"), look("on")]).toEqual(["Green", "Green", "Green", "Off", "Off", "Off", "Off"]);
+            expect([look(128), look(133), look(123), look(134), look(122), look("off"), look("on")]).toEqual([
+                "Green",
+                "Green",
+                "Green",
+                "Off",
+                "Off",
+                "Off",
+                "Off",
+            ]);
         });
 
         it("is lit by its Scene alone, whatever When an LED watches several entities says", () => {
             const two = {buttons: {1: {mode: "scene", targets: ["light.den", "light.hall"], action: sceneApply({"light.den": 128, "light.hall": "off"})}}};
-            expect(c4Device({...two, inputs: {led_match: "all"}, states: {"light.den": 128}}).on(boot()).led("button_1")?.color).toBe("Green");
-            expect(c4Device({...two, states: {"light.den": 128, "light.hall": 200}}).on(boot()).led("button_1")?.color).toBe("Off");
+            expect(
+                c4Device({...two, inputs: {led_match: "all"}, states: {"light.den": 128}})
+                    .on(boot())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+            expect(
+                c4Device({...two, states: {"light.den": 128, "light.hall": 200}})
+                    .on(boot())
+                    .led("button_1")?.color,
+            ).toBe("Off");
         });
 
         it("with watches, shows them like any other button, not its Scene", () => {
             const watched = {buttons: {1: {...scene().buttons[1], watch: ["switch.fan"]}}};
-            expect(c4Device({...watched, states: {"light.den": 128, "switch.fan": "off"}}).on(boot()).led("button_1")?.color).toBe("Off");
-            expect(c4Device({...watched, states: {"light.den": 50, "switch.fan": "on"}}).on(boot()).led("button_1")?.color).toBe("Green");
+            expect(
+                c4Device({...watched, states: {"light.den": 128, "switch.fan": "off"}})
+                    .on(boot())
+                    .led("button_1")?.color,
+            ).toBe("Off");
+            expect(
+                c4Device({...watched, states: {"light.den": 50, "switch.fan": "on"}})
+                    .on(boot())
+                    .led("button_1")?.color,
+            ).toBe("Green");
         });
 
         it("is Active to within 5.1 of 255, a brightness_pct level included", () => {
             // 50.160784 % is 127.91: 133 is 5.09 off. 50.152941 % is 127.89: 133 is 5.11 off.
-            const pct = (p: number) => ({buttons: {1: {mode: "scene", targets: ["light.den"], action: [{action: "scene.apply", data: {entities: {"light.den": {state: "on", brightness_pct: p}}}}]}}});
-            const look = (p: number) => c4Device({...pct(p), states: {"light.den": 133}}).on(boot()).led("button_1")?.color;
+            const pct = (p: number) => ({
+                buttons: {
+                    1: {
+                        mode: "scene",
+                        targets: ["light.den"],
+                        action: [{action: "scene.apply", data: {entities: {"light.den": {state: "on", brightness_pct: p}}}}],
+                    },
+                },
+            });
+            const look = (p: number) =>
+                c4Device({...pct(p), states: {"light.den": 133}})
+                    .on(boot())
+                    .led("button_1")?.color;
             expect([look(50.160784), look(50.152941)]).toEqual(["Green", "Off"]);
         });
 
         it("an off level is Active while its light is off", () => {
-            expect(c4Device({...scene("off"), states: {"light.den": "off"}}).on(boot()).led("button_1")?.color).toBe("Green");
+            expect(
+                c4Device({...scene("off"), states: {"light.den": "off"}})
+                    .on(boot())
+                    .led("button_1")?.color,
+            ).toBe("Green");
         });
 
         it("may be written with the older service: key", () => {
-            const service = {buttons: {1: {mode: "scene", targets: ["light.den"], action: [{service: "scene.apply", data: {entities: {"light.den": {state: "on", brightness: 128}}}}]}}};
-            expect(c4Device({...service, states: {"light.den": 128}}).on(boot()).led("button_1")).toEqual({color: "Green", brightness: 75});
+            const service = {
+                buttons: {
+                    1: {
+                        mode: "scene",
+                        targets: ["light.den"],
+                        action: [{service: "scene.apply", data: {entities: {"light.den": {state: "on", brightness: 128}}}}],
+                    },
+                },
+            };
+            expect(
+                c4Device({...service, states: {"light.den": 128}})
+                    .on(boot())
+                    .led("button_1"),
+            ).toEqual({color: "Green", brightness: 75});
         });
 
         it("shows the Fault colour while the Scene and Targets name different lights", () => {
@@ -468,7 +589,11 @@ describe("the LEDs", () => {
         });
 
         it("repaints on its light's brightness alone, follow or not", () => {
-            expect(c4Device({...scene(), states: {"light.den": 100}}).on(change("light.den", 128)).led("button_1")?.color).toBe("Green");
+            expect(
+                c4Device({...scene(), states: {"light.den": 100}})
+                    .on(change("light.den", 128))
+                    .led("button_1")?.color,
+            ).toBe("Green");
         });
 
         it("at night, a night colour wins over the Fault colour", () => {
@@ -530,18 +655,28 @@ describe("every model the picker offers, played its own events from the contract
         expect(PICKER).toHaveLength(9);
     });
 
-    it.each(PICKER.flatMap((model) => ["auto", "fast", "instant", "wait"].map((response) => [model, response])))("a %s's single tap runs its tap once under %s", (model, response) => {
-        expect(doing(c4Device({model, buttons: {1: plain}, inputs: {tap_response: response}}).play("tap", 1))).toEqual(["tap"]);
-    });
+    it.each(PICKER.flatMap((model) => ["auto", "fast", "instant", "wait"].map((response) => [model, response])))(
+        "a %s's single tap runs its tap once under %s",
+        (model, response) => {
+            expect(doing(c4Device({model, buttons: {1: plain}, inputs: {tap_response: response}}).play("tap", 1))).toEqual(["tap"]);
+        },
+    );
 
     it.each(PICKER)("a %s's double tap, under the default response, commits its first tap toward ON early and runs the double-tap action", (model) => {
         expect(doing(c4Device({model, buttons: {1: {...plain, double: anyAction}}}).play("double", 1))).toEqual(["early commit", "double"]);
     });
 
-    it.each(PICKER.filter((model) => sequences({model, ieee: "0x0", name: "x"}, 1).hold.length))("a %s's hold starts one hold-to-dim, on a button that does not drive its own load", (model) => {
-        const dev = c4Device({model, buttons: {1: {targets: ["light.hall"]}}, buttonBehaviour: ["C4-APD120", "C4-SW120277"].includes(model) ? {top: "event_only"} : undefined});
-        expect(doing(dev.play("hold", 1))).toEqual(["hold"]);
-    });
+    it.each(PICKER.filter((model) => sequences({model, ieee: "0x0", name: "x"}, 1).hold.length))(
+        "a %s's hold starts one hold-to-dim, on a button that does not drive its own load",
+        (model) => {
+            const dev = c4Device({
+                model,
+                buttons: {1: {targets: ["light.hall"]}},
+                buttonBehaviour: ["C4-APD120", "C4-SW120277"].includes(model) ? {top: "event_only"} : undefined,
+            });
+            expect(doing(dev.play("hold", 1))).toEqual(["hold"]);
+        },
+    );
 });
 
 describe("hearing the device (ADR 0005)", () => {
@@ -593,7 +728,8 @@ describe("a template that fails", () => {
 });
 
 describe("Home Assistant's typing of rendered variables", () => {
-    const btnAction = (action: unknown[]) => (c4Device({buttons: {1: {targets: ["light.hall"], action}}}).runs(knownTap(1))[0].variables.btn as {action: unknown}).action;
+    const btnAction = (action: unknown[]) =>
+        (c4Device({buttons: {1: {targets: ["light.hall"], action}}}).runs(knownTap(1))[0].variables.btn as {action: unknown}).action;
 
     it("gives back a Tap action's text as written, quotes and backslashes included", () => {
         const action = [{action: "notify.notify", data: {message: `it's a "quoted" \\ path`}}];

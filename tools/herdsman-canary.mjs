@@ -60,6 +60,7 @@ function run(cmd) {
         };
         child.stdout.on("data", take);
         child.stderr.on("data", take);
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: strips the ANSI colour codes (ESC [ ... m) from the tools' output
         child.on("close", (code) => resolve({ok: code === 0, output: output.replace(/\x1b\[[0-9;]*m/g, "")}));
     });
 }

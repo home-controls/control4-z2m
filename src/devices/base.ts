@@ -6,15 +6,15 @@
  * requests into Control4 frames. Families subclass it (devices/*.ts).
  */
 
-import type {FastTaps} from "../core/fasttap";
+import type {AnimationEngine, TxPump} from "../core/animation";
 import type {DeviceFamily, Gesture} from "../core/constants";
-import {DEFAULT_TAP_WINDOW_MS, GESTURES, MAX_TAP_WINDOW_MS, MIN_TAP_WINDOW_MS, TAP_WINDOW_OPTION, PROFILE_BUTTON, C4_CLUSTER} from "../core/constants";
+import {C4_CLUSTER, DEFAULT_TAP_WINDOW_MS, GESTURES, MAX_TAP_WINDOW_MS, MIN_TAP_WINDOW_MS, PROFILE_BUTTON, TAP_WINDOW_OPTION} from "../core/constants";
+import type {FastTaps} from "../core/fasttap";
 import type {Link, LinkDevice, StateReadResult} from "../core/link";
 import type {Logger} from "../core/log";
 import {buildFrame, hex4, type ParsedFrame, type ZclValue} from "../core/protocol";
 import type {Store} from "../core/store";
 import type {OutFrame} from "../core/transport";
-import type {AnimationEngine, TxPump} from "../core/animation";
 
 export type Payload = Record<string, unknown>;
 
@@ -388,8 +388,13 @@ export abstract class C4Device implements LinkDevice {
                 // the network profile, say). Whatever the device sends back is logged while it waits.
                 const raw = rawArg(value);
                 this.armCapture();
-                this.log.info(`Control4 ${this.name} -> raw profile 0x${raw.profile.toString(16)} cluster ${raw.cluster} ep ${raw.srcEp}->${raw.dstEp}: ${raw.data.toString("hex")}`);
-                await this.sendFrame({profile: raw.profile, cluster: raw.cluster, srcEp: raw.srcEp, dstEp: raw.dstEp, data: raw.data}, raw.ack ? undefined : {ack: false});
+                this.log.info(
+                    `Control4 ${this.name} -> raw profile 0x${raw.profile.toString(16)} cluster ${raw.cluster} ep ${raw.srcEp}->${raw.dstEp}: ${raw.data.toString("hex")}`,
+                );
+                await this.sendFrame(
+                    {profile: raw.profile, cluster: raw.cluster, srcEp: raw.srcEp, dstEp: raw.dstEp, data: raw.data},
+                    raw.ack ? undefined : {ack: false},
+                );
                 return undefined;
             }
             case "c4_get": {

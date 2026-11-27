@@ -5,8 +5,7 @@ import {readFileSync} from "node:fs";
 import {build} from "esbuild";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const banner = (what) =>
-    `// control4-z2m ${pkg.version} - ${what}\n// Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.\n`;
+const banner = (what) => `// control4-z2m ${pkg.version} - ${what}\n// Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.\n`;
 
 const common = {
     bundle: true,
@@ -15,6 +14,8 @@ const common = {
     target: "node20",
     external: ["zigbee-herdsman", "zigbee-herdsman/*", "zigbee-herdsman-converters", "zigbee-herdsman-converters/*"],
     legalComments: "none",
+    // The release version, for the status and the start-up line (src/core/version.ts).
+    define: {__C4Z2M_VERSION__: JSON.stringify(pkg.version)},
     logLevel: "info",
 };
 

@@ -1,0 +1,20 @@
+name: Feature or new model
+description: Something the extension should do, or a Control4 model it doesn't support yet
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you'd like, and why
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model (for a new model)
+      description: The part number, and its check-in string if Zigbee2MQTT logged one (an unsupported model logs its frames; README, "Pairing").
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What you know about how it talks
+      description: Log excerpts, links to other projects' notes, captures. Remove names that identify people or rooms.

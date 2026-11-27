@@ -23,7 +23,7 @@ import {type LedCall, type LedLook, ledLook, type Run, readRun} from "../tools/c
 import {sequences} from "../tools/c4-scenarios.mjs";
 import {c4DeviceBlueprint, kindOf, substitute} from "./c4-device/blueprint";
 import {checkTime, fires, later, parseTime} from "./c4-device/clock";
-import {conditionPasses, haEnvironment, type HaState, type HaWorld, renderVariables} from "./c4-device/engine";
+import {conditionPasses, type HaState, type HaWorld, haEnvironment, renderVariables} from "./c4-device/engine";
 import {ledFeedback} from "./c4-device/led-feedback";
 
 export type {Does, LedCall, LedLook, Run} from "../tools/c4-device-run.mjs";
@@ -168,7 +168,7 @@ function haState(spec: Exclude<StateSpec, null>): HaState {
 export function c4Device(setup: DeviceSetup = {}): C4Device {
     const bp = c4DeviceBlueprint();
     const model = setup.model ?? "C4-KP3-Z";
-    const ieee = "0x000fff0000636e2a";
+    const ieee = "0x000fff0000006e2a";
     const given: Record<string, unknown> = {...setup.inputs};
     for (const [n, button] of Object.entries(setup.buttons ?? {})) {
         for (const [k, v] of Object.entries(button)) {
@@ -185,7 +185,8 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
     for (const [name, decl] of bp.inputs) inputs[name] = decl.default;
     Object.assign(inputs, given, {c4_device: DEVICE_ID});
     for (const [name, decl] of bp.inputs) {
-        if (decl.time && parseTime(inputs[name]) === undefined) throw new Error(`c4-device: ${name} ${JSON.stringify(inputs[name])} is no time of day this harness models (H:M or H:M:S, as cv.time reads it)`);
+        if (decl.time && parseTime(inputs[name]) === undefined)
+            throw new Error(`c4-device: ${name} ${JSON.stringify(inputs[name])} is no time of day this harness models (H:M or H:M:S, as cv.time reads it)`);
     }
     const automation = substitute(bp.automation, inputs) as Automation;
 
@@ -247,7 +248,9 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
     const eventTypes = (automation.trigger[eventIdx].options as {event_type: string[]}).event_type;
 
     // A paddle has two halves, Button 1 and Button 2, as the blueprint itself says.
-    const paddle = renderVariables(haEnvironment(worldOf(states)), automation.variables, {this: null, trigger: {platform: "homeassistant", event: "start", id: "boot"}}).is_paddle === true;
+    const paddle =
+        renderVariables(haEnvironment(worldOf(states)), automation.variables, {this: null, trigger: {platform: "homeassistant", event: "start", id: "boot"}})
+            .is_paddle === true;
     const checkButton = (n: number) => {
         if (paddle && n > 2) throw new Error(`c4-device: a ${model} is a paddle, with no Button ${n}`);
     };
@@ -270,7 +273,10 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
         const before = states[EVENTS_ENTITY];
         const command = String(payload.command);
         if (!before || !(before.attributes.event_types as string[]).includes(command) || !eventTypes.includes(command)) return [];
-        const after: HaState = {state: "2026-10-29T12:00:01.000+00:00", attributes: {...payload, event_type: payload.command, event_types: before.attributes.event_types}};
+        const after: HaState = {
+            state: "2026-10-29T12:00:01.000+00:00",
+            attributes: {...payload, event_type: payload.command, event_types: before.attributes.event_types},
+        };
         const trigger = {
             platform: "event.received",
             id: "event",
@@ -298,7 +304,16 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
             if (attribute) {
                 if (JSON.stringify(before?.attributes[attribute] ?? null) === JSON.stringify(after?.attributes[attribute] ?? null)) return;
             } else if ((before?.state ?? null) === (after?.state ?? null)) return;
-            const trigger = {platform: "state", entity_id: h.entity, from_state: stateObject(before), to_state: stateObject(after), for: null, attribute: attribute ?? null, id: t.id, idx: String(idx)};
+            const trigger = {
+                platform: "state",
+                entity_id: h.entity,
+                from_state: stateObject(before),
+                to_state: stateObject(after),
+                for: null,
+                attribute: attribute ?? null,
+                id: t.id,
+                idx: String(idx),
+            };
             out.push(run(worldOf(now), trigger));
         });
         return out;
@@ -353,7 +368,9 @@ export function c4Device(setup: DeviceSetup = {}): C4Device {
         checkButton(button);
         const seq = sequences({model, ieee, name: DEVICE_NAME}, button)[sequence];
         if (!seq.length) throw new Error(`c4-device: the Contract fixture has no ${sequence} sequence for a ${model}`);
-        return seq.map((s, i) => on({kind: "button", button, label: `${sequence} event ${i + 1} (${s.payload.gesture})`, payload: (seqs) => seqs[sequence][i]?.payload}));
+        return seq.map((s, i) =>
+            on({kind: "button", button, label: `${sequence} event ${i + 1} (${s.payload.gesture})`, payload: (seqs) => seqs[sequence][i]?.payload}),
+        );
     };
 
     return {ieee, model, runs, on, play};
@@ -373,7 +390,13 @@ function asGesture(p: Record<string, unknown> | undefined, gesture: "fast_quadru
 }
 
 /** The gesture `gesture` in sequence `from`, re-addressed to the button. */
-function gestureOf(button: ButtonNumber, label: string, from: keyof ReturnType<typeof sequences>, gesture: string, also: Record<string, unknown> = {}): Happening {
+function gestureOf(
+    button: ButtonNumber,
+    label: string,
+    from: keyof ReturnType<typeof sequences>,
+    gesture: string,
+    also: Record<string, unknown> = {},
+): Happening {
     return {
         kind: "button",
         button,

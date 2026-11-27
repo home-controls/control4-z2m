@@ -15,7 +15,9 @@ describe("a time trigger", () => {
     it("is written with trigger: as the automation editor writes it, or platform:, not both", () => {
         expect(fires({trigger: "time", at: "21:00:00", id: "led"}, "21:00:00")).toBe(true);
         expect(fires({trigger: "time_pattern", minutes: "/5", id: "led"}, "12:05:00")).toBe(true);
-        expect(() => fires({platform: "time", trigger: "time", at: "21:00:00"}, "21:00:00")).toThrow(/Home Assistant refuses a trigger with both platform: and trigger:/);
+        expect(() => fires({platform: "time", trigger: "time", at: "21:00:00"}, "21:00:00")).toThrow(
+            /Home Assistant refuses a trigger with both platform: and trigger:/,
+        );
     });
 
     it("is refused at anything else, or with keys beyond its time", () => {
@@ -71,6 +73,11 @@ describe("another trigger", () => {
 
 describe("the clock a delay moves on", () => {
     it("shows whole seconds, past midnight the next day's", () => {
-        expect([later("20:59:58", 3), later("20:59:59", 0.3), later("23:59:00", 90), later("12:00:00", 0)]).toEqual(["21:00:01", "20:59:59", "00:00:30", "12:00:00"]);
+        expect([later("20:59:58", 3), later("20:59:59", 0.3), later("23:59:00", 90), later("12:00:00", 0)]).toEqual([
+            "21:00:01",
+            "20:59:59",
+            "00:00:30",
+            "12:00:00",
+        ]);
     });
 });

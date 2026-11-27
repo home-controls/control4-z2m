@@ -1,6 +1,6 @@
 /**
  * A Control4 device whose check-in names a model this build doesn't support yet
- * (a C4-KD120 keypad dimmer, a LOZ-5D1 outlet dimmer, an LSZ-102 switch, ...).
+ * (an LSZ-102 switch, an SR250 remote's older siblings, a model added after this build, ...).
  *
  * It stays the generic C4-Zigbee device in Zigbee2MQTT, so `c4_get` / `c4_send`
  * still reach it, and it is kept ours: its check-ins are answered like any other.
@@ -64,7 +64,8 @@ export class Unsupported extends C4Device {
         if (this.framesLogged < FRAME_LOG_LIMIT) {
             this.framesLogged++;
             this.log.info(`Control4 UNSUPPORTED ${this.name} (${this.model}) <- ${frame.text}`);
-            if (this.framesLogged === FRAME_LOG_LIMIT) this.log.info(`Control4 ${this.name}: ${FRAME_LOG_LIMIT} frames logged; the rest of this run's go to debug`);
+            if (this.framesLogged === FRAME_LOG_LIMIT)
+                this.log.info(`Control4 ${this.name}: ${FRAME_LOG_LIMIT} frames logged; the rest of this run's go to debug`);
         }
         super.handleAscii(frame);
     }
@@ -102,7 +103,8 @@ const answered = (found: Record<string, string>, prefix: string) => Object.entri
 
 /** What a fingerprint suggests, in a line for the log. */
 export function fingerprintHint(found: Record<string, string>): string {
-    if (Object.values(found).every((r) => r === "no reply")) return "it answered no Get: an older model, or out of reach. Its button and check-in frames above are what there is to go on";
+    if (Object.values(found).every((r) => r === "no reply"))
+        return "it answered no Get: an older model, or out of reach. Its button and check-in frames above are what there is to go on";
     const parts: string[] = [];
     if (answered(found, "c4.dmx.")) parts.push("it speaks c4.dmx, the Gen3 board of the APD120 / SW120277 / KC120277");
     if (answered(found, "c4.dm.")) parts.push(`it has a c4.dm load${found["c4.dm.tv 01 00"]?.startsWith("000") ? " (two channels answer)" : ""}`);

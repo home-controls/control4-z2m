@@ -1,7 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
-
-import {type Animator, AnimationEngine, type AnimatorHost, MIN_INTERVAL, parseColour, PULSE_GAMMA, TxPump} from "../src/core/animation";
-import {DM_STEP_PER_LED} from "../src/core/animation";
+import {AnimationEngine, type Animator, type AnimatorHost, DM_STEP_PER_LED, MIN_INTERVAL, PULSE_GAMMA, parseColour, TxPump} from "../src/core/animation";
 import {Rig, silent, tick} from "./rig";
 
 class Host implements AnimatorHost {
@@ -81,7 +79,17 @@ describe("colours", () => {
 
     it("steps a pulse evenly to the eye (small steps near off)", async () => {
         const kp = engine.register(host, [0], "kp");
-        await kp.play({effect: "pulse", buttons: [0], colour: [255, 255, 255], colour2: [0, 0, 0], interval: MIN_INTERVAL, count: 1, brightness: 100, priority: 1, restore: false});
+        await kp.play({
+            effect: "pulse",
+            buttons: [0],
+            colour: [255, 255, 255],
+            colour2: [0, 0, 0],
+            interval: MIN_INTERVAL,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(5000);
         const rise = host.sent.slice(0, 9).map((c) => Number.parseInt(c.slice(-2), 16));
         expect(rise[0]).toBe(0);
@@ -94,7 +102,17 @@ describe("colours", () => {
 describe("kp / dmx animations", () => {
     it("blinks, diffs unchanged buttons, then restores the status layer", async () => {
         const kp = engine.register(host, [0, 1, 2], "kp");
-        await kp.play({effect: "blink", buttons: [0, 1], colour: [255, 0, 0], colour2: [0, 0, 0], interval: 200, count: 1, brightness: 100, priority: 10, restore: true});
+        await kp.play({
+            effect: "blink",
+            buttons: [0, 1],
+            colour: [255, 0, 0],
+            colour2: [0, 0, 0],
+            interval: 200,
+            count: 1,
+            brightness: 100,
+            priority: 10,
+            restore: true,
+        });
         await tick(2000);
         expect(host.sent).toEqual([
             "c4.kp.lv 00 ff0000",
@@ -110,7 +128,16 @@ describe("kp / dmx animations", () => {
 
     it("refuses a lower priority overlay and lets a higher one preempt", async () => {
         const kp = engine.register(host, [0], "kp");
-        const spec = {effect: "blink", buttons: [0], colour: [255, 0, 0] as [number, number, number], colour2: [0, 0, 0] as [number, number, number], interval: 200, count: 0, brightness: 100, restore: true};
+        const spec = {
+            effect: "blink",
+            buttons: [0],
+            colour: [255, 0, 0] as [number, number, number],
+            colour2: [0, 0, 0] as [number, number, number],
+            interval: 200,
+            count: 0,
+            brightness: 100,
+            restore: true,
+        };
         expect(await kp.play({...spec, priority: 50})).toBe(true);
         expect(await kp.play({...spec, priority: 10})).toBe(false);
         expect(await kp.play({...spec, priority: 60})).toBe(true);
@@ -120,7 +147,17 @@ describe("kp / dmx animations", () => {
 
     it("writes both colours per slot on dmx", async () => {
         const a = engine.register(host, [0], "dmx");
-        await a.play({effect: "solid", buttons: [0], colour: [0, 255, 0], colour2: [0, 0, 0], interval: 3000, count: 1, brightness: 100, priority: 1, restore: false});
+        await a.play({
+            effect: "solid",
+            buttons: [0],
+            colour: [0, 255, 0],
+            colour2: [0, 0, 0],
+            interval: 3000,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(500);
         expect(host.sent).toEqual(["c4.dmx.led 00 03 00ff00", "c4.dmx.led 00 04 00ff00"]);
     });
@@ -156,7 +193,17 @@ describe("kp / dmx animations", () => {
 
     it("keeps status colours on buttons outside the overlay", async () => {
         const kp = engine.register(host, [0, 1, 2], "kp");
-        await kp.play({effect: "blink", buttons: [2], colour: [255, 0, 0], colour2: [0, 0, 0], interval: 1000, count: 0, brightness: 100, priority: 10, restore: true});
+        await kp.play({
+            effect: "blink",
+            buttons: [2],
+            colour: [255, 0, 0],
+            colour2: [0, 0, 0],
+            interval: 1000,
+            count: 0,
+            brightness: 100,
+            priority: 10,
+            restore: true,
+        });
         await tick(100);
         host.sent = [];
         await kp.setStatus({buttons: [2, 3], colour: [0, 0, 255]}); // 1-based: ids 1 and 2
@@ -172,7 +219,17 @@ describe("kp / dmx animations", () => {
             h.ieee = `0x000fff00000001${i.toString(16).padStart(2, "0")}`;
             hosts.push(engine.register(h, [0], "kp"));
         }
-        const spec = {effect: "blink", buttons: [0], colour: [255, 0, 0] as [number, number, number], colour2: [0, 0, 0] as [number, number, number], interval: 500, count: 0, brightness: 100, priority: 1, restore: false};
+        const spec = {
+            effect: "blink",
+            buttons: [0],
+            colour: [255, 0, 0] as [number, number, number],
+            colour2: [0, 0, 0] as [number, number, number],
+            interval: 500,
+            count: 0,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        };
         const results = [];
         for (const a of hosts) results.push(await a.play({...spec}));
         expect(results.filter(Boolean).length).toBe(8);
@@ -190,7 +247,17 @@ describe("kp / dmx animations", () => {
 describe("dm painter (DIM1-Z)", () => {
     it("paints the visible slot, attaches once, then the hidden slot", async () => {
         const a = engine.register(host, [0, 1], "dm");
-        await a.play({effect: "solid", buttons: [0], colour: [255, 0, 0], colour2: [0, 0, 0], interval: 3000, count: 1, brightness: 100, priority: 1, restore: false});
+        await a.play({
+            effect: "solid",
+            buttons: [0],
+            colour: [255, 0, 0],
+            colour2: [0, 0, 0],
+            interval: 3000,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(2000);
         expect(host.sent).toEqual(["c4.dm.l0o ff0000", "c4.dm.lm 01", "c4.dm.l0f ff0000"]);
     });
@@ -216,7 +283,17 @@ describe("dm painter (DIM1-Z)", () => {
     it("paints both slots before attaching when the load state is unknown", async () => {
         host.load = undefined;
         const a = engine.register(host, [0, 1], "dm");
-        await a.play({effect: "solid", buttons: [1], colour: [0, 0, 255], colour2: [0, 0, 0], interval: 3000, count: 1, brightness: 100, priority: 1, restore: false});
+        await a.play({
+            effect: "solid",
+            buttons: [1],
+            colour: [0, 0, 255],
+            colour2: [0, 0, 0],
+            interval: 3000,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(2000);
         expect(host.sent).toEqual(["c4.dm.l1o 0000ff", "c4.dm.l1f 0000ff", "c4.dm.lm 01"]);
     });
@@ -224,7 +301,17 @@ describe("dm painter (DIM1-Z)", () => {
     it("clamps the step to the per-LED floor", async () => {
         const a = engine.register(host, [0, 1], "dm");
         const t0 = Date.now();
-        await a.play({effect: "blink", buttons: [0, 1], colour: [255, 0, 0], colour2: [0, 0, 0], interval: 150, count: 1, brightness: 100, priority: 1, restore: false});
+        await a.play({
+            effect: "blink",
+            buttons: [0, 1],
+            colour: [255, 0, 0],
+            colour2: [0, 0, 0],
+            interval: 150,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(5000);
         expect(DM_STEP_PER_LED).toBe(200);
         expect(host.notifying).toEqual([true, false]);
@@ -282,7 +369,14 @@ describe.each([
     // `led`: an LED frame, capturing the LED id. LED 2 returns to blue when cleared (its idle / stored colour).
     {name: "keypad", ieee: "0x000fff00000000e1", model: "C4-KP6-Z", count: 6, led: /^c4\.kp\.l[vo] ([0-9a-f]{2}) /, idle: {button_2_idle_color: "blue"}},
     {name: "KC120277", ieee: "0x000fff00000000e2", model: "C4-KC120277", count: 12, led: /^c4\.dmx\.led ([0-9a-f]{2}) /, idle: {led_2_idle_color: "blue"}},
-    {name: "DIM1-Z", ieee: "0x000fff00000000e3", model: "C4-DIM1-Z", count: 2, led: /^c4\.dm\.l([01])[of] /, idle: {led_bottom_on_color: "blue", led_bottom_off_color: "blue"}},
+    {
+        name: "DIM1-Z",
+        ieee: "0x000fff00000000e3",
+        model: "C4-DIM1-Z",
+        count: 2,
+        led: /^c4\.dm\.l([01])[of] /,
+        idle: {led_bottom_on_color: "blue", led_bottom_off_color: "blue"},
+    },
 ])("after a start, a $name paints only LEDs painted since the start", (d) => {
     let rig: Rig;
     const nums = Array.from({length: d.count}, (_, i) => i + 1);
@@ -406,7 +500,17 @@ describe("status self-repaint", () => {
     it("does not repaint for an animation's dropped frames, nor while a status effect re-sends on its own", async () => {
         const a = engine.register(host, [0], "kp");
         pump.drop = (c) => c.startsWith("c4.kp.lv");
-        await a.play({effect: "solid", buttons: [0], colour: [0, 0, 255], colour2: [0, 0, 0], interval: 3000, count: 1, brightness: 100, priority: 1, restore: false});
+        await a.play({
+            effect: "solid",
+            buttons: [0],
+            colour: [0, 0, 255],
+            colour2: [0, 0, 0],
+            interval: 3000,
+            count: 1,
+            brightness: 100,
+            priority: 1,
+            restore: false,
+        });
         await tick(5_000);
         pump.drop = undefined;
         host.sent = [];

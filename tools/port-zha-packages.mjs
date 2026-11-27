@@ -55,7 +55,12 @@ function portCalls(lines, file) {
         if (lines[d]?.trim() !== "data:" || indentOf(lines[d]) !== ind.length + 2) fail(file, `unexpected layout after line ${i + 1}`);
         const end = blockEnd(lines, d);
         const body = lines.slice(d + 1, end);
-        const field = (k) => body.find((l) => indentOf(l) === ind.length + 4 && l.trim().startsWith(`${k}:`))?.trim().slice(k.length + 1).trim();
+        const field = (k) =>
+            body
+                .find((l) => indentOf(l) === ind.length + 4 && l.trim().startsWith(`${k}:`))
+                ?.trim()
+                .slice(k.length + 1)
+                .trim();
         const cluster = Number(field("cluster_id"));
         const command = Number(field("command"));
         const key = COMMANDS[cluster]?.[command];
@@ -92,7 +97,7 @@ export function port(text, file) {
     // Every script: fail, like ZHA did, on a device Zigbee2MQTT does not know
     // (rather than publish to control4//set).
     for (let i = 0; i < lines.length; i++) {
-        if (!/^    sequence:\s*$/.test(lines[i])) continue;
+        if (!/^ {4}sequence:\s*$/.test(lines[i])) continue;
         const add = [
             `      - if: "{{ not ieee }}"`,
             "        then:",
@@ -104,10 +109,13 @@ export function port(text, file) {
     }
     let out = lines.join("\n");
     out = out
-        .replace(/# Each script calls zha\.issue_zigbee_cluster_command targeting the C4LEDCluster\n(\s*)# on endpoint 3, cluster 0xFC43\./, "# Each script publishes its command to control4/<ieee>/set.")
+        .replace(
+            /# Each script calls zha\.issue_zigbee_cluster_command targeting the C4LEDCluster\n(\s*)# on endpoint 3, cluster 0xFC43\./,
+            "# Each script publishes its command to control4/<ieee>/set.",
+        )
         .replace(/zha\.issue_zigbee_cluster_command/g, "an MQTT publish to control4/<ieee>/set")
-        .replace(/#   - ZHA integration with Control4 device quirks loaded\n/g, "#   - Zigbee2MQTT with the control4-z2m extension\n")
-        .replace(/#   - C4LEDCluster present on endpoint 3 of the target device\n/g, "")
+        .replace(/# {3}- ZHA integration with Control4 device quirks loaded\n/g, "#   - Zigbee2MQTT with the control4-z2m extension\n")
+        .replace(/# {3}- C4LEDCluster present on endpoint 3 of the target device\n/g, "")
         .replace(/driving the C4LEDCluster on EP3\n# \(cluster 0xFC43\) via/g, "driving the LED-cluster commands of\n# the control4-z2m extension via")
         .replace(/Sent via the LED cluster's send_raw passthrough on EP3\./g, "Sent via the send_raw passthrough.")
         .replace(/\(the ramp cluster mirrors them into EP1\)/g, "(the extension mirrors them into on/off_transition)")

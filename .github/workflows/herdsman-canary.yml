@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   canary:
-    runs-on: ubuntu-latest
+    # Nightly and manual only, so never a fork's code: the project's self-hosted runner.
+    runs-on: self-hosted
     strategy:
       # one target's red must not cancel the other's run
       fail-fast: false

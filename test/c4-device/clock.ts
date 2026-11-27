@@ -58,7 +58,8 @@ export function fires(trigger: Record<string, unknown>, time: string): boolean {
     if (kind === "time_pattern") {
         // Every n-th minute (/n), or one minute of every hour (0-59).
         const [, every, at] = /^(?:\/(\d+)|(\d+))$/.exec(String(trigger.minutes)) ?? [];
-        if ((every === undefined && (at === undefined || Number(at) > 59)) || others(["minutes"])) throw new Error(`c4-device: time pattern ${JSON.stringify(trigger)} is not modelled`);
+        if ((every === undefined && (at === undefined || Number(at) > 59)) || others(["minutes"]))
+            throw new Error(`c4-device: time pattern ${JSON.stringify(trigger)} is not modelled`);
         const [, minute, second] = partsOf(time);
         return second === 0 && (every !== undefined ? minute % Number(every) === 0 : minute === Number(at));
     }

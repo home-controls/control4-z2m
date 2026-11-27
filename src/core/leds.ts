@@ -11,9 +11,9 @@
  * colour only - the pressed colour is not on screen unless a finger is).
  */
 
+import type {C4Device} from "../devices/base";
 import {LED_MODES, type LedMode, PALETTE_HEX, PALETTE_NAMES, type PaletteName} from "./constants";
 import {blendHex, hex2, lastValue, scaleHex} from "./protocol";
-import type {C4Device} from "../devices/base";
 
 export type LedProtocol = "kp" | "dmx" | "dm";
 export type LedVerb = "idle" | "active";
@@ -205,7 +205,14 @@ export class LedWriter {
     }
 
     /** Show `target` on a slot, fading from what it shows when `fadeMs` > 0. False when it already shows it. */
-    private async crossfade(slot: number, param: string, build: (c: string) => string, target: string, fadeMs: number, onDone?: () => unknown): Promise<boolean> {
+    private async crossfade(
+        slot: number,
+        param: string,
+        build: (c: string) => string,
+        target: string,
+        fadeMs: number,
+        onDone?: () => unknown,
+    ): Promise<boolean> {
         const key = `${slot}:${param}`;
         if (this.unchanged(key, target)) return false;
         const start = this.queued.get(key) ?? this.lastSent.get(key);

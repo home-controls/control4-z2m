@@ -1,10 +1,12 @@
 name: CI
 
-# Every push and pull request: typecheck, tests and build, and dist/ must match the build;
+# Every push and pull request: the code convention (lint), typecheck, tests and build, and dist/ must match the build;
 # and the privacy check (tools/privacy-check.mjs) on the tracked files and the new commits.
-# A push to main whose dist/ holds a build with no release yet publishes one, named after
-# the build id the extension reports in its status (tools/build-id.mjs). A push that leaves
-# dist/ unchanged (docs, tests, blueprints) makes no release.
+# A pull request that changes dist/ must raise package.json's version (tools/release-check.mjs).
+# A push to main whose version has no release yet publishes one: tag v<version>, titled
+# "control4-z2m <version>", with the build id the extension reports in its status
+# (tools/build-id.mjs) in the notes. A push that leaves the version alone makes no release; if
+# it changed dist/ anyway (a push that skipped the pull request), the release job fails.
 on:
   push:
     branches: ["**"]
@@ -14,24 +16,41 @@ on:
 permissions:
   contents: read
 
+# Runners: the project's self-hosted runner takes the runs this repo's own people start (pushes,
+# manual runs). A pull request from a fork runs untrusted code, so it goes to GitHub's hosted
+# runners, never the self-hosted one. The release job stays hosted too (it needs gh and zip).
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # typecheck + vitest + build, as `npm run check` does locally
-      - run: npm run check
+      # The code convention (docs/CODE_STYLE.md): formatting, lint rules and import order, as
+      # biome.json sets them. `npm run format` fixes what it can.
+      - name: lint
+        run: npm run lint
+      - name: typecheck
+        run: npm run typecheck
+      - name: tests
+        run: npm test
+      - name: build
+        run: npm run build
       # dist/ is committed and released as-is, so it must match a fresh build of src/
       - name: dist matches src
         run: git diff --exit-code -- dist
+      # Every release has its own version: a dist/ change needs a raised version.
+      - name: version raised with dist/
+        if: github.event_name == 'pull_request'
+        run: node tools/release-check.mjs ${{ github.event.pull_request.base.sha }}
 
   privacy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -68,13 +87,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Find the build
+      - name: Find the release
         id: build
         run: |
+          version=$(node -p "require('./package.json').version")
           id=$(node tools/build-id.mjs)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "id=$id" >> "$GITHUB_OUTPUT"
-          if gh release view "build-$id" > /dev/null 2>&1; then
-            echo "Build $id already has a release, so there is nothing to publish."
+          if gh release view "v$version" > /dev/null 2>&1; then
+            # The notes name the build that version shipped; a different build means dist/
+            # changed without a raised version.
+            released=$(gh release view "v$version" --json body --jq .body | grep -oE 'build `[0-9a-f]{12}`' | head -1 | grep -oE '[0-9a-f]{12}')
+            if [ -n "$released" ] && [ "$released" != "$id" ]; then
+              echo "::error::dist/ is build $id, but version $version was released as build $released: raise package.json's version"
+              exit 1
+            fi
+            echo "Version $version is already released, so there is nothing to publish."
             echo "new=false" >> "$GITHUB_OUTPUT"
           else
             echo "new=true" >> "$GITHUB_OUTPUT"
@@ -93,11 +121,12 @@ jobs:
         if: steps.build.outputs.new == 'true'
         env:
           ID: ${{ steps.build.outputs.id }}
+          VERSION: ${{ steps.build.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
           prev=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
           cat > notes.md <<EOF
-          Build \`$ID\`. Once Zigbee2MQTT loads these files, the extension's status reports this build (see "Instance status" in the README).
+          control4-z2m $VERSION, build \`$ID\`. Once Zigbee2MQTT loads these files, the extension's status reports version $VERSION and this build, and its start-up line names the version (see "Instance status" in the README).
 
           ## Install
 
@@ -106,11 +135,11 @@ jobs:
               external_extensions/control4.mjs
               external_converters/control4.mjs
 
-          Or download \`control4-extension.mjs\` and \`control4-converter.mjs\` and save them as those two files. Both must be named \`control4.mjs\`.
+          Or download \`control4-extension.mjs\` and \`control4-converter.mjs\` and save them as those two files. Both must be named \`control4.mjs\`. \`SHA256SUMS\` lists their checksums.
 
           \`configuration.yaml\` needs \`serial.adapter: ember\` and \`advanced.enable_external_js: true\`. Then restart Zigbee2MQTT. The README covers the rest, including the Home Assistant blueprints and packages.
 
-          The newest build is always at https://github.com/$REPO/releases/latest/download/control4-z2m.zip
+          The newest release is always at https://github.com/$REPO/releases/latest/download/control4-z2m.zip
 
           ## Changes
 
@@ -120,4 +149,4 @@ jobs:
           else
             echo "- First release." >> notes.md
           fi
-          gh release create "build-$ID" out/* --target "$GITHUB_SHA" --title "Build $ID" --notes-file notes.md --latest
+          gh release create "v$VERSION" out/* --target "$GITHUB_SHA" --title "control4-z2m $VERSION" --notes-file notes.md --latest

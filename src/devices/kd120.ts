@@ -12,9 +12,9 @@
  * load's own c4.dmx.ls report does.
  */
 
-import {AUX_BUTTONS, type ButtonBehaviour, BUTTON_BEHAVIOUR_NAMES, KC_POSITIONS} from "../core/constants";
+import {AUX_BUTTONS, BUTTON_BEHAVIOUR_NAMES, type ButtonBehaviour, KC_POSITIONS} from "../core/constants";
+import type {C4Device, Payload, SetMeta} from "./base";
 import type {LoadControl, TvParams} from "./dimming";
-import {C4Device, type Payload, type SetMeta} from "./base";
 import {behaviourRead, DimmerLoad, type SettingRead, writeBehaviour} from "./gen3";
 import {Kc120277} from "./keypad";
 import {PowerSensor} from "./sensors";

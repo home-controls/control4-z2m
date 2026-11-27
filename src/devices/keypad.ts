@@ -12,10 +12,10 @@ import {
     KC_NUMBERING_OPTION,
     KC_POSITIONS,
     type KcLayout,
+    KP_BUTTON_IDS,
     kcButtonNumber,
     kcNumbering,
     kcWireOf,
-    KP_BUTTON_IDS,
     keypadButtonsOf,
     PALETTE_HEX,
     type PaletteName,
@@ -23,7 +23,7 @@ import {
 import {LED_BRIGHTNESS_KEY, type LedSelect, LedWriter, normalizePalette} from "../core/leds";
 import {hex2, lastValue, parseHex, scaleHex} from "../core/protocol";
 import {AnimationKeys} from "./animkeys";
-import {C4Device, type Payload, type SetMeta, toBool, toNumber} from "./base";
+import {type C4Device, type Payload, type SetMeta, toBool, toNumber} from "./base";
 import {DmxDevice} from "./dmx";
 import {Gen3Device, paletteNameOf, type SettingRead} from "./gen3";
 import {LedKeys} from "./ledkeys";
@@ -53,12 +53,7 @@ export class Keypad extends DmxDevice {
     protected readonly buttons: Record<number, string>;
     readonly anim: AnimationKeys;
 
-    constructor(
-        ctx: ConstructorParameters<typeof C4Device>[0],
-        ieee: string,
-        model: string,
-        family: "kp2" | "kp3" | "kp6",
-    ) {
+    constructor(ctx: ConstructorParameters<typeof C4Device>[0], ieee: string, model: string, family: "kp2" | "kp3" | "kp6") {
         super(ctx, ieee, model, family);
         const ids = KP_BUTTON_IDS[family];
         const count = ids.length;
@@ -162,7 +157,6 @@ export function parseLayout(raw: unknown): number[] | undefined {
     return [...new Set(positions.map((n) => n - 1))].sort((a, b) => a - b);
 }
 
-
 /**
  * The C4-KC120277. Its kit of buttons (37 layouts) can't be read from the device: it
  * is learned from the button wires it sends from (a wire seen is a button), or set
@@ -206,7 +200,8 @@ export class Kc120277 extends Gen3Device {
     private migrateBound(): void {
         for (let i = 1; i <= KC_LED_SLOTS; i++) {
             const bound = this.setting<boolean>(`led_${i}_bound`);
-            if (typeof bound === "boolean" && this.setting<string>(`led_${i}_mode`) === undefined) this.saveSetting(`led_${i}_mode`, bound ? "push_release" : "programmed");
+            if (typeof bound === "boolean" && this.setting<string>(`led_${i}_mode`) === undefined)
+                this.saveSetting(`led_${i}_mode`, bound ? "push_release" : "programmed");
         }
     }
 
@@ -248,7 +243,11 @@ export class Kc120277 extends Gen3Device {
             const wire = kcWireOf(n, {wires: undefined, numbering: kcNumbering(this.option(KC_NUMBERING_OPTION)) === "pairs" ? "pairs" : "slots"});
             if (wire !== undefined && wire < KC_POSITIONS) wires.add(wire);
         }
-        if (wires.size) this.saveSetting(KC_WIRES_KEY, [...wires].sort((a, b) => a - b));
+        if (wires.size)
+            this.saveSetting(
+                KC_WIRES_KEY,
+                [...wires].sort((a, b) => a - b),
+            );
     }
 
     /** A press from a wire not seen before: a fitted button. Its actions and LED are exposed from now on. */
@@ -257,11 +256,16 @@ export class Kc120277 extends Gen3Device {
         const set = parseLayout(this.option(KC_LAYOUT_OPTION));
         if (set && !set.includes(wire) && !this.unlisted.has(wire)) {
             this.unlisted.add(wire);
-            this.log.warning(`Control4 ${this.name}: a button at position ${wire + 1} is missing from its button_layout option (${this.option(KC_LAYOUT_OPTION)}): add it there`);
+            this.log.warning(
+                `Control4 ${this.name}: a button at position ${wire + 1} is missing from its button_layout option (${this.option(KC_LAYOUT_OPTION)}): add it there`,
+            );
         }
         const known = this.learnedWires() ?? [];
         if (known.includes(wire)) return;
-        this.saveSetting(KC_WIRES_KEY, [...known, wire].sort((a, b) => a - b));
+        this.saveSetting(
+            KC_WIRES_KEY,
+            [...known, wire].sort((a, b) => a - b),
+        );
         this.log.info(`Control4 ${this.name}: a button at position ${wire + 1} (wire ${wire}); its actions and LED are exposed`);
         if (parseLayout(this.option(KC_LAYOUT_OPTION)) === undefined) this.ctx.exposesChanged(this.ieee);
     }
@@ -298,7 +302,7 @@ export class Kc120277 extends Gen3Device {
         ];
     }
 
-    /** The backlight (`c4.dmx.blc 00 05`, black = off) and its brightness (`blc 00 03`), both tested on the Kitchen Keypad 2026-11-07. */
+    /** The backlight (`c4.dmx.blc 00 05`, black = off) and its brightness (`blc 00 03`), both tested on the Keypad A 2026-11-07. */
     private async setBacklight(key: string, value: unknown): Promise<Payload> {
         let cmd: string;
         let shown: unknown;
