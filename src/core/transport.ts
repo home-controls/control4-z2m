@@ -55,12 +55,23 @@ export class DeliveryError extends Error {
     }
 }
 
+export interface SendOptions {
+    /** Ask for an APS ACK and wait for messageSent (default true). */
+    ack?: boolean;
+    /**
+     * The destination is a sleeping end device. The legacy ezsp transport then sends
+     * without APS retry: EmberZNet 6.x gives up on a sleeping child's APS ack
+     * (DELIVERY_FAILED) before it next polls.
+     */
+    sleepy?: boolean;
+}
+
 export interface Transport {
     readonly name: string;
     /** Install the receive hook; `onFrame` returns true when it consumed the frame. */
     start(onFrame: (frame: InFrame) => boolean): void;
     stop(): void;
-    send(nwk: number, frame: OutFrame, options?: {ack?: boolean}): Promise<void>;
+    send(nwk: number, frame: OutFrame, options?: SendOptions): Promise<void>;
     /** Broadcast a many-to-one route request; false when the radio cannot. */
     mtorr(radius: number): Promise<boolean>;
 }
@@ -77,6 +88,13 @@ const SL_MAX_MESSAGE_LIMIT = 0x0c03;
 const INCOMING_UNICAST = 0;
 const INCOMING_UNICAST_REPLY = 1;
 const HIGH_RAM_CONCENTRATOR = 0xfff9;
+
+// Legacy EmberZNet status codes (zigbee-herdsman src/adapter/ezsp/driver/types/named.ts).
+const EMBER_SUCCESS = 0x00;
+const EMBER_NO_BUFFERS = 0x18;
+const EMBER_MAX_MESSAGE_LIMIT_REACHED = 0x72;
+const EMBER_NETWORK_DOWN = 0x91;
+const EMBER_NETWORK_BUSY = 0xa1;
 
 const SEND_ATTEMPTS = 3;
 const BUSY_DEFER_MS = 500;
@@ -97,22 +115,71 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // biome-ignore lint/suspicious/noExplicitAny: zigbee-herdsman internals
 type Any = any;
 
+/**
+ * messageSent bookkeeping for one stack: a send waits on its message tag, and a
+ * status that beats the wait (the callback can arrive before the send call
+ * returns) is kept briefly and matched when the wait registers.
+ */
+class Confirmations {
+    private pending = new Map<number, {nwk: number; profile: number; resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout}>();
+    private early = new Map<number, {ok: boolean; status: number; nwk: number; profile: number | undefined; at: number}>();
+
+    /** A messageSent from the stack, for any send (herdsman's own included). */
+    sent(tag: number, nwk: number, profile: number | undefined, ok: boolean, status: number): void {
+        const p = this.pending.get(tag);
+        if (p && p.nwk === nwk && p.profile === profile) {
+            this.settle(tag, ok, status);
+            return;
+        }
+        // Not (yet) one of ours: herdsman's own send, or ours before the send call returned.
+        this.early.delete(tag);
+        this.early.set(tag, {ok, status, nwk, profile, at: Date.now()});
+        if (this.early.size > EARLY_MAX) this.early.delete(this.early.keys().next().value as number);
+    }
+
+    wait(tag: number, nwk: number, profile: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.pending.delete(tag);
+                reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
+            }, SENT_TIMEOUT_MS);
+            timer.unref?.();
+            this.pending.set(tag, {nwk, profile, resolve, reject, timer});
+            const early = this.early.get(tag);
+            if (early !== undefined) {
+                this.early.delete(tag);
+                // Only a status that just arrived for this very frame counts.
+                if (early.nwk === nwk && early.profile === profile && Date.now() - early.at <= EARLY_MAX_AGE_MS) this.settle(tag, early.ok, early.status);
+            }
+        });
+    }
+
+    /** Fail every send still waiting. */
+    stop(): void {
+        for (const [tag, p] of this.pending) {
+            clearTimeout(p.timer);
+            p.reject(new DeliveryError("transport stopped", "stopped"));
+            this.pending.delete(tag);
+        }
+    }
+
+    private settle(tag: number, ok: boolean, status: number): void {
+        const p = this.pending.get(tag);
+        if (!p) return;
+        this.pending.delete(tag);
+        clearTimeout(p.timer);
+        if (ok) p.resolve();
+        else p.reject(new DeliveryError(`delivery failed (status 0x${status.toString(16)})`, "failed"));
+    }
+}
+
 export class EmberTransport implements Transport {
     readonly name = "ember";
     private readonly ezsp: Any;
     private original: Any;
-    private pending = new Map<number, {nwk: number; profile: number; resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout}>();
-    private early = new Map<number, {status: number; nwk: number; profile: number | undefined; at: number}>();
+    private readonly confirmations = new Confirmations();
     private readonly onSent = (status: number, _type: number, dst: number, aps: Any, tag: number) => {
-        const p = this.pending.get(tag);
-        if (p && p.nwk === dst && p.profile === aps?.profileId) {
-            this.settle(tag, status);
-            return;
-        }
-        // Not (yet) one of ours: herdsman's own send, or ours before ezsp.send returned.
-        this.early.delete(tag);
-        this.early.set(tag, {status, nwk: dst, profile: aps?.profileId, at: Date.now()});
-        if (this.early.size > EARLY_MAX) this.early.delete(this.early.keys().next().value as number);
+        this.confirmations.sent(tag, dst, aps?.profileId, status === SL_OK, status);
     };
 
     constructor(
@@ -162,23 +229,10 @@ export class EmberTransport implements Transport {
             this.original = undefined;
         }
         this.ezsp.off?.("messageSent", this.onSent);
-        for (const [tag, p] of this.pending) {
-            clearTimeout(p.timer);
-            p.reject(new DeliveryError("transport stopped", "stopped"));
-            this.pending.delete(tag);
-        }
+        this.confirmations.stop();
     }
 
-    private settle(tag: number, status: number): void {
-        const p = this.pending.get(tag);
-        if (!p) return;
-        this.pending.delete(tag);
-        clearTimeout(p.timer);
-        if (status === SL_OK) p.resolve();
-        else p.reject(new DeliveryError(`delivery failed (status 0x${status.toString(16)})`, "failed"));
-    }
-
-    async send(nwk: number, frame: OutFrame, options: {ack?: boolean} = {}): Promise<void> {
+    async send(nwk: number, frame: OutFrame, options: SendOptions = {}): Promise<void> {
         const ack = options.ack !== false;
         const apsFrame = {
             profileId: frame.profile,
@@ -200,7 +254,7 @@ export class EmberTransport implements Transport {
                     this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
                 }
                 if (status === SL_OK) {
-                    if (ack) sent = this.waitSent(tag, nwk, frame.profile);
+                    if (ack) sent = this.confirmations.wait(tag, nwk, frame.profile);
                     return;
                 }
                 if (attempt === SEND_ATTEMPTS) break;
@@ -216,23 +270,6 @@ export class EmberTransport implements Transport {
         if (sent) await sent;
     }
 
-    private waitSent(tag: number, nwk: number, profile: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this.pending.delete(tag);
-                reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
-            }, SENT_TIMEOUT_MS);
-            timer.unref?.();
-            this.pending.set(tag, {nwk, profile, resolve, reject, timer});
-            const early = this.early.get(tag);
-            if (early !== undefined) {
-                this.early.delete(tag);
-                // Only a status that just arrived for this very frame counts.
-                if (early.nwk === nwk && early.profile === profile && Date.now() - early.at <= EARLY_MAX_AGE_MS) this.settle(tag, early.status);
-            }
-        });
-    }
-
     async mtorr(radius: number): Promise<boolean> {
         if (typeof this.ezsp.ezspSendManyToOneRouteRequest !== "function") return false;
         try {
@@ -244,33 +281,27 @@ export class EmberTransport implements Transport {
         }
     }
 }
-// Legacy EmberZNet status codes (zigbee-herdsman src/adapter/ezsp/driver/types/named.ts).
-const EMBER_SUCCESS = 0x00;
-const EMBER_NO_BUFFERS = 0x18;
-const EMBER_NETWORK_DOWN = 0x90;
-const EMBER_MAX_MESSAGE_LIMIT_REACHED = 0x72;
-const EMBER_NETWORK_BUSY = 0xa1;
-
 /**
  * The same tap for herdsman's deprecated `ezsp` driver (EmberZNet before 7.4,
  * e.g. EM35x NCPs on EZSP 8). That driver emits every incoming frame as an
  * `incomingMessage` event and its adapter drops the Control4 profiles, so the
  * hook sits on the driver's `emit`. Sends go out with `sendUnicast`, and the
  * NCP's messageSentHandler confirms them by message tag.
+ *
+ * herdsman replaces `driver.ezsp` when it resets the NCP (watchdog, serial
+ * drop), so the messageSentHandler listener follows it: it is moved to the
+ * current object before every send.
  */
 export class EzspTransport implements Transport {
     readonly name = "ezsp";
     private readonly driver: Any;
     private originalEmit: Any;
-    private pending = new Map<number, {nwk: number; resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout}>();
+    /** The Ezsp the messageSentHandler listener is on. */
+    private listened: Any;
+    private readonly confirmations = new Confirmations();
     private readonly onEzspFrame = (frameName: string, f: Any) => {
-        if (frameName !== "messageSentHandler" || !C4_PROFILES.has(f?.apsFrame?.profileId)) return;
-        const p = this.pending.get(f.messageTag);
-        if (!p || p.nwk !== f.indexOrDestination) return;
-        this.pending.delete(f.messageTag);
-        clearTimeout(p.timer);
-        if (f.status === EMBER_SUCCESS) p.resolve();
-        else p.reject(new DeliveryError(`delivery failed (status 0x${Number(f.status).toString(16)})`, "failed"));
+        if (frameName !== "messageSentHandler") return;
+        this.confirmations.sent(f.messageTag, f.indexOrDestination, f.apsFrame?.profileId, f.status === EMBER_SUCCESS, Number(f.status));
     };
 
     constructor(
@@ -310,7 +341,16 @@ export class EzspTransport implements Transport {
             }
             return original.call(this, event, frame, ...rest);
         };
-        this.driver.ezsp.on("frame", this.onEzspFrame);
+        this.follow();
+    }
+
+    /** Keep the messageSentHandler listener on the Ezsp herdsman uses now (it makes a new one on reset). */
+    private follow(): void {
+        const current = this.driver.ezsp;
+        if (current === this.listened) return;
+        this.listened?.off?.("frame", this.onEzspFrame);
+        current?.on?.("frame", this.onEzspFrame);
+        this.listened = current;
     }
 
     stop(): void {
@@ -318,30 +358,27 @@ export class EzspTransport implements Transport {
             this.driver.emit = this.originalEmit;
             this.originalEmit = undefined;
         }
-        this.driver.ezsp.off?.("frame", this.onEzspFrame);
-        for (const [tag, p] of this.pending) {
-            clearTimeout(p.timer);
-            p.reject(new DeliveryError("transport stopped", "stopped"));
-            this.pending.delete(tag);
-        }
+        this.listened?.off?.("frame", this.onEzspFrame);
+        this.listened = undefined;
+        this.confirmations.stop();
     }
 
-    async send(nwk: number, frame: OutFrame, options: {ack?: boolean} = {}): Promise<void> {
+    async send(nwk: number, frame: OutFrame, options: SendOptions = {}): Promise<void> {
         const ack = options.ack !== false;
         let sent: Promise<void> | undefined;
         const run = async () => {
             for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+                this.follow();
                 // makeApsFrame takes the driver's own sequence, so the tag never repeats one in flight.
                 const aps = this.driver.makeApsFrame(frame.cluster, !ack);
                 aps.profileId = frame.profile;
                 aps.sourceEndpoint = frame.srcEp;
                 aps.destinationEndpoint = frame.dstEp;
-                // No APS retry: EmberZNet 6.x gives up on the APS ack from a sleeping
-                // end device (DELIVERY_FAILED, 0x66) before it next polls, and the
-                // remote then counts its controller as lost. herdsman's own ezsp
-                // sends use route discovery only; messageSent still confirms the
-                // (indirect) delivery.
-                aps.options = APS_ENABLE_ROUTE_DISCOVERY;
+                // APS retry asks the destination itself for an ack, so messageSent means it arrived.
+                // Not to a sleeping end device: EmberZNet 6.x gives up on its APS ack
+                // (DELIVERY_FAILED, 0x66) before it next polls, and an SR260 whose identity reply
+                // fails counts its controller as lost. There messageSent confirms the indirect hand-off.
+                aps.options = APS_ENABLE_ROUTE_DISCOVERY | (ack && !options.sleepy ? APS_RETRY : 0);
                 const tag = aps.sequence & 0xff;
                 let status = -1;
                 try {
@@ -350,7 +387,7 @@ export class EzspTransport implements Transport {
                     this.log.debug(`Control4 send to 0x${nwk.toString(16)} raised ${error}`);
                 }
                 if (status === EMBER_SUCCESS) {
-                    if (ack) sent = this.waitSent(tag, nwk);
+                    if (ack) sent = this.confirmations.wait(tag, nwk, frame.profile);
                     return;
                 }
                 if (attempt === SEND_ATTEMPTS) break;
@@ -364,17 +401,6 @@ export class EzspTransport implements Transport {
         if (queue && typeof queue.execute === "function") await queue.execute(run, nwk);
         else await run();
         if (sent) await sent;
-    }
-
-    private waitSent(tag: number, nwk: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this.pending.delete(tag);
-                reject(new DeliveryError("no delivery confirmation", "unconfirmed"));
-            }, SENT_TIMEOUT_MS);
-            timer.unref?.();
-            this.pending.set(tag, {nwk, resolve, reject, timer});
-        });
     }
 
     async mtorr(radius: number): Promise<boolean> {

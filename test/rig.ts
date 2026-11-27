@@ -7,7 +7,7 @@ import type {Logger} from "../src/core/log";
 import {buildFrame} from "../src/core/protocol";
 import {Runtime, type RuntimeHost} from "../src/core/runtime";
 import {Store} from "../src/core/store";
-import {DeliveryError, type InFrame, type OutFrame, type Transport} from "../src/core/transport";
+import {DeliveryError, type InFrame, type OutFrame, type SendOptions, type Transport} from "../src/core/transport";
 
 export const COORD = "0x00124b0024c0dc0d";
 
@@ -15,6 +15,7 @@ export interface Sent {
     nwk: number;
     frame: OutFrame;
     ack: boolean;
+    sleepy: boolean;
     text: string;
 }
 
@@ -39,10 +40,10 @@ export class FakeTransport implements Transport {
         this.onFrame = undefined;
     }
 
-    async send(nwk: number, frame: OutFrame, options?: {ack?: boolean}): Promise<void> {
+    async send(nwk: number, frame: OutFrame, options?: SendOptions): Promise<void> {
         const err = this.failWith?.(frame);
         if (err) throw err;
-        this.sent.push({nwk, frame, ack: options?.ack !== false, text: frame.data.toString("latin1").replace(/\r\n$/, "")});
+        this.sent.push({nwk, frame, ack: options?.ack !== false, sleepy: options?.sleepy === true, text: frame.data.toString("latin1").replace(/\r\n$/, "")});
         if (!this.latency) return;
         this.inFlight++;
         this.maxInFlight = Math.max(this.maxInFlight, this.inFlight);

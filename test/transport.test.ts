@@ -242,7 +242,7 @@ describe("EzspTransport on the real herdsman EZSPAdapter", () => {
         expect(herdsman).toHaveLength(3);
     });
 
-    it("sends with route discovery only and settles on messageSentHandler", async () => {
+    it("asks for an APS ack and settles on messageSentHandler", async () => {
         const {adapter, ncp} = makeEzspAdapter();
         t = new EzspTransport(adapter, silent);
         t.start(() => false);
@@ -251,7 +251,7 @@ describe("EzspTransport on the real herdsman EZSPAdapter", () => {
         await tick();
         const [, nwk, apsFrame, tag, data] = ncp.sent[0] as [number, number, Record<string, number>, number, Buffer];
         expect(nwk).toBe(0x1234);
-        expect(apsFrame).toMatchObject({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 1, options: 0x0100});
+        expect(apsFrame).toMatchObject({profileId: PROFILE_BUTTON, clusterId: 1, sourceEndpoint: 1, destinationEndpoint: 1, options: 0x0140}); // route discovery + APS retry
         expect(data.toString()).toBe(frame.data.toString());
         ncp.emit("frame", "messageSentHandler", {messageTag: tag, indexOrDestination: 0x1234, apsFrame, status: 0});
         await expect(ok).resolves.toBeUndefined();
@@ -260,5 +260,92 @@ describe("EzspTransport on the real herdsman EZSPAdapter", () => {
         const [, , aps2, tag2] = ncp.sent[1] as [number, number, Record<string, number>, number];
         ncp.emit("frame", "messageSentHandler", {messageTag: tag2, indexOrDestination: 0x1234, apsFrame: aps2, status: 0x66});
         await expect(failed).rejects.toBeInstanceOf(DeliveryError);
+    });
+});
+
+describe("EzspTransport sends", () => {
+    let t: EzspTransport | undefined;
+    afterEach(() => t?.stop());
+    const frame = {profile: PROFILE_BUTTON, cluster: 1, srcEp: 1, dstEp: 197, data: Buffer.from("0s0040 c4.zr.tm 0a 00 00 03\r\n")};
+    /** A fake NCP whose sendUnicast confirms each send by itself, right away or after `delay` ms. */
+    const confirming = (ncp: EventEmitter & {sent: unknown[][]; status: number}, status = 0, delay = 1) =>
+        Object.assign(ncp, {
+            async sendUnicast(...args: unknown[]) {
+                ncp.sent.push(args);
+                const [, nwk, aps, tag] = args as [number, number, Record<string, number>, number];
+                const confirm = () => ncp.emit("frame", "messageSentHandler", {messageTag: tag, indexOrDestination: nwk, apsFrame: aps, status});
+                if (delay < 0) confirm();
+                else setTimeout(confirm, delay);
+                return {status: ncp.status};
+            },
+        });
+
+    it("sends to a sleeping end device without APS retry", async () => {
+        const {adapter, ncp} = makeEzspAdapter();
+        confirming(ncp);
+        t = new EzspTransport(adapter, silent);
+        t.start(() => false);
+        await t.send(0x1234, frame, {sleepy: true});
+        expect((ncp.sent[0][2] as {options: number}).options).toBe(0x0100);
+    });
+
+    it("settles a confirmation that arrives before sendUnicast returns", async () => {
+        const {adapter, ncp} = makeEzspAdapter();
+        confirming(ncp, 0, -1); // messageSentHandler in the same chunk as the response
+        t = new EzspTransport(adapter, silent);
+        t.start(() => false);
+        await expect(t.send(0x1234, frame)).resolves.toBeUndefined();
+    });
+
+    it("follows herdsman's new Ezsp after an NCP reset", async () => {
+        const {adapter, ncp} = makeEzspAdapter();
+        t = new EzspTransport(adapter, silent);
+        t.start(() => false);
+        expect(ncp.listenerCount("frame")).toBe(1);
+        // Driver.reset() -> startup() makes a new Ezsp.
+        const fresh = confirming(Object.assign(new EventEmitter(), {sent: [] as unknown[][], status: 0}));
+        adapter.driver.ezsp = fresh;
+        await expect(t.send(0x1234, frame)).resolves.toBeUndefined();
+        expect(ncp.listenerCount("frame")).toBe(0);
+        expect(fresh.listenerCount("frame")).toBe(1);
+        t.stop();
+        expect(fresh.listenerCount("frame")).toBe(0);
+    });
+
+    it("waits and retries while the network is down or busy, then gives up", async () => {
+        const {adapter, ncp} = makeEzspAdapter();
+        t = new EzspTransport(adapter, silent);
+        t.start(() => false);
+        for (const status of [0x91, 0x18, 0xa1]) {
+            ncp.sent.length = 0;
+            ncp.status = status;
+            const started = Date.now();
+            await expect(t.send(0x1234, frame, {ack: false})).rejects.toBeInstanceOf(DeliveryError);
+            expect(ncp.sent).toHaveLength(3);
+            expect(Date.now() - started).toBeGreaterThanOrEqual(status === 0x91 ? 2_900 : 900);
+        }
+        ncp.sent.length = 0;
+        ncp.status = 0x70; // anything else: no retry
+        await expect(t.send(0x1234, frame, {ack: false})).rejects.toBeInstanceOf(DeliveryError);
+        expect(ncp.sent).toHaveLength(1);
+    }, 15_000);
+
+    it("fails a send still waiting for its confirmation when stopped", async () => {
+        const {adapter} = makeEzspAdapter();
+        t = new EzspTransport(adapter, silent);
+        t.start(() => false);
+        const p = t.send(0x1234, frame);
+        await tick();
+        t.stop();
+        await expect(p).rejects.toMatchObject({reason: "stopped"});
+    });
+
+    it("broadcasts a many-to-one route request", async () => {
+        const {adapter, ncp} = makeEzspAdapter();
+        const calls: unknown[][] = [];
+        Object.assign(ncp, {execCommand: async (...a: unknown[]) => (calls.push(a), {status: 0})});
+        t = new EzspTransport(adapter, silent);
+        expect(await t.mtorr(5)).toBe(true);
+        expect(calls).toEqual([["sendManyToOneRouteRequest", {concentratorType: 0xfff9, radius: 5}]]);
     });
 });

@@ -5,6 +5,7 @@
  * converter's toZigbee and leave through ezsp.send.
  */
 
+import {EventEmitter} from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -770,6 +771,18 @@ describe("instance status", () => {
         expect(status.problems).toEqual(problems);
         // No converter, no build: it is the hash of both files.
         expect(status.build).toBe(converter === null ? null : BUILD);
+    });
+
+    it("runs on herdsman's legacy ezsp driver when the adapter has no Ember stack", async () => {
+        await restart({
+            tweak: ({adapter}) => {
+                adapter.ezsp.ezspIncomingMessageHandler = undefined;
+                const ezsp = Object.assign(new EventEmitter(), {sendUnicast: async () => ({status: 0})});
+                adapter.driver = Object.assign(new EventEmitter(), {ezsp, makeApsFrame: () => ({sequence: 1})});
+            },
+        });
+        expect(statuses()[0].problems).toEqual([]);
+        expect(h.info.filter((l) => l.startsWith("Control4: extension started")).at(-1)).toMatch(/ \(ezsp, /);
     });
 
     it("puts the converter file's hash into the build", async () => {
