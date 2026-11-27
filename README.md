@@ -279,7 +279,9 @@ written down outside this README:
 | `GLOSSARY.md` | The words used here: button wire, button behaviour, LED slot, LED mode, unreachable, remote reboot, … |
 
 What is left is in the plan: research items that need a person at a device or hardware the house
-lacks (an SW120277, an auxiliary keypad), and the live checks listed there.
+lacks (an SW120277, an auxiliary keypad), and the live checks listed there. The open ones are this
+repo's issues. Issue numbers up to #118 in older docs and commits refer to the archived tracker,
+not this repo's.
 
 ## MQTT API
 
@@ -832,6 +834,11 @@ the entries of the devices it has.
 
 ## Development
 
+Contributions come as pull requests: from a fork if you have read access. Install the
+privacy check's pre-push hook once per clone (`git config core.hooksPath tools/hooks`), and keep
+names, rooms, home hosts and addresses out of commits, issues and PRs: this repo is readable by
+everyone with access, history included.
+
 ```
 npm install
 npm run check        # typecheck + unit tests + build
@@ -854,7 +861,8 @@ same expected output.
 | `tools/build-id.mjs [<dir>]` | the build an instance running `dist/`'s two files (or `<dir>`'s) reports in its status |
 | `tools/deploy.mjs [--dry-run]` | push `dist/` to every instance on a site without a restart, **by hand only**, through its Home Assistant (`HA_URL=… HA_TOKEN_FILE=…`): finds the instances from their retained `bridge/info` and file lists, first checks that Home Assistant carries both files unchanged, then saves the converter and the extension on each one in turn, proves the push by the build in its status, sends `republish`, and rolls back and stops when a push isn't proven (Install, above) |
 | `tools/z2m-harness.mjs [ref]` | runs `test/z2m-harness/control4.test.ts` inside a Zigbee2MQTT checkout with its own mocks: loading, HA discovery for every family, `/set`, model learning, events, bridge requests |
-| `tools/herdsman-canary.mjs dev\|release` | the herdsman drift canary: installs the zigbee-herdsman and converters that Zigbee2MQTT `dev` or its newest release pins (not saved), runs typecheck, the unit tests and the harness at that ref, then puts the repo's pins back. Nightly in `.gitea/workflows/herdsman-canary.yml`, where a red opens one issue per target and pin set and a green closes it |
+| `tools/herdsman-canary.mjs dev\|release` | the herdsman drift canary: installs the zigbee-herdsman and converters that Zigbee2MQTT `dev` or its newest release pins (not saved), runs typecheck, the unit tests and the harness at that ref, then puts the repo's pins back. Nightly in `.github/workflows/herdsman-canary.yml`, where a red opens one issue here per target and pin set and a green closes it |
+| `tools/privacy-check.mjs [--range a..b] [--text f]` | keeps private details out of this repo: checks the tracked files (and a range's commit messages, or one issue body) against a private pattern list, the `PRIVATE_PATTERNS` secret in CI or `~/.config/control4-z2m/private-patterns.txt` locally; it reports where and which pattern, never the text. CI runs it on every push; `tools/hooks/pre-push` runs it before a push |
 | `tools/port-zha-blueprints.mjs <zha-blueprints-dir>` | regenerate the ported blueprints |
 | `tools/port-zha-packages.mjs <zha-packages-dir>` | regenerate the generated packages |
 | `tools/gen-c4-device.mjs` | regenerate `blueprints/c4_device.yaml` |

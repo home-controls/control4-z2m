@@ -1,8 +1,7 @@
 name: CI
 
-# GitHub only: Gitea runs .gitea/workflows and ignores this folder while that one exists.
-#
-# Every push and pull request: typecheck, tests and build, and dist/ must match the build.
+# Every push and pull request: typecheck, tests and build, and dist/ must match the build;
+# and the privacy check (tools/privacy-check.mjs) on the tracked files and the new commits.
 # A push to main whose dist/ holds a build with no release yet publishes one, named after
 # the build id the extension reports in its status (tools/build-id.mjs). A push that leaves
 # dist/ unchanged (docs, tests, blueprints) makes no release.
@@ -31,8 +30,27 @@ jobs:
       - name: dist matches src
         run: git diff --exit-code -- dist
 
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # The patterns are private (the PRIVATE_PATTERNS secret). A pull request from a fork
+      # gets no secrets, so only there may the check skip (it runs again on the push to main
+      # after the merge); anywhere else a missing secret fails it.
+      - name: Privacy check
+        env:
+          PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.sha) }}
+          ALLOW: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && '--allow-missing' || '' }}
+        run: node tools/privacy-check.mjs $ALLOW --range "$RANGE"
+
   release:
-    needs: check
+    needs: [check, privacy]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:

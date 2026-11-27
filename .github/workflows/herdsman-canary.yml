@@ -1,0 +1,35 @@
+name: Herdsman drift canary
+
+# Nightly: our checks and the Zigbee2MQTT harness against the zigbee-herdsman
+# and zigbee-herdsman-converters that Zigbee2MQTT dev and its newest release
+# pin, so a herdsman change that breaks the extension's hooks becomes an issue
+# here before the HA add-on auto-updates into it (tools/herdsman-canary.mjs).
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    strategy:
+      # one target's red must not cancel the other's run
+      fail-fast: false
+      matrix:
+        target: [dev, release]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Canary against Zigbee2MQTT ${{ matrix.target }}
+        run: node tools/herdsman-canary.mjs ${{ matrix.target }}
+        env:
+          # The built-in Actions token, with issues: write above.
+          CANARY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
