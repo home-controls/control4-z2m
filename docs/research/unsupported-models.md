@@ -21,8 +21,8 @@ talks, and what adding it takes. It goes with the branch `c4-new-models`, which 
 ## Model by model
 
 "Gen3" is the board the APD120, SW120277 and KC120277 share (the `c4.dmx.*` firmware,
-`2026-11-07-kc-apd-sw-capability-map.md`). "Gen1/Gen2" is the LDZ / LSZ / KPZ / DIM1-Z generation (`c4.dm.*`,
-`c4.kp.*`, `2026-11-02-dim1z-capability-map.md`). The check-in strings and protocol notes come from other
+`kc-apd-sw-capability-map.md`). "Gen1/Gen2" is the LDZ / LSZ / KPZ / DIM1-Z generation (`c4.dm.*`,
+`c4.kp.*`, `dim1z-capability-map.md`). The check-in strings and protocol notes come from other
 projects' code (**What other projects found**, below). None of these models has been seen on our own networks.
 
 | Rowch wrote | Part number (best match) | What it is | Talks | Status on this branch | What adding it needs |

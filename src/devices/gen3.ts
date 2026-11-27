@@ -3,7 +3,7 @@
  * C4-SW120277 switch share one board and one firmware family (c4.dmx.*). Each model
  * fits a subset of it: the APD120 and SW120277 use button wires 01 / 05 and LED slots
  * 01 / 04, the KC120277 any of them
- * (docs/research/2026-11-07-kc-apd-sw-capability-map.md).
+ * (docs/research/kc-apd-sw-capability-map.md).
  *
  * What the three share lives here: the settings read from the device (multi-click
  * times, LED modes, radio power, versions), the health read at each start and

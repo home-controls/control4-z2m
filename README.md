@@ -112,7 +112,7 @@ entity names what it checked in as. It is still kept on the network (its check-i
 are answered), `c4_get` / `c4_send` still reach it, every frame it sends is logged
 at info (`Control4 UNSUPPORTED …`), and about 30 s after it appears a one-time,
 read-only fingerprint read logs which protocol it speaks. Those log lines are what
-adding the model takes (`docs/research/2026-11-25-unsupported-models.md`). Once a
+adding the model takes (`docs/research/unsupported-models.md`). Once a
 build supports it, the device is adopted with no re-pairing.
 
 ## Supported devices
@@ -272,9 +272,9 @@ written down outside this README:
 
 | Where | What |
 |---|---|
-| `docs/research/2026-11-02-dim1z-capability-map.md` | The DIM1-Z, probed and tested: every readable name, the `tv` table, setting the level with `tv 00`, hardware fades (`0i c4.dm.rtl`), the remote reboot (`0i c4.dm.rb`), and Control4's docs and other people's work for this generation |
-| `docs/research/2026-11-07-kc-apd-sw-capability-map.md` | The same for the KC120277, APD120 and SW120277 (one board, three fit-outs): button wires, LED slots and modes, button behaviours, backlight, ambient light, power telemetry, reset reason, and the write tests |
-| `docs/plans/2026-11-07-device-completion.md` | The plan that makes every model complete, phase by phase |
+| `docs/research/dim1z-capability-map.md` | The DIM1-Z, probed and tested: every readable name, the `tv` table, setting the level with `tv 00`, hardware fades (`0i c4.dm.rtl`), the remote reboot (`0i c4.dm.rb`), and Control4's docs and other people's work for this generation |
+| `docs/research/kc-apd-sw-capability-map.md` | The same for the KC120277, APD120 and SW120277 (one board, three fit-outs): button wires, LED slots and modes, button behaviours, backlight, ambient light, power telemetry, reset reason, and the write tests |
+| `docs/plans/device-completion.md` | The plan that makes every model complete, phase by phase |
 | `docs/adr/` | Decisions that would surprise a reader, such as ADR 0006, the automatic remote reboot |
 | `GLOSSARY.md` | The words used here: button wire, button behaviour, LED slot, LED mode, unreachable, remote reboot, … |
 

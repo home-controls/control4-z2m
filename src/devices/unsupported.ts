@@ -6,7 +6,7 @@
  * still reach it, and it is kept ours: its check-ins are answered like any other.
  * What adding it needs is what it says, so its frames are logged at info, and once
  * per device a short run of read-only Gets asks which protocol namespaces it answers
- * (docs/research/2026-11-25-unsupported-models.md says how to read the result).
+ * (docs/research/unsupported-models.md says how to read the result).
  */
 
 import type {StateReadResult} from "../core/link";

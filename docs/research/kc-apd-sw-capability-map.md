@@ -2,7 +2,7 @@
 
 **2026-11-07.** Live read-only probes, Control4's own documents and the community's work, together, and the write
 tests that followed the same day with the user at each device. What remains is in Open questions and in
-`docs/plans/2026-11-07-device-completion.md`.
+`docs/plans/device-completion.md`.
 
 The C4-KC120277 configurable keypad, the C4-APD120 adaptive phase dimmer and the C4-SW120277 switch share one
 board and one firmware family (`c4.dmx.*`). Each model fits a subset of the same hardware: the APD120 and SW120277
@@ -33,7 +33,7 @@ proxy protocol docs. c4forums.com is behind a bot check and was not read.
 
 ## Method
 
-Same as the DIM1-Z map (`2026-11-02-dim1z-capability-map.md`): `{"c4_get": "<prop> [args]"}` to
+Same as the DIM1-Z map (`dim1z-capability-map.md`): `{"c4_get": "<prop> [args]"}` to
 `zigbee2mqtt/<name>/set` from an HA `run_sequence`, one Get every 0.40-0.45 s, and the replies read back from the
 `Control4 REPLY <name>` lines in the Z2M log. Replies were paired with Gets by sequence number. The extension's
 own polls (`c4.dmx.amb 00`, `c4.dmx.pwr`) take sequence numbers from the same counter and were skipped by
@@ -563,7 +563,7 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
 - **What it acts on:** `0g`, `0i`, `0s` and `0t` (`c4.sy.fwv` answered as a Get, and `e00` to the other three).
 - **Any other letter:** it sends that same letter back with `00` (`0x005e 00`).
 - **A digit first:** it answers `<d>r<seq> 00`.
-- **The plan:** `docs/plans/2026-11-15-frame-type-survey.md`.
+- **The plan:** `docs/plans/frame-type-survey.md`.
 
 ## Open questions and the tests they need
 
@@ -576,7 +576,7 @@ Still open. Each needs a write (restored after), the light switched, or someone 
 - **What `c4.dm.rb` does** on these models (exists, untried). **Leave `c4.dmx.bl` and `c4.dmx.rbp` alone:** their
   meaning is unknown, and `bl` could be a bootloader entry that leaves a device unusable until reflashed.
 - **The rest of the namespace:** no full name sweep has been run on these models, as one was on the DIM1-Z. See
-  `docs/plans/2026-11-15-frame-type-survey.md`.
+  `docs/plans/frame-type-survey.md`.
 
 ## What this could mean in Home Assistant
 
@@ -619,4 +619,4 @@ Ranked by value for effort. "Needs test" marks the ones that depend on an open q
 
 ## DIM1-Z
 
-The DIM1-Z (the older `c4.dm.*` generation) has its own map: `2026-11-02-dim1z-capability-map.md`.
+The DIM1-Z (the older `c4.dm.*` generation) has its own map: `dim1z-capability-map.md`.

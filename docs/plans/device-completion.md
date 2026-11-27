@@ -1,8 +1,8 @@
 # Device completion: everything left to make each Control4 device complete
 
 **2026-11-07.** This plan pulls together everything still open for every model the extension supports. Sources:
-the two research maps (`docs/research/2026-11-02-dim1z-capability-map.md` and
-`docs/research/2026-11-07-kc-apd-sw-capability-map.md`), the open Gitea issues, the ideation doc, and the live tests
+the two research maps (`docs/research/dim1z-capability-map.md` and
+`docs/research/kc-apd-sw-capability-map.md`), the open Gitea issues, the ideation doc, and the live tests
 of 2026-11-07. It orders the work so each model ends complete.
 
 **Complete** means that for each model, every capability the hardware has is one of these:
@@ -284,7 +284,7 @@ Each item needs a device write, a person at the device, or hardware the house la
 ## The DIM1-Z, all in one place
 
 The house has 26, more than any other model. Its research map is
-`docs/research/2026-11-02-dim1z-capability-map.md`.
+`docs/research/dim1z-capability-map.md`.
 
 **Done**
 - **Light:** ZCL on / off / level. Its own on and off fades are written to the dimmer, along with the hold ramps,

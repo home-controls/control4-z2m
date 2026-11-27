@@ -7,7 +7,7 @@ where the two disagree.
 
 What Control4's documents and the community add (tap sequences, Composer's names for the settings, the `0i`
 frame type and the fade, level and reboot leads it opens) is under "What outside sources add (2026-11-07)".
-The KC120277 / APD120 / SW120277 have their own map, `2026-11-07-kc-apd-sw-capability-map.md`.
+The KC120277 / APD120 / SW120277 have their own map, `kc-apd-sw-capability-map.md`.
 
 ## What a DIM1-Z can do
 
@@ -266,7 +266,7 @@ bharat's `RESEARCH.md`) name the `tv` slots:
 - **The extension's shared defaults (min 5 %, hold ramps 4000 ms, max and default-on 100 %) are exactly these
   provisioning values**, not anything a device holds from the factory. A factory DIM1-Z holds min 0 % (Composer's
   help also gives Min On's default as 0) and 5000 ms ramps. The APD120 read on 2026-11-07 holds 10 % and
-  5000 ms (`2026-11-07-kc-apd-sw-capability-map.md`).
+  5000 ms (`kc-apd-sw-capability-map.md`).
 - `c4.dm.ba <0|1>` and `c4.dm.lm <0|1>` are Composer's SET_BUTTON_ATTACHED and SET_LED_ATTACHED, from an
   LDZ-101's HC-300 log (wmariz), shown in Composer as "Buttons Control Load" and "LEDs Follow Load". Both take one
   decimal digit. That matches this map: `ba` is the extension's `paddle_local_control`. The LDZ-101 notes say
@@ -297,7 +297,7 @@ refused `rtl` in `0g` and `0s` frames; `0i` was never tried.
   **The time is the length of a full 0-100 % sweep, not of this move.** A 50-point fade takes half the time
   given. To fade from level `a` to `b` in `t` ms, send `t × 100 / |b − a|`. **The APD120 (fw 5.1.1) differs:**
   there the time is this move's own duration (0→50 % in 5 s, 50→0 % in 10 s, read from its power draw on
-  2026-11-07; `2026-11-07-kc-apd-sw-capability-map.md`). Fade code needs a rule per family. Readings are against the log's
+  2026-11-07; `kc-apd-sw-capability-map.md`). Fade code needs a rule per family. Readings are against the log's
   1-second timestamps, and the extension's own LED writes (the Linen Closet LED automation) shared the link.
 - **Set the level now**: `0s c4.dm.tv <ch> 00 <level %>`, answered by `sa c4.dm.tc 00 <level>` on the LOZ-5D1-W
   (same HC-300 log). It also drives the SDAPD240's second load. **It works on the DIM1-Z (tested 2026-11-07):**
@@ -366,7 +366,7 @@ for `lt` or slot 07.
 
 ## The frame-type survey (2026-11-15)
 
-Summarised from `docs/plans/2026-11-15-frame-type-survey.md`, which has the detail. Run on Garage Inside Lights.
+Summarised from `docs/plans/frame-type-survey.md`, which has the detail. Run on Garage Inside Lights.
 - **Frame types:** it acts on `0g`, `0i`, `0s` and `0t`, and on no other letter. `0t` uses the same name table (known
   names `e00`, unknown `n01`).
 - **`0i c4.dm.bp <button> <event>` presses the paddle remotely:**
@@ -399,7 +399,7 @@ Summarised from `docs/plans/2026-11-15-frame-type-survey.md`, which has the deta
   about 6 dB above the Kitchen Keypad at 0 dBm. If the two sit close together, that's about +3 dBm, the EM250's top. The
   pull-out whip antenna (Hardware, above) is the one way left to more signal from the dimmer itself.
 
-Detail in `docs/plans/2026-11-15-frame-type-survey.md`, "Round two".
+Detail in `docs/plans/frame-type-survey.md`, "Round two".
 
 ## Open questions
 
@@ -437,7 +437,7 @@ Done (#58):
   showed 4000 while Furn held 5000, and `min_brightness` showed 5 where the factory value is 0.
 - **Until that read, a DIM1-Z shows its own factory values:** min 0 %, hold ramps 5000 ms. The APD120 keeps the
   shared defaults (Control4's own provisioning values, see "Composer's names for the settings"). Its slots, read
-  on 2026-11-07, hold 10 % and 5000 ms (`2026-11-07-kc-apd-sw-capability-map.md`).
+  on 2026-11-07, hold 10 % and 5000 ms (`kc-apd-sw-capability-map.md`).
 - **Cold start** (`tv 09` / `0a`, `cold_start_level` / `cold_start_time`) ships, with the fade window
   stretched by the cold-start hold.
 - `src/core/leds.ts` names `is` field 1 as the default-on level, not "max".

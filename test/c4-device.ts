@@ -13,7 +13,7 @@
  * each run renders the top-level variables and condition, and a passing run
  * that reaches the LED feedback renders the led_status calls it publishes to
  * the device and the check that the device is heard. Tap outcomes, holds, early-commit waits and
- * Direction are not rendered (docs/plans/2026-10-29-c4-device-rules.md).
+ * Direction are not rendered (docs/plans/c4-device-rules.md).
  */
 
 import {GESTURES, modelInfo} from "../src/core/constants";
