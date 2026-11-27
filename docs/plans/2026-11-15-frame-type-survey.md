@@ -248,6 +248,18 @@ The firmware ignores the destination endpoint: the extension's frames go to endp
   - Read-only, so 0x000e = 3 sets nothing, even if it is the radio's +3 dBm.
 - **Endpoint 1, ZCL Discover Attributes** (plain and with 0xABCD) on all seven clusters: no answer at all.
 
+**Every 3-character name with a digit, under both families (21:34-23:21).** A temporary script (since deleted)
+sent one Get every 0.3 s to each of Garage Inside Lights, Garage Entrance and Kitchen Cans. Together:
+- **What was sent:** about 58,000 Gets, the 36³ − 26³ names with at least one digit under `c4.dm.` and under `c4.sy.`.
+- **Missed and re-sent:** 57 Gets went unanswered, found from gaps in the reply sequence numbers and named from the
+  sniffer, mostly while a slow probe held up one dimmer's queue. All 57 were re-sent.
+- **The result:** every answer was `n01`, except names already known (`is2`, `l0o`-`l1v`, `t0s`) and the known names
+  each probe starts with (`td`, `lm` and the like).
+
+So the DIM1-Z's whole name space of up to 3 characters is now swept: letters, digits, uppercase, and the names hidden
+behind real ones. What's left is 4 characters and up beyond the ~750 words tried: about 1.7 million names a family,
+about four days around the clock for both families on three dimmers at this pace.
+
 **What this means for the DIM1-Z's radio power.** No over-the-air path sets it:
 - **Names:** every command name its firmware has is now tried as a Get, Set, interrupt and announcement, including the
   names hidden behind real ones. The newer models' `zpw` doesn't exist on it in any form.

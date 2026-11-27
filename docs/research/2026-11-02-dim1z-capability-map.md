@@ -171,6 +171,7 @@ real name it starts with: `c4.sy.information` answers as `c4.sy.info`.
 | letter, letter, 0-1 (minus the 13 real 2-letter prefixes) | all 1,326 | none |
 | Long words (see below) and longer names from other families | ~390 | none new (only known names answering longer probes: `options` → `op`, `backlight` → `ba`) |
 | A real name plus one character (`isa`-`is9`, `l0oa`-`l0o9`, …), hidden from every sweep by the prefix rule; with arguments where the real name needs them (2026-11-15) | 1,476 | `is2` |
+| Every 3-character name with a digit, here and under `c4.sy.` (2026-11-15) | ~58,000 | none new |
 
 | Under `c4.sy.` | Probed | Found |
 |---|---|---|
@@ -196,8 +197,8 @@ load, LED and sensor vocabulary, each probed in its longest form (`serialnumber`
 
 No Get has ever been seen to do anything, but `c4.sy` is where such commands would live.
 
-Not swept: index digits 2-9 in the 3-character `c4.dm` shapes (~10,700 names), 3-character names that
-start with a digit, 4-character names beyond the word list (457,000 per family), and families of 3+ letters.
+Not swept: 4-character names beyond the word list (1.7 million per family with digits, 457,000 letters only), and
+families of 3+ letters. Every name of up to 3 characters is now done (2026-11-15).
 
 ## What outside sources add (2026-11-07)
 
@@ -392,6 +393,8 @@ Summarised from `docs/plans/2026-11-15-frame-type-survey.md`, which has the deta
   device's) are answered as plain. The status report's 0x0013 is most likely an RSSI and 0x0014 an LQI. 0x0006 in the
   check-in looks like a lifetime boot count.
 - **Endpoint 1** doesn't answer ZCL Discover Attributes.
+- **Every 3-character name with a digit,** under `c4.dm.` and `c4.sy.` (~58,000 Gets over three dimmers): nothing new.
+  Every name of up to 3 characters is now swept.
 - **Its output may already be at the radio's maximum.** At the sniffer, Kitchen Cans' stronger half-cycle frames come in
   about 6 dB above the Kitchen Keypad at 0 dBm. If the two sit close together, that's about +3 dBm, the EM250's top. The
   pull-out whip antenna (Hardware, above) is the one way left to more signal from the dimmer itself.
