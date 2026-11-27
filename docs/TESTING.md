@@ -231,6 +231,9 @@ On an SR260, also try the blueprints, if you use them:
 
 ## How to report back
 
+A question before or while you test (how to pair, what a step means)? Ask in
+[GitHub Discussions](https://github.com/home-controls/control4-z2m/discussions). Results go in an issue:
+
 Open an issue on <https://github.com/home-controls/control4-z2m/issues> with the **Device report** template, one
 issue per device. Everything there is public, so before you post: rename devices whose friendly names name a
 person or a room, or strip those names from the log. The Zigbee addresses (`0x...`) can stay.

@@ -19,6 +19,12 @@ device's model and a neutral name ("a DIM1-Z", "the kitchen keypad") instead.
 
 It reports where a hit is and which pattern matched, never the text.
 
+## Questions
+
+Ask in [GitHub Discussions](https://github.com/home-controls/control4-z2m/discussions): how to set
+something up, a setup to share, an idea not yet ready to be an issue. Issues are for bugs, device reports
+and planned work.
+
 ## Reporting a device
 
 Follow [docs/TESTING.md](docs/TESTING.md): what to do with each device, and what to put in the issue.
@@ -80,3 +86,7 @@ commits since the last release. Releases before 0.2.0 were named `build-<id>` on
   checks fail against the herdsman a coming Zigbee2MQTT pins, and closes it when they pass again.
 - Issue numbers up to #118 in older docs and commit messages refer to an archived tracker, not this
   repo's.
+
+## Code of conduct
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
