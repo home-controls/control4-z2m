@@ -177,17 +177,92 @@ While a probe waits, any frame the device sends back is logged (`Control4 FRAME`
 - the radio-sounding 3-character shapes with a digit (`zp0`-`zp9`, `tx0`-`tx9`, …);
 - 15 radio-sounding families (`c4.zb.`, `c4.rf.`, `c4.em.`, …), each with 8 names.
 
+### Round two (the same evening)
+
+Everything a first pass couldn't reach, on Garage Inside Lights unless named.
+
+**Names hidden behind real names.** A probe longer than a real name answers as that name, so no sweep could see a
+3-character name that starts with one of the 13 real 2-letter names (`is`, `tv`, `rb`, …), or a 4-character name that
+starts with a real 3-character one. All 936 were probed (each real name plus `a`-`z` / `0`-`9`), and again with
+arguments where the real name needs them (`tv` with 2, `lt` / `ll` with 1, the write-only names with 1 and 2):
+- **`c4.dm.is2` exists:** `000 c4.dm.is2 64 14 00 0000`. The table holds it before `is`, so `is2<anything>` answers
+  as `is2` and every other `is<x>` as `is`.
+  - **It's a second settings record:** max % (`tv` slot 06), min % (08), cold-start level % (09) and cold-start time,
+    ms (0a). It matches `tv 00 06` / `08` / `09` / `0a` read straight after. One Get reads all four.
+  - It answers with or without an argument, and has nothing to do with the radio.
+- **Nothing else.** Every other probe answered as its real name, or `e00` for a write-only one.
+- **`c4.dm.ll` with no argument answers `e0`,** two characters, the only such status seen. With an argument it reads
+  as before.
+
+**`tv` slot 07 is a flag.** `0s c4.dm.tv 00 07 00000000` stuck (read back `0000`), `00000001` stuck, `00000002`
+answered `000` but read back `0001`.
+- **At 0, nothing measurable changed.** RSSI at the sniffer stayed −82 / −74 dBm (weak / strong half-cycle, 40 s
+  each), and a turn-on to 50 % still went to 50 %.
+- **Its meaning is still unknown.** It's back at 1, as Control4 leaves it.
+
+**`0t` takes no command.** Every known name answers `e00` with 0 to 3 arguments (`00`). Unknown names and the
+announcement names (`t0c`, `b0c`, `cc`, with or without `sa`) answer `n01`. The DIM1-Z parses an `0t` name and
+refuses the frame.
+
+**The endpoints.** The interview lists four:
+- **1:** Home Automation.
+- **196:** 0xC25D, cluster 1.
+- **197:** 0xC25C, clusters 1 and 0.
+- **198:** 0xC25E, cluster 2.
+
+The firmware ignores the destination endpoint: the extension's frames go to endpoints 1 and 2 and are answered.
+- **0xC25D cluster 1:**
+  - **Attributes 0x0016-0x00ff:** all unsupported.
+  - **On endpoint 196:** the same attributes as on endpoint 2. A read answers 0x0000-0x0006 and 0x0008-0x000a,
+    leaves out 0x0007, 0x000b and 0x000c (sent only in reports), and stops at 0x000d (unsupported).
+  - **Manufacturer-specific frames** (code 0xABCD, the Silicon Labs sample default that every Control4 device here
+    reports in its node descriptor) are answered as if plain. No hidden attributes.
+- **The 90 s status report, decoded:**
+
+  | Attribute | Value | Meaning |
+  |---|---|---|
+  | 0x0012 | `0000` (2 bytes) | Unknown |
+  | 0x0013 | −52 to −62, report to report | int8, most likely the RSSI of what the dimmer hears |
+  | 0x0014 | 254 | Most likely the LQI |
+  | 0x0000 | 2 | Unknown |
+  | 0x0001, 0x0002 | 10, 300 | The two writable timers |
+  | 0x0003 | 0 | The count since boot |
+  | 0x000b | 300 | Unknown, read-only |
+  | 0x000c | 25 | The Zigbee channel |
+
+  The model check-in adds 0x0005 (5 on every DIM1-Z) and 0x0006. 0x0006 is 86 on Garage Inside Lights, rising
+  84 → 86 through today's reboots, and 71 on two others: most likely a lifetime boot count.
+- **0xC25C cluster 0:** no answer to a text frame or a ZCL read.
+- **0xC25E cluster 2 is new:**
+
+  | Attribute | Type | Value |
+  |---|---|---|
+  | 0x0003 | uint32 | 0 |
+  | 0x0008 | uint8 | 0 |
+  | 0x000b | octet string | empty |
+  | 0x000e | uint8 | 3 |
+
+  - **Everything else to 0x00ff is unsupported,** and Discover isn't supported.
+  - **Writes are refused,** status 0x81, even writing an attribute its own value.
+  - **The same on Garage Inside Lights, Garage Entrance and Kitchen Cans,** and absent on the KC120277 and APD120.
+  - Read-only, so 0x000e = 3 sets nothing, even if it is the radio's +3 dBm.
+- **Endpoint 1, ZCL Discover Attributes** (plain and with 0xABCD) on all seven clusters: no answer at all.
+
 **What this means for the DIM1-Z's radio power.** No over-the-air path sets it:
-- **Names:** every command name its firmware has is now tried as a Get, Set, interrupt and announcement. The newer
-  models' `zpw` doesn't exist on it in any form.
-- **Network profile:** its settings hold two timers and a boot count.
+- **Names:** every command name its firmware has is now tried as a Get, Set, interrupt and announcement, including the
+  names hidden behind real ones. The newer models' `zpw` doesn't exist on it in any form.
+- **Network profile:** its settings hold two timers and a boot count. Nothing else on any endpoint takes a write.
 - **Hardware:** its output dips about 11 dB for half of every mains cycle, which no setting would fix.
 
-Still unswept, and costly: every 4-letter name (about 457,000 per family, about 33 hours at the sweep's pace) and
-3-character names with digits under `c4.sy.` (about 29,000, about 2 hours). Given that Control4 never set this
-generation's power and used `zpw` where it could, the odds are low.
+**It may already be at full power.** The Kitchen Keypad, a Gen3 radio set to 0 dBm, and Kitchen Cans, a DIM1-Z, reach the
+sniffer at −62 and −56 dBm (median of each one's stronger half of frames, 21:00-21:40):
+- **Kitchen Cans comes in about 6 dB hotter.** If the two sit close together, the DIM1-Z already transmits at about
+  +3 dBm or more, the top of the EM250 radio its generation is built on. There would be nothing left to raise.
+- **Still to confirm:** where the two sit, and the chip.
 
-What does work for a weak DIM1-Z is on the other end of its links:
+What does work for a weak DIM1-Z:
+- **Its whip antenna.** It's coiled under the button and can be pulled out (the DIM1-Z map, Hardware). This is the
+  one way to get more signal out of the dimmer itself.
 - **A router within easy reach,** so even its weak half-cycle frames make the hop.
 - **The KC120277, APD120 and SW120277 can now run at +2 dBm** (`tx_power`). That strengthens what they send a
   DIM1-Z, though not what it sends back.

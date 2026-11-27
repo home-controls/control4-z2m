@@ -93,6 +93,7 @@ listing: `c4.`, `c4.sy.`, `*` and `?` are all `n01`.
 | Get | Furn | Meaning |
 |---|---|---|
 | `c4.dm.is` | `00 64 01f4 01f4 080000 080000 000000 000000 0f` | Settings record, see below |
+| `c4.dm.is2` | `64 14 00 0000` (Garage Inside Lights) | **New (2026-11-15).** The second settings record: max %, min %, cold-start level %, cold-start time ms (`tv` slots 06, 08, 09, 0a) |
 | `c4.dm.td` | `64` | **Default-on level %**, the same value as `tv 00 01` (default-on set to 80 → `td` = `50`). Not the live level. |
 | `c4.dm.t0s` | `00` off, `31` at 50 % | **New.** Live level of load 0, % (= `tv 00 00` = `is` field 0) |
 | `c4.dm.tv <ch> <slot>` | see the table below | Dimmer parameters. `e00` with fewer than 2 args |
@@ -132,7 +133,7 @@ every Get, and no Set shape tried there was accepted. Every Set tried was a `0s`
 | 04 | `1388` | Hold ramp up, ms (5000) | `hold_ramp_up`, which shows 4000 |
 | 05 | `1388` | Hold ramp down, ms (5000) | `hold_ramp_down`, which shows 4000 |
 | 06 | `0064` | Max level % | `max_brightness` |
-| 07 | `0001` | Unknown. The same on every channel, so likely device-wide | |
+| 07 | `0001` | A flag: 0 and 1 stick, 2 reads back 1 (2026-11-15). At 0, neither the radio nor a turn-on to 50 % changed. Meaning unknown | |
 | 08 | `0014` | Min level % | `min_brightness` |
 | 09 | `0028` | Cold-start level % | `cold_start_level` |
 | 0a | `01f4` | Cold-start time, ms | `cold_start_time` |
@@ -169,6 +170,7 @@ real name it starts with: `c4.sy.information` answers as `c4.sy.info`.
 | letter, 0-1, letter | all 1,352 | `l0o` `l0f` `l0v` `l0l` `l1o` `l1f` `l1v` `l1l` `t0s` |
 | letter, letter, 0-1 (minus the 13 real 2-letter prefixes) | all 1,326 | none |
 | Long words (see below) and longer names from other families | ~390 | none new (only known names answering longer probes: `options` → `op`, `backlight` → `ba`) |
+| A real name plus one character (`isa`-`is9`, `l0oa`-`l0o9`, …), hidden from every sweep by the prefix rule; with arguments where the real name needs them (2026-11-15) | 1,476 | `is2` |
 
 | Under `c4.sy.` | Probed | Found |
 |---|---|---|
@@ -377,11 +379,31 @@ Summarised from `docs/plans/2026-11-15-frame-type-survey.md`, which has the deta
 - **Radio power:** none of it, nor about 3,300 more Gets (uppercase names, the skipped `c4.sy` names, radio words and
   families), changed or found a power setting. No over-the-air path sets this model's radio power.
 
+**Round two, the same evening:**
+- **`c4.dm.is2`**, hidden behind `is` by the prefix rule, reads max, min, cold-start level and cold-start time in one
+  Get. It was the only name among the 1,476 probes of a real name plus one character.
+- **`tv` slot 07** is a 0 / 1 flag, with no effect anyone could measure.
+- **`0t`** answers `e00` to every known name with 0-3 arguments. It takes no command.
+- **The endpoints** are 1, 196 (0xC25D), 197 (0xC25C) and 198 (0xC25E), but the firmware ignores the destination
+  endpoint.
+- **0xC25E cluster 2** is new: four read-only attributes (0x0003 uint32 0, 0x0008 uint8 0, 0x000b empty, 0x000e uint8 3).
+  They're the same on three DIM1-Zs, absent on the Gen3 board, and refuse writes even of their own value.
+- **Network profile:** attributes past 0x0015 are unsupported, and manufacturer-specific frames (code 0xABCD, every
+  device's) are answered as plain. The status report's 0x0013 is most likely an RSSI and 0x0014 an LQI. 0x0006 in the
+  check-in looks like a lifetime boot count.
+- **Endpoint 1** doesn't answer ZCL Discover Attributes.
+- **Its output may already be at the radio's maximum.** At the sniffer, Kitchen Cans' stronger half-cycle frames come in
+  about 6 dB above the Kitchen Keypad at 0 dBm. If the two sit close together, that's about +3 dBm, the EM250's top. The
+  pull-out whip antenna (Hardware, above) is the one way left to more signal from the dimmer itself.
+
+Detail in `docs/plans/2026-11-15-frame-type-survey.md`, "Round two".
+
 ## Open questions
 
 - **`lt <n>`**: per-index and writable, but it changes nothing a Get can see. Next test: someone at the
   switch while `lt 00` = 0 (top paddle) and `lt 01` = 0 (bottom), tapping and holding each half.
-- **`tv` slot 07** (`1`, device-wide).
+- **`tv` slot 07** (`1`, device-wide): a 0 / 1 flag (2026-11-15). Nothing measured changed at 0; next, someone at the
+  switch, tapping and holding with it at 0.
 - **Zigbee groups**: the DIM1-Z takes a group-add command, but whether it then follows a command sent to the
   group is untested. Testing it needs a Z2M group (the coordinator has one spare group slot) and one
   network-wide broadcast.
