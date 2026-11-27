@@ -1,0 +1,20 @@
+#!/bin/sh
+# Runs the privacy check (tools/privacy-check.mjs) before a push: the tracked files,
+# and the messages of the commits being pushed. Install once per clone with
+#
+#   git config core.hooksPath tools/hooks
+#
+# It reads its patterns from ~/.config/control4-z2m/private-patterns.txt (or
+# PRIVATE_PATTERNS); with neither it says so and lets the push through, and CI checks.
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue # a branch deletion pushes nothing
+    if [ "$remote_sha" = "$zero" ]; then
+        base=$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "$zero")
+    else
+        base=$remote_sha
+    fi
+    node tools/privacy-check.mjs --allow-missing --range "$base..$local_sha" || status=1
+done
+exit $status

@@ -168,7 +168,9 @@ export class PowerSensor extends Poller {
         if (typeof last === "number" && count < last) {
             offset += last - count;
             this.dev.saveSetting(ENERGY_OFFSET_KEY, offset);
-            this.dev.log.info(`Control4 ${this.dev.name}: its energy counter fell from ${last} to ${count} (a reboot restores its last save); the total carries on from ${last}`);
+            this.dev.log.info(
+                `Control4 ${this.dev.name}: its energy counter fell from ${last} to ${count} (a reboot restores its last save); the total carries on from ${last}`,
+            );
         }
         if (last !== count) this.dev.saveSetting(ENERGY_RAW_KEY, count);
         return Math.round((count + offset) * ENERGY_WH_PER_COUNT) / 1000;

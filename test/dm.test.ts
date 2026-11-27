@@ -177,7 +177,8 @@ describe("C4-DIM1-Z", () => {
         await tick(3000);
         let fails = 1;
         // A transition is a hardware fade: one c4.dm.rtl frame.
-        rig.transport.failWith = (f) => (f.data.toString("latin1").includes("c4.dm.rtl") && fails-- > 0 ? Object.assign(new Error("no ack"), {name: "DeliveryError"}) : undefined);
+        rig.transport.failWith = (f) =>
+            f.data.toString("latin1").includes("c4.dm.rtl") && fails-- > 0 ? Object.assign(new Error("no ack"), {name: "DeliveryError"}) : undefined;
         const p = rig.runtime.set(DIM, "state", "OFF", {message: {state: "OFF", transition: 0.5}});
         await tick(2100); // the retry goes out after RETRY_DELAY
         await p;
@@ -305,16 +306,23 @@ describe("C4-DIM1-Z", () => {
         rig.ascii(DIM, "0t0002 sa c4.dm.cc 00 03");
         rig.ascii(DIM, "0t0003 sa c4.dm.b1c");
         rig.ascii(DIM, "0t0004 sa c4.dm.cc 01 01");
-        expect(rig.actions(DIM)).toEqual(["button_1_press", "button_1_tap_known", "button_1_triple", "button_2_press", "button_2_tap_known", "button_2_single"]);
+        expect(rig.actions(DIM)).toEqual([
+            "button_1_press",
+            "button_1_tap_known",
+            "button_1_triple",
+            "button_2_press",
+            "button_2_tap_known",
+            "button_2_single",
+        ]);
     });
 
-    // As captured from Master Stairs Top (fw 03.22.41, local control off): a hold is b<idx>b ... b<idx>e alone.
+    // As captured from a DIM1-Z (fw 03.22.41, local control off): a hold is b<idx>b ... b<idx>e alone.
     it("maps a paddle hold and its release (top = button_1)", () => {
         for (const f of ["c4.dm.b0b", "c4.dm.b0e", "c4.dm.b1b", "c4.dm.b1e"]) rig.ascii(DIM, `0t0001 sa ${f}`);
         expect(rig.actions(DIM)).toEqual(["button_1_hold", "button_1_hold_release", "button_2_hold", "button_2_hold_release"]);
     });
 
-    // Tested on Linen Closet and Garage Entrance on 2026-11-07: back in about 2 s, level and settings kept.
+    // Tested on two DIM1-Zs on 2026-11-07: back in about 2 s, level and settings kept.
     it("reboots with an interrupt frame (0i c4.dm.rb); an unconfirmed delivery is no error", async () => {
         let p = set(DIM, "reboot", "reboot");
         await tick(50);
@@ -340,7 +348,13 @@ describe("C4-DIM1-Z", () => {
         const dim = rig.runtime.get(DIM) as unknown as {autoReboot(): boolean};
         const options = (rig.devices.get(DIM) as {options: Record<string, unknown>}).options;
         expect(dim.autoReboot()).toBe(true);
-        for (const [value, may] of [[false, false], ["false", false], [true, true], ["true", true], ["", true]] as const) {
+        for (const [value, may] of [
+            [false, false],
+            ["false", false],
+            [true, true],
+            ["true", true],
+            ["", true],
+        ] as const) {
             options.auto_reboot = value;
             expect(dim.autoReboot()).toBe(may);
         }
@@ -390,7 +404,9 @@ describe("C4-DIM1-Z state reads", () => {
         const r = new Rig();
         try {
             const ids = [1, 2, 3].map((i) => r.add(`0x000fff00000000c${i}`, "C4-DIM1-Z"));
-            ids.forEach((id, i) => r.zcl.set(id, {genOnOff: {onOff: i % 2}, genLevelCtrl: {currentLevel: 100 + i}}));
+            ids.forEach((id, i) => {
+                r.zcl.set(id, {genOnOff: {onOff: i % 2}, genLevelCtrl: {currentLevel: 100 + i}});
+            });
             r.zclLatency = 50;
             const t0 = Date.now();
             r.start();
@@ -519,7 +535,11 @@ describe("C4-DIM1-Z settings read", () => {
         r.reply(DIM, values);
         await tick(0);
     };
-    const settingsGets = (r: Rig, from = 0) => r.texts(from).filter((t) => t.startsWith("0g") && t.includes(" c4.dm.")).map((t) => t.replace(/^0g[0-9a-f]{4} /, ""));
+    const settingsGets = (r: Rig, from = 0) =>
+        r
+            .texts(from)
+            .filter((t) => t.startsWith("0g") && t.includes(" c4.dm."))
+            .map((t) => t.replace(/^0g[0-9a-f]{4} /, ""));
     /** A rig whose DIM1-Z has never had its settings read. */
     const fresh = (store?: Rig["store"]) => {
         const r = new Rig(store ? {store} : {});
@@ -693,7 +713,15 @@ describe("C4-FS1-Z", () => {
     // Assumed as on the DIM1-Z (#51): b<idx>c once per press, a hold with no b<idx>c before it.
     it("fires a press and a known tap at paddle-down (b<idx>c), its count from cc, and a hold from b<idx>b/e", () => {
         for (const f of ["c4.dm.b0c", "c4.dm.b0c", "c4.dm.cc 00 02", "c4.dm.b1b", "c4.dm.b1e"]) rig.ascii(FS, `0t0001 sa ${f}`);
-        expect(rig.actions(FS)).toEqual(["button_1_press", "button_1_tap_known", "button_1_press", "button_1_tap_known", "button_1_double", "button_2_hold", "button_2_hold_release"]);
+        expect(rig.actions(FS)).toEqual([
+            "button_1_press",
+            "button_1_tap_known",
+            "button_1_press",
+            "button_1_tap_known",
+            "button_1_double",
+            "button_2_hold",
+            "button_2_hold_release",
+        ]);
     });
 
     it("counts its taps itself: a fast count one tap window after the last paddle-down, every tap known", async () => {

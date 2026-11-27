@@ -497,7 +497,10 @@ action:
           - action: media_player.volume_down
             target:
               entity_id: "{{ volume_target }}"
-      - conditions: "{{ button == 'volume_mute' }}"
+      - conditions:
+          - "{{ button == 'volume_mute' }}"
+          # A player without mute (feature 8) gets nothing: HA refuses volume_mute on it.
+          - "{{ ((state_attr(volume_target, 'supported_features') | int(0)) // 8) % 2 == 1 }}"
         sequence:
           - action: media_player.volume_mute
             target:

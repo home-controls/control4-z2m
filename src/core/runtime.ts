@@ -7,6 +7,17 @@
  * runtime runs under test with a fake host and transport.
  */
 
+import {type C4Device, type DeviceContext, type Payload, type SetMeta, UnsupportedKey} from "../devices/base";
+import {Dim1z, Fs1z, Outlet, SETTINGS_READ_KEY} from "../devices/dm";
+import {FAN_PROVISIONED_KEY, Fan} from "../devices/dmx";
+import {Apd120, Sw120277} from "../devices/gen3";
+import {Kd120} from "../devices/kd120";
+import {Kc120277, Keypad} from "../devices/keypad";
+import {OutletDimmer} from "../devices/outlet-dimmer";
+import {Remote, Sr260} from "../devices/remote";
+import {Rosw120} from "../devices/rosw120";
+import {Unsupported} from "../devices/unsupported";
+import {Z2io} from "../devices/z2io";
 import {AnimationEngine, TxPump} from "./animation";
 import {
     ATTR_FIRMWARE,
@@ -14,8 +25,8 @@ import {
     ATTR_MODEL,
     C4_CLUSTER,
     canonicalModel,
-    definitionModel,
     type DeviceFamily,
+    definitionModel,
     isC4Ieee,
     isValidModel,
     type KcLayout,
@@ -26,31 +37,13 @@ import {
     PROFILE_OUTLET,
 } from "./constants";
 import {FastTaps} from "./fasttap";
+import {LED_DEFAULT_COLOUR, LED_DEFAULTS_KEY, LED_DEFAULTS_MIGRATION} from "./leds";
 import {isDeliveryFailure, Link, type LinkDevice, PING_PROPERTY} from "./link";
 import type {Logger} from "./log";
-import {
-    buildIdentityFrame,
-    parseFrame,
-    parseReadAttributesResponse,
-    parseReportAttributes,
-    parseZclHeader,
-    type ZclValue,
-} from "./protocol";
+import {buildIdentityFrame, parseFrame, parseReadAttributesResponse, parseReportAttributes, parseZclHeader, type ZclValue} from "./protocol";
 import type {Store} from "./store";
 import {TrafficWatch} from "./traffic";
 import {DeliveryError, type InFrame, type OutFrame, type Transport} from "./transport";
-import {C4Device, type DeviceContext, type Payload, type SetMeta, UnsupportedKey} from "../devices/base";
-import {LED_DEFAULT_COLOUR, LED_DEFAULTS_KEY, LED_DEFAULTS_MIGRATION} from "./leds";
-import {Dim1z, Fs1z, Outlet, SETTINGS_READ_KEY} from "../devices/dm";
-import {Fan, FAN_PROVISIONED_KEY} from "../devices/dmx";
-import {Apd120, Sw120277} from "../devices/gen3";
-import {Kd120} from "../devices/kd120";
-import {Kc120277, Keypad} from "../devices/keypad";
-import {OutletDimmer} from "../devices/outlet-dimmer";
-import {Remote, Sr260} from "../devices/remote";
-import {Rosw120} from "../devices/rosw120";
-import {Unsupported} from "../devices/unsupported";
-import {Z2io} from "../devices/z2io";
 
 export interface DeviceInfo {
     nwk: number;
@@ -548,7 +541,9 @@ export class Runtime {
                 }
                 if (sent === false) return;
             }
-            this.log.info(`Control4: ${name()}'s controller identity is still not delivered after ${IDENTITY_RETRIES.length} retries - it may count its controller as lost and re-join`);
+            this.log.info(
+                `Control4: ${name()}'s controller identity is still not delivered after ${IDENTITY_RETRIES.length} retries - it may count its controller as lost and re-join`,
+            );
         } finally {
             this.recovering.delete(ieee);
         }
@@ -588,7 +583,9 @@ export class Runtime {
             this.log.info(`Control4: answered a check-in from network address ${nwk}, which Zigbee2MQTT does not know yet, with the controller identity`);
         } catch (error) {
             this.traffic.sent(messageSentOf(error));
-            this.log.info(`Control4: the controller identity to network address ${nwk} (not known to Zigbee2MQTT yet) was not delivered: ${(error as Error).message}`);
+            this.log.info(
+                `Control4: the controller identity to network address ${nwk} (not known to Zigbee2MQTT yet) was not delivered: ${(error as Error).message}`,
+            );
         }
     }
 
@@ -660,6 +657,12 @@ export class Runtime {
         // pinged, so any frame of its counts.
         if (frame.unicast || !this.ctx.isRouter(ieee)) this.host.noteSeen(ieee, frame.lqi, frame.rssi);
         this.link.noteRx(ieee, frame.unicast);
+        const probed = this.devices.get(ieee);
+        if (probed?.capturing && frame.profile !== PROFILE_BUTTON) {
+            this.log.warning(
+                `Control4 RAW ${this.host.friendlyName(ieee)}: profile 0x${frame.profile.toString(16)} cluster ${frame.cluster} ep ${frame.srcEp}->${frame.dstEp}: ${frame.data.toString("hex")}`,
+            );
+        }
         try {
             if (frame.profile === PROFILE_BUTTON) this.onAscii(ieee, frame);
             else if (frame.profile === PROFILE_NETWORK) this.onNetwork(ieee, frame);

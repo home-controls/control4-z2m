@@ -84,7 +84,19 @@ describe("a keypad already seen releasing", () => {
         await frames(KP, "c4.kp.bb 00", "c4.kp.bc 00", "c4.kp.bb 00", "c4.kp.bh 00", "c4.kp.bh 00", "c4.kp.be 00");
         await frames(KP, "c4.kp.bb 00", "c4.kp.bc 00");
         await tick(1000);
-        expect(seen(KP, from)).toEqual(["press", "release", "tap_known #1", "press", "hold", "hold", "hold_release", "press", "release", "tap_known #1", "fast_single known=true"]);
+        expect(seen(KP, from)).toEqual([
+            "press",
+            "release",
+            "tap_known #1",
+            "press",
+            "hold",
+            "hold",
+            "hold_release",
+            "press",
+            "release",
+            "tap_known #1",
+            "fast_single known=true",
+        ]);
     });
 
     it("announces a late release's tap before the fast count it closes, which says the taps were known", async () => {

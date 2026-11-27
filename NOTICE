@@ -1,0 +1,36 @@
+control4-z2m
+Copyright 2026 the control4-z2m contributors
+
+This product is a Zigbee2MQTT port of control4-zha-quirks (Copyright 2026 the
+control4-zha-quirks contributors, Apache License 2.0), and includes software
+and documents derived from it: the device protocol logic now in src/, and the
+SR250 / SR260 / keypad LED blueprints in blueprints/, which
+tools/port-zha-blueprints.mjs ports from that project's ZHA blueprints.
+
+control4-zha-quirks in turn includes software derived from the Control4 quirks
+package in pvanbaren/zha-device-handlers (branch "control4",
+zhaquirks/control4/),
+https://github.com/pvanbaren/zha-device-handlers/tree/control4/zhaquirks/control4
+itself part of a fork of zigpy/zha-device-handlers
+(https://github.com/zigpy/zha-device-handlers), licensed under the
+Apache License, Version 2.0. The SR260 blueprints and the upstream protocol
+documents (C4-Z2IO-ZP, the APD120 dimmer, the SF120 fan controller, the scene
+controller, the SR260 remote, the switched outlet) originate there.
+
+Protocol knowledge was also drawn from the following projects, credited in the
+documents and source where used. No code was copied from them:
+- wmariz/zha-device-handlers (branch "control4"): the DIM1-Z paddle LED colour
+  writer (c4.dm.l<btn><o|f>), LED write throttling, the KP6-Z reboot, and the
+  LOZ-5D1-W outlet dimmer.
+- bharat/homeassistant-control4-zigbee (formerly
+  homeassistant-control4-dimmers, MIT) and his zigbee-herdsman-converters fork:
+  the dimmer ramp map in its RESEARCH.md, the link-health failure modes in its
+  issues, and the C4-KD120, C4-FPD120 and C4-V-ROSW120 notes.
+- royceybaby/ha-c4-keypads: the dual-load C4-SDAPD240 and local keypad models.
+- lights0123's and pstuart's SmartThings drivers: the LOZ-5D1-W and C4-KP2-Z
+  check-ins.
+- The Genesis Technologies "Control4 Zigbee - the definitive guide": pairing and
+  reset button sequences.
+
+Control4 is a trademark of its respective owner. This project is not
+affiliated with or endorsed by Control4.

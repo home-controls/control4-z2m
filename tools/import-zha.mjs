@@ -34,9 +34,12 @@ export function familyOf(model) {
     return FAMILY.find(([re]) => re.test(String(model ?? "")))?.[1];
 }
 
-/** ZHA's "00:0f:ff:00:00:63:6e:2a" -> herdsman's "0x000fff0000636e2a". */
+/** ZHA's "00:0f:ff:00:00:00:6e:2a" -> herdsman's "0x000fff0000006e2a". */
 export function toZ2mIeee(ieee) {
-    return `0x${String(ieee).toLowerCase().replace(/^0x/, "").replace(/[^0-9a-f]/g, "")}`;
+    return `0x${String(ieee)
+        .toLowerCase()
+        .replace(/^0x/, "")
+        .replace(/[^0-9a-f]/g, "")}`;
 }
 
 /** The control4-z2m key for a ZHA LED-colour select endpoint, by family. */

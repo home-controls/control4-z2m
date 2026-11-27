@@ -32,7 +32,8 @@ export function readRun(variables, passes) {
         variables.hold_candidate === true && "hold",
         Object.hasOwn(MULTI_TAPS, variables.gesture) && MULTI_TAPS[variables.gesture],
     ].filter(Boolean);
-    if (says.length !== 1) throw new Error(`c4_device: a run on '${run.trigger}' passes, but its variables say ${says.length ? says.join(" and ") : "nothing to do"}`);
+    if (says.length !== 1)
+        throw new Error(`c4_device: a run on '${run.trigger}' passes, but its variables say ${says.length ? says.join(" and ") : "nothing to do"}`);
     return {...run, does: says[0]};
 }
 

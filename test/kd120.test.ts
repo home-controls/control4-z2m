@@ -116,7 +116,7 @@ describe("C4-KD120 keypad dimmer", () => {
             "c4.dmx.blc 00 03": "ff",
             "c4.dmx.dim": "01",
             "c4.dmx.warn 00": "00 0000",
-            "c4.sy.ri": "\" SW RBT\"",
+            "c4.sy.ri": '" SW RBT"',
         };
         for (let w = 0; w < 7; w++) replies[`c4.dmx.btn 0${w} 01`] = w === 0 ? "02" : "03";
         const asked = await answerGets(replies, 30_000);
@@ -149,8 +149,21 @@ describe("C4-FPD120", () => {
 
 describe("C4-KD120 definition", () => {
     it("exposes a light, the keypad, power and each position's behaviour until its buttons are known", () => {
-        const props = kdExposes({wires: undefined, numbering: "pairs"}).map((x) => (x as {property?: string; type?: string}).property ?? (x as {type: string}).type);
-        expect(props).toEqual(expect.arrayContaining(["light", "action", "backlight_color", "power", "dimming_phase", "fault", "button_position_1_behaviour", "button_position_7_behaviour"]));
+        const props = kdExposes({wires: undefined, numbering: "pairs"}).map(
+            (x) => (x as {property?: string; type?: string}).property ?? (x as {type: string}).type,
+        );
+        expect(props).toEqual(
+            expect.arrayContaining([
+                "light",
+                "action",
+                "backlight_color",
+                "power",
+                "dimming_phase",
+                "fault",
+                "button_position_1_behaviour",
+                "button_position_7_behaviour",
+            ]),
+        );
     });
 
     it("narrows the behaviours to the fitted buttons", () => {

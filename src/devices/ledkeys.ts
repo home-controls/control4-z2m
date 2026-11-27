@@ -22,11 +22,21 @@ const count = (a: Record<string, unknown>) => Number.parseInt(byte(a.num_buttons
 
 export const LED_CLUSTER_COMMANDS: Record<string, (a: Record<string, unknown>) => string[]> = {
     set_led_color: (a) => [`c4.dmx.led ${byte(a.button_id)} 03 ${rgb(a, "on")}`, `c4.dmx.led ${byte(a.button_id)} 04 ${rgb(a, "off")}`],
-    set_led_mode: (a) => [`c4.dmx.led ${byte(a.button_id)} 00 ${byte(a.mode)}`, `c4.dmx.led ${byte(a.button_id)} 01 ${byte(a.behavior)}`, `c4.dmx.led ${byte(a.button_id)} 02 ${byte(a.color_mode)}`],
-    set_led_all_same_color: (a) => Array.from({length: count(a)}, (_, b) => [`c4.dmx.led ${hex2(b)} 03 ${rgb(a, "on")}`, `c4.dmx.led ${hex2(b)} 04 ${rgb(a, "off")}`]).flat(),
+    set_led_mode: (a) => [
+        `c4.dmx.led ${byte(a.button_id)} 00 ${byte(a.mode)}`,
+        `c4.dmx.led ${byte(a.button_id)} 01 ${byte(a.behavior)}`,
+        `c4.dmx.led ${byte(a.button_id)} 02 ${byte(a.color_mode)}`,
+    ],
+    set_led_all_same_color: (a) =>
+        Array.from({length: count(a)}, (_, b) => [`c4.dmx.led ${hex2(b)} 03 ${rgb(a, "on")}`, `c4.dmx.led ${hex2(b)} 04 ${rgb(a, "off")}`]).flat(),
     set_all_led_modes: (a) =>
-        Array.from({length: count(a)}, (_, b) => [`c4.dmx.led ${hex2(b)} 00 ${byte(a.mode)}`, `c4.dmx.led ${hex2(b)} 01 ${byte(a.behavior)}`, `c4.dmx.led ${hex2(b)} 02 ${byte(a.color_mode)}`]).flat(),
-    set_led_single_on: (a) => Array.from({length: 12}, (_, i) => `c4.dmx.led ${hex2(i)} 01 ${i === Number(a.button_idx) ? byte(a.behavior_on) : byte(a.behavior_others)}`),
+        Array.from({length: count(a)}, (_, b) => [
+            `c4.dmx.led ${hex2(b)} 00 ${byte(a.mode)}`,
+            `c4.dmx.led ${hex2(b)} 01 ${byte(a.behavior)}`,
+            `c4.dmx.led ${hex2(b)} 02 ${byte(a.color_mode)}`,
+        ]).flat(),
+    set_led_single_on: (a) =>
+        Array.from({length: 12}, (_, i) => `c4.dmx.led ${hex2(i)} 01 ${i === Number(a.button_idx) ? byte(a.behavior_on) : byte(a.behavior_others)}`),
 };
 
 /** Run one LED-cluster command. Like ZHA: every frame is attempted, 50 ms apart; failures are counted, not fatal. */

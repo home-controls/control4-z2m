@@ -1,4 +1,4 @@
-// control4-z2m 0.1.0 - Zigbee2MQTT external converter
+// control4-z2m 0.2.1 - Zigbee2MQTT external converter
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -349,7 +349,7 @@ function converter(keys, endpoints) {
     }
   };
 }
-var COMMON_KEYS = ["c4_send", "c4_get", "c4_identify", "c4_model", "send_raw", "send_get"];
+var COMMON_KEYS = ["c4_send", "c4_get", "c4_raw", "c4_identify", "c4_model", "send_raw", "send_get"];
 var LED_CLUSTER_KEYS = ["set_led_color", "set_led_mode", "set_led_all_same_color", "set_all_led_modes", "set_led_single_on"];
 var RAMP_KEYS = ["set_ramp_rate", "set_on_ramp", "set_off_ramp", "set_on_off_ramps"];
 var LIGHT_KEYS = ["state", "brightness", "transition"];
@@ -381,7 +381,9 @@ function ledColor(key, label) {
   return e.enum(key, ea.STATE_SET, [...PALETTE_NAMES]).withLabel(label).withDescription(`${label} (the device keeps it; brightness scales it)`).withCategory("config");
 }
 function ledMode(key, label) {
-  return e.enum(key, ea.STATE_SET, [...LED_MODE_NAMES]).withLabel(label).withDescription("How the LED picks its colour: follow_load (on colour while the load is on, off colour while off), push_release (pressed colour while its button is held), or programmed (a colour set from outside, as a status colour)").withCategory("config");
+  return e.enum(key, ea.STATE_SET, [...LED_MODE_NAMES]).withLabel(label).withDescription(
+    "How the LED picks its colour: follow_load (on colour while the load is on, off colour while off), push_release (pressed colour while its button is held), or programmed (a colour set from outside, as a status colour)"
+  ).withCategory("config");
 }
 function pollOptions(power) {
   const opt = (key, what) => e.numeric(key, ea.SET).withValueMin(0).withValueMax(86400).withUnit("s").withDescription(`Seconds between ${what} reads (default 30, minimum 10; 0 = never poll, announcements still arrive)`);
@@ -424,7 +426,9 @@ function tvParams(params) {
   });
 }
 function rebootButton() {
-  return e.enum(REBOOT_KEY, ea.SET, ["reboot"]).withLabel("Reboot").withDescription("Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)").withCategory("config");
+  return e.enum(REBOOT_KEY, ea.SET, ["reboot"]).withLabel("Reboot").withDescription(
+    "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)"
+  ).withCategory("config");
 }
 function autoRebootOption() {
   return e.binary(AUTO_REBOOT_OPTION, ea.SET, true, false).withDescription(
@@ -460,7 +464,10 @@ function gen3Health(fault) {
     e.text("bootloader_version", ea.STATE).withLabel("Bootloader version").withDescription("c4.sy.blv").withCategory("diagnostic"),
     e.numeric("tx_power", ea.STATE_SET).withValueMin(TX_POWER_MIN).withValueMax(TX_POWER_MAX).withValueStep(1).withUnit("dBm").withLabel("TX power").withDescription("Radio transmit power (c4.sy.zpw); Control4 provisions 0. Put back after a re-join if the device has lost it").withCategory("config")
   ];
-  if (fault) out.push(e.binary("fault", ea.STATE, true, false).withLabel("Fault").withDescription("The device reports a fault on its load: a short circuit or an overload (c4.dmx.warn)").withCategory("diagnostic"));
+  if (fault)
+    out.push(
+      e.binary("fault", ea.STATE, true, false).withLabel("Fault").withDescription("The device reports a fault on its load: a short circuit or an overload (c4.dmx.warn)").withCategory("diagnostic")
+    );
   return out;
 }
 var GEN3_KEYS = [...MULTICLICK_KEYS, "tx_power"];
@@ -476,7 +483,11 @@ function paddleLeds() {
   const out = [];
   for (const h of PADDLE_HALVES) {
     const name = h.half === "top" ? "Top" : "Bottom";
-    out.push(ledColor(`led_${h.half}_on_color`, `${name} LED on colour`), ledColor(`led_${h.half}_off_color`, `${name} LED off colour`), ledMode(`led_${h.half}_mode`, `${name} LED mode`));
+    out.push(
+      ledColor(`led_${h.half}_on_color`, `${name} LED on colour`),
+      ledColor(`led_${h.half}_off_color`, `${name} LED off colour`),
+      ledMode(`led_${h.half}_mode`, `${name} LED mode`)
+    );
   }
   return out;
 }
@@ -516,7 +527,12 @@ var KC_KEYS = [
   "led_brightness",
   "led_transition",
   // led_N_bound stays as a key: on = push_release, off = programmed.
-  ...Array.from({ length: KC_LED_SLOTS }, (_, i) => [`led_${i + 1}_idle_color`, `led_${i + 1}_pressed_color`, `led_${i + 1}_mode`, `led_${i + 1}_bound`]).flat(),
+  ...Array.from({ length: KC_LED_SLOTS }, (_, i) => [
+    `led_${i + 1}_idle_color`,
+    `led_${i + 1}_pressed_color`,
+    `led_${i + 1}_mode`,
+    `led_${i + 1}_bound`
+  ]).flat(),
   "backlight_color",
   "backlight_brightness",
   "ambient_light",
@@ -565,7 +581,11 @@ var FAMILIES = {
   dim1z: {
     exposes: [
       e.light_brightness(),
-      actions(["button_1", "button_2"], ["press", "single", "double", "triple", "quadruple", "hold", "hold_release", ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+      actions(
+        ["button_1", "button_2"],
+        ["press", "single", "double", "triple", "quadruple", "hold", "hold_release", ...COUNTER_GESTURES],
+        ["led_notification_start", "led_notification_end"]
+      ),
       ...transitions(),
       ...tvParams(DIM1Z_TV_PARAMS),
       paddleLocalControl(),
@@ -611,7 +631,19 @@ var FAMILIES = {
       ...gen3Health(true)
     ],
     // paddle_local_control stays as a key (on = top load_on / bottom load_off, off = both event_only).
-    keys: ["state", "paddle_local_control", ...BEHAVIOUR_KEYS, ...LED_CLUSTER_KEYS, ...PADDLE_LED_KEYS, "led_brightness", "led_transition", ...LED_ENGINE_KEYS, "ambient_light", ...POWER_KEYS, ...GEN3_KEYS],
+    keys: [
+      "state",
+      "paddle_local_control",
+      ...BEHAVIOUR_KEYS,
+      ...LED_CLUSTER_KEYS,
+      ...PADDLE_LED_KEYS,
+      "led_brightness",
+      "led_transition",
+      ...LED_ENGINE_KEYS,
+      "ambient_light",
+      ...POWER_KEYS,
+      ...GEN3_KEYS
+    ],
     options: [...pollOptions(true), tapWindowOption()]
   },
   fs1z: {
@@ -726,7 +758,11 @@ function kcKeypadExposes(layout, extraButtons = []) {
   const wires = layout.wires;
   const buttonNames = wires ? [...new Set(wires.map((w) => `button_${kcButtonNumber(w, layout)}`))] : Array.from({ length: KC_POSITIONS }, (_, i) => `button_${i + 1}`);
   const leds = [];
-  const add = (slot, label) => leds.push(ledColor(`led_${slot + 1}_idle_color`, `${label} idle colour`), ledColor(`led_${slot + 1}_pressed_color`, `${label} pressed colour`), ledMode(`led_${slot + 1}_mode`, `${label} mode`));
+  const add = (slot, label) => leds.push(
+    ledColor(`led_${slot + 1}_idle_color`, `${label} idle colour`),
+    ledColor(`led_${slot + 1}_pressed_color`, `${label} pressed colour`),
+    ledMode(`led_${slot + 1}_mode`, `${label} mode`)
+  );
   if (wires) {
     wires.forEach((w, i) => {
       const n = kcButtonNumber(w, layout);
@@ -749,7 +785,11 @@ function kcKeypadExposes(layout, extraButtons = []) {
   ];
 }
 function keypadFamily(n) {
-  const ex2 = [actions(keypadNames(n), [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]), ledBrightness(), ledTransition()];
+  const ex2 = [
+    actions(keypadNames(n), [...TAP_GESTURES, ...COUNTER_GESTURES], ["led_notification_start", "led_notification_end"]),
+    ledBrightness(),
+    ledTransition()
+  ];
   const keys = ["led_brightness", "led_transition", ...LED_ENGINE_KEYS, ...LED_CLUSTER_KEYS];
   for (let i = 1; i <= n; i++) {
     ex2.push(ledColor(`button_${i}_idle_color`, `Button ${i} idle colour`), ledColor(`button_${i}_pressed_color`, `Button ${i} pressed colour`));
@@ -765,10 +805,17 @@ function remoteFamily(buttons, sr260) {
     e.text("room_name", ea.STATE_SET).withLabel("LCD room").withDescription("Row 1 of the LCD (c4.ln.ri)"),
     e.text("active_source", ea.STATE_SET).withLabel("LCD source").withDescription("Row 2 of the LCD (c4.ln.ri)")
   ];
-  if (sr260) exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
+  if (sr260) {
+    exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
+    exposes.push(
+      e.text("text_color", ea.STATE_SET).withLabel("Text colour").withDescription(
+        "#RRGGBB (or a palette name, or the 0-255 byte), matched to the remote's 256 colours (c4.zr.tc); empty stops re-sending it, and the remote keeps the last colour it was sent"
+      )
+    );
+  }
   return {
     exposes,
-    keys: [...REMOTE_KEYS, ...sr260 ? ["show_message"] : []],
+    keys: [...REMOTE_KEYS, ...sr260 ? ["show_message", "text_color"] : []],
     options: [e.text("lcd_default_room", ea.SET).withDescription("Room shown on the LCD until room_name is set (default: Home)")]
   };
 }

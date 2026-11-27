@@ -1,8 +1,23 @@
 {
   "name": "control4-z2m",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
-  "description": "Control4 Zigbee devices on stock Zigbee2MQTT: one external extension + one external converter, ported from control4-zha-quirks.",
+  "description": "Control4 Zigbee devices on stock Zigbee2MQTT: one external extension and one external converter, ported from control4-zha-quirks.",
+  "homepage": "https://github.com/home-controls/control4-z2m#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/home-controls/control4-z2m.git"
+  },
+  "bugs": {
+    "url": "https://github.com/home-controls/control4-z2m/issues"
+  },
+  "keywords": [
+    "control4",
+    "zigbee",
+    "zigbee2mqtt",
+    "home-assistant",
+    "ember"
+  ],
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -11,16 +26,19 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "typecheck": "tsc --noEmit",
+    "lint": "biome ci .",
+    "format": "biome check --write .",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "test:z2m": "node tools/z2m-harness.mjs",
     "canary": "node tools/herdsman-canary.mjs"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.9",
     "@types/node": "^22.20.5",
     "esbuild": "^0.28.2",
     "minijinja-js": "3.0.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^3.2.7",
     "yaml": "^2.9.1",
     "zigbee-herdsman": "10.10.0",

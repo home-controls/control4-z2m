@@ -199,7 +199,16 @@ export class Handoff {
         if (stored === undefined && !holds) return;
         const had = Math.max(stored ?? 0, holds ? (this.host.lastSeen(ieee) ?? 0) : 0);
         const profile = this.host.profile(ieee) ?? this.store.profile(ieee);
-        this.host.send(ieee, "offer", {from: this.host.base(), to, id, had, holds, model: this.store.model(ieee), settings: this.store.all(ieee), ...(profile ? {profile} : {})});
+        this.host.send(ieee, "offer", {
+            from: this.host.base(),
+            to,
+            id,
+            had,
+            holds,
+            model: this.store.model(ieee),
+            settings: this.store.all(ieee),
+            ...(profile ? {profile} : {}),
+        });
     }
 
     /** Acked: drop the saved settings, evict a record still here, and say done. */

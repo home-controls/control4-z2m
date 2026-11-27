@@ -5,11 +5,10 @@ import path from "node:path";
 import {pathToFileURL} from "node:url";
 
 import {describe, expect, it} from "vitest";
-
-import {buildId, distBuildId} from "../tools/build-id.mjs";
 import {buildIdOf, fileHash} from "../src/core/build";
 import {CONTRACT} from "../src/core/constants";
 import {CONVERTER_KEY, RUNTIME_API} from "../src/z2m/global";
+import {buildId, distBuildId} from "../tools/build-id.mjs";
 import {CONTRACT_FIELDS} from "./contract";
 
 /**
@@ -42,13 +41,18 @@ describe("contract", () => {
 
 describe("runtime API", () => {
     it("names the runtime methods the converter calls", () => {
-        const calls = [...fs.readFileSync(src("z2m", "definitions.ts"), "utf8").matchAll(/(?:runtime\(\)|\brt|readyRuntime\(\)\))\??\.(\w+)/g)].map((m) => m[1]);
+        const calls = [...fs.readFileSync(src("z2m", "definitions.ts"), "utf8").matchAll(/(?:runtime\(\)|\brt|readyRuntime\(\)\))\??\.(\w+)/g)].map(
+            (m) => m[1],
+        );
         expect([...new Set(calls)].sort(), `runtime API ${RUNTIME_API}`).toEqual(RUNTIME_APIS[RUNTIME_API]);
     });
 
     it("is registered by the converter with its file's hash", async () => {
         await import("../src/z2m/converter-entry");
-        expect((globalThis as Record<string, unknown>)[CONVERTER_KEY]).toEqual({api: RUNTIME_API, file: fileHash(pathToFileURL(src("z2m", "converter-entry.ts")).href)});
+        expect((globalThis as Record<string, unknown>)[CONVERTER_KEY]).toEqual({
+            api: RUNTIME_API,
+            file: fileHash(pathToFileURL(src("z2m", "converter-entry.ts")).href),
+        });
     });
 });
 

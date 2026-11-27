@@ -1,7 +1,7 @@
 # control4-z2m
 
-Control4 Zigbee devices on **stock Zigbee2MQTT** — a port of the
-control4-zha-quirks (branch `sr260`) that behaves the
+Control4 Zigbee devices on **stock Zigbee2MQTT** — a port of
+control4-zha-quirks, a ZHA quirks package for the same devices, that behaves the
 same way: same devices, same buttons and gestures, same LED engine, same
 remote LCD menus, same settings, same Home Assistant blueprints and scripts.
 
@@ -24,7 +24,7 @@ custom Docker image, so it works with the Home Assistant add-on:
 
 ## Install
 
-1. Copy the two files into the Zigbee2MQTT data directory, keeping the folder names:
+1. Put the two files into the Zigbee2MQTT data directory, keeping the folder names:
 
    ```
    <data>/external_extensions/control4.mjs
@@ -34,6 +34,23 @@ custom Docker image, so it works with the Home Assistant add-on:
    `<data>` is the folder holding `configuration.yaml`. In the Home Assistant
    add-on that is `/config/zigbee2mqtt` (seen from the Samba / File editor
    add-ons as `config/zigbee2mqtt` or `homeassistant/zigbee2mqtt`).
+
+   The files come from the [GitHub releases](https://github.com/home-controls/control4-z2m/releases).
+   Each release is a version, tagged `v<version>` and titled "control4-z2m
+   <version>"; the instance's status (below) reports that version, and the
+   build its notes name, once it runs those files. A release holds:
+
+   | Asset | |
+   |---|---|
+   | `control4-z2m.zip` | both files under their folder names: unzip it into `<data>` |
+   | `control4-extension.mjs` | save it as `<data>/external_extensions/control4.mjs` |
+   | `control4-converter.mjs` | save it as `<data>/external_converters/control4.mjs` |
+   | `SHA256SUMS` | the SHA-256 of each of the three |
+
+   The newest release is always at
+   https://github.com/home-controls/control4-z2m/releases/latest/download/control4-z2m.zip.
+   Copying the two files from a checkout's `dist/` works as well (they are
+   committed, and CI checks they match the source).
 
 2. Make sure `configuration.yaml` has
 
@@ -52,8 +69,8 @@ custom Docker image, so it works with the Home Assistant add-on:
    `configuration.yaml` without the key has it on.
 
 3. Restart Zigbee2MQTT. The log shows
-   `Control4: extension started (ember, N devices, store …/control4/control4.json)`,
-   and the instance's status (below) shows its build with no `problems`.
+   `Control4: extension started: first start since Zigbee2MQTT started (control4-z2m <version>, ember, N devices, store …/control4/control4.json)`,
+   and the instance's status (below) shows its version and build with no `problems`.
 
 Settings the extension keeps (learned models, LED colours, fades, paddle
 options, Z2IO mode, …) live in `<data>/control4/control4.json`.
@@ -62,8 +79,8 @@ To update every instance on a site without restarting any of them, run
 `tools/deploy.mjs` against that site's Home Assistant (try `--dry-run` first):
 
 ```
-HA_URL=http://homeassistant:8123 HA_TOKEN_FILE=token.txt node tools/deploy.mjs --dry-run
-HA_URL=http://homeassistant:8123 HA_TOKEN_FILE=token.txt node tools/deploy.mjs
+HA_URL=http://<ha-host>:8123 HA_TOKEN_FILE=token.txt node tools/deploy.mjs --dry-run
+HA_URL=http://<ha-host>:8123 HA_TOKEN_FILE=token.txt node tools/deploy.mjs
 ```
 
 It pushes both files to one instance at a time through Zigbee2MQTT's own API
@@ -82,12 +99,13 @@ for each of them: keypad identity sends, the start-up state reads, Z2IO
 set-up and remote commissioning. A device that joins, rejoins or announces after
 the hot-load still gets its own, and a DIM1-Z whose settings were never read
 still has them read (below). The log line `Control4: extension started: …`
-says which kind of start it was. A build that changes that start-up work applies
-it at the next restart.
+says which kind of start it was (`first start since Zigbee2MQTT started`, or
+`hot-load, without the start-up identity sends, …`). A build that changes that
+start-up work applies it at the next restart.
 
 Copying the new files over the old ones and restarting still works. Copy both,
-from one checkout: the status then shows the build `node tools/build-id.mjs`
-prints for that checkout's `dist/`.
+from one release or one checkout: the status then shows the release's build, or
+the build `node tools/build-id.mjs` prints for that checkout's `dist/`.
 
 ## Pairing
 
@@ -109,10 +127,11 @@ definition automatically. To skip the wait, set it by hand:
 
 **A model not in the table below** stays **C4-Zigbee**, and its **Reported model**
 entity names what it checked in as. It is still kept on the network (its check-ins
-are answered), `c4_get` / `c4_send` still reach it, every frame it sends is logged
-at info (`Control4 UNSUPPORTED …`), and about 30 s after it appears a one-time,
+are answered), `c4_get` / `c4_send` still reach it, the frames it sends are logged
+at info (`Control4 UNSUPPORTED …`; the first 500 after each start, the rest at
+debug), and about 30 s after it appears a one-time,
 read-only fingerprint read logs which protocol it speaks. Those log lines are what
-adding the model takes (`docs/research/2026-11-25-unsupported-models.md`). Once a
+adding the model takes (`docs/research/unsupported-models.md`). Once a
 build supports it, the device is adopted with no re-pairing.
 
 ## Supported devices
@@ -124,20 +143,25 @@ that isn't listed, follow `docs/TESTING.md`: it says what to do and what to send
 |---|---|---|
 | C4-APD120 (-B, -W) | Adaptive phase dimmer | light, on/off fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, settings read from the dimmer, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power |
 | C4-DIM1-Z (-B, -W, -AL), DIMZ-1B1 | Dimmer | light, fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, paddle local control, 4 LED colours, LED engine, settings read from the dimmer, Reboot button and automatic reboots |
-| C4-SW120277 (-B, -W) | Switch | on/off, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, fault, reset reason, TX power (from the ZHA-era notes: no unit here to verify on) |
+| C4-SW120277 (-B, -W) | Switch | on/off, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, fault, reset reason, TX power. **Untested**: built from the ZHA-era notes, no unit available to verify on (issue [#14](https://github.com/home-controls/control4-z2m/issues/14)) |
 | C4-FS1-Z | Switch | on/off |
 | C4-4SF120 | Fan speed controller | fan on/off + speed 1–4 |
-| LOZ-5S1-W | Dual outlet | `state_l1` / `state_l2` |
-| LOZ-5D1-W | Dual dimmable outlet | a light per outlet (`state_l1` / `brightness_l1`, `state_l2` / `brightness_l2`), fades for a `transition`, outlet buttons. **Untested**: built from other projects' notes |
-| C4-V-ROSW120 | Receptacle outlet switch | on/off (read back after each command: it never reports), its button. **Untested** |
+| LOZ-5S1-W | Dual outlet | `state_l1` / `state_l2`, outlet buttons (`outlet_1` / `outlet_2`) |
+| LOZ-5D1-W | Dual dimmable outlet | a light per outlet (`state_l1` / `brightness_l1`, `state_l2` / `brightness_l2`), hardware fades for a `transition`, outlet buttons (`outlet_1` / `outlet_2`). **Untested**: built from other projects' notes |
+| C4-V-ROSW120 | Receptacle outlet switch | on/off (read back after each command: it never reports), its button (`button_1`). **Untested** |
 | C4-KC120277 (-B, -W), KPZ-6B1-C | Configurable keypad | the fitted buttons only (learned, or the `button_layout` option), per-button idle/pressed colours and LED mode, LED engine, backlight colour and brightness, multi-click times, ambient light, reset reason, TX power |
-| C4-KD120, C4-KD277, C4-KD240 | Keypad dimmer | the APD120's light and settings plus the KC120277's keypad, each button's behaviour toward the load (`button_position_N_behaviour`; every button toggles from the factory), and a wired auxiliary keypad as `aux_top` / `aux_bottom`. **Untested**: built from other projects' notes, no unit to verify on |
+| C4-KD120, C4-KD277, C4-KD240 | Keypad dimmer | the APD120's light and settings plus the KC120277's keypad, each button's behaviour toward the load (`button_position_N_behaviour`; every button toggles from the factory), a wired auxiliary keypad as `aux_top` / `aux_bottom`, hardware fades for a `transition`, settings read from the device, ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power. **Untested**: built from other projects' notes, no unit to verify on |
 | C4-FPD120 | Forward phase dimmer | as the APD120 (another project runs it on the same definition). **Untested** |
-| KPZ-3B1 / C4-KP3-Z, KPZ-6B1 / C4-KP6-Z | Keypads | per-button idle/pressed colours, LED engine |
+| KPZ-3B1 / C4-KP3-Z (-B, -W, -AL, -BL, -x), KPZ-6B1 / C4-KP6-Z (-B, -W, -AL, -BL, -x) | Keypads | per-button idle/pressed colours, LED engine |
 | C4-KP2-Z | Keypad | as the KP3-Z, two buttons. **Untested** |
 | C4-Z2IO-ZP | Contact / relay I/O | io_mode, relays, pulses, contacts, temperatures, humidity |
 | C4-SR250B (C4-SR250) | LCD remote | buttons, battery, room name / active source on the LCD, list menus, display messages |
-| C4-SR260 | LCD remote | as SR250 plus glyphs and `show_message` |
+| C4-SR260 | LCD remote | as SR250 plus glyphs, `show_message` and the text colour (`text_color`) |
+
+**SR260.** What it does on the wire (commissioning, waking, the identity read,
+menus, the text colour) is in `docs/research/sr260-remote.md`. Setting one up to
+drive a media player with the three SR260 blueprints, Apple TV command strings
+included, is in `docs/guides/sr260-media-player.md`.
 
 **Low-wattage loads on a DIM1-Z.** The DIM1-Z is rated for loads of 25 W and
 up; a lighter LED load can flicker at the bottom of the range or fail to start
@@ -157,7 +181,7 @@ that differs from what they showed. A dimmer that leaves the network, or arrives
 from another instance, is read again: it may have been reset to pair. Until its
 first read a DIM1-Z shows its factory values (min 0 %, max and default-on
 100 %, hold ramps 5 s, cold start off) and the extension's default fades, 0.8 s
-on and 2 s off. Those two were never measured: the dimmers read here hold
+on and 2 s off. Those two were never measured: the dimmers read so far hold
 0.5 s each.
 
 **DIM1-Z tap sequences and radio.**
@@ -191,7 +215,12 @@ unreachable, and the fault is not theirs. Each one is logged at warning. The
 device option `auto_reboot: false` stops them for that dimmer; its Reboot
 button still works.
 
-**The KC120277, APD120 and SW120277 (one board).**
+**The KC120277, APD120 and SW120277 (one board).** The untested FPD120 runs
+as an APD120. The untested KD120 takes the APD120's dimmer side (its `tv`
+table and dimming phase read from it, fault, power and energy) and the
+KC120277's keypad side (buttons, LEDs, backlight), with each position's button
+behaviour read in place of the paddle halves'; health, multi-click times and TX
+power as on both.
 - **Settings from the device.** About 30 s after a start, each one whose
   settings were never read has them read once: multi-click times, LED modes,
   radio TX power, firmware and bootloader versions, and on an APD120 its whole
@@ -204,8 +233,8 @@ button still works.
 - **Health.** At each start and re-join it reads why it last restarted
   (`reset_reason`, EmberZNet's code in brackets: `software: reboot (SW RBT)`,
   `crash: assert (CRS AST)`, `power on (PWR)`, …), logged at warning on a crash
-  or watchdog. An APD120 / SW120277 also reports a `fault` (a short circuit or an
-  overload on its load).
+  or watchdog. An APD120 / SW120277 / KD120 also reports a `fault` (a short
+  circuit or an overload on its load).
 - **Power and energy.** `power` is the load's real watts, with `voltage`,
   `current`, `power_apparent` and `power_factor`, from each level report and a
   poll. `energy` (kWh) is the device's lifetime counter, about 1.27 Wh a count,
@@ -251,14 +280,16 @@ button still works.
 - **TX power.** `tx_power`, -8 to +2 dBm (Control4 provisions 0). A value set
   here is put back after a re-join if the device has lost it.
 
-**Hardware fades.** A `transition` sent to a DIM1-Z or APD120 (for example
-`light.turn_on` with `transition: 30`) is one `0i c4.dm.rtl` frame: the dimmer
-fades itself for exactly that long, at any length. Without a `transition` the
-dimmer uses its own stored fades, as before. The target is held to the dimmer's
-min and max brightness, and a transition sent mid-fade is timed from where the
-load has got to. One exception: a turn-on from off on a dimmer with a cold start
-set uses the level command, because a hardware fade skips the cold start
-(tested on a DIM1-Z).
+**Hardware fades.** A `transition` sent to a DIM1-Z, APD120, FPD120 or KD120
+(for example `light.turn_on` with `transition: 30`) is one `0i c4.dm.rtl` frame:
+the dimmer fades itself for exactly that long, at any length. Without a
+`transition` the dimmer uses its own stored fades, as before. The target is held
+to the dimmer's min and max brightness, and a transition sent mid-fade is timed
+from where the load has got to. One exception: a turn-on from off on a dimmer
+with a cold start set uses the level command, because a hardware fade skips the
+cold start (tested on a DIM1-Z). A LOZ-5D1-W fades each outlet the same way
+(`0i c4.dm.rtl <outlet> …`, up to an hour); without a `transition` it is sent
+the level (`c4.dm.tv`). Only the DIM1-Z and APD120 have been tested.
 
 **A command in the first seconds.** Zigbee2MQTT takes MQTT commands a few
 seconds before the extension is running. A /set or /get in that window now
@@ -267,19 +298,32 @@ lost.
 
 ## Status and plans
 
+Questions, setups to share and ideas go in [GitHub Discussions](https://github.com/home-controls/control4-z2m/discussions);
+bugs, device reports and planned work in [issues](https://github.com/home-controls/control4-z2m/issues).
+
 What each model can do, what the extension exposes of it, and what is left are
 written down outside this README:
 
 | Where | What |
 |---|---|
-| `docs/research/2026-11-02-dim1z-capability-map.md` | The DIM1-Z, probed and tested: every readable name, the `tv` table, setting the level with `tv 00`, hardware fades (`0i c4.dm.rtl`), the remote reboot (`0i c4.dm.rb`), and Control4's docs and other people's work for this generation |
-| `docs/research/2026-11-07-kc-apd-sw-capability-map.md` | The same for the KC120277, APD120 and SW120277 (one board, three fit-outs): button wires, LED slots and modes, button behaviours, backlight, ambient light, power telemetry, reset reason, and the write tests |
-| `docs/plans/2026-11-07-device-completion.md` | The plan that makes every model complete, phase by phase |
+| `docs/research/dim1z-capability-map.md` | The DIM1-Z, probed and tested: every readable name, the `tv` table, setting the level with `tv 00`, hardware fades (`0i c4.dm.rtl`), the remote reboot (`0i c4.dm.rb`), and Control4's docs and other people's work for this generation |
+| `docs/research/kc-apd-sw-capability-map.md` | The same for the KC120277, APD120 and SW120277 (one board, three fit-outs): button wires, LED slots and modes, button behaviours, backlight, ambient light, power telemetry, reset reason, and the write tests |
+| `docs/research/sr260-remote.md` | The SR260 on the wire: commissioning, waking, the identity read, menus, the text colour |
+| `docs/research/unsupported-models.md` | Models people have that aren't supported yet: what each is, what is known of how it talks, and what adding it takes |
+| `docs/guides/sr260-media-player.md` | Setting up an SR260 for a media player with the three SR260 blueprints, Apple TV command strings included |
+| `docs/plans/device-completion.md` | The plan that makes every model complete, phase by phase |
+| `docs/plans/frame-type-survey.md` | The plan for finding the commands the devices take that no Get shows |
+| `docs/plans/c4-device-rules.md` | The plan behind testing c4_device's rules where they live (Development, below) |
+| `docs/TESTING.md` | Testing a device: what to try on each model and what to report |
 | `docs/adr/` | Decisions that would surprise a reader, such as ADR 0006, the automatic remote reboot |
 | `GLOSSARY.md` | The words used here: button wire, button behaviour, LED slot, LED mode, unreachable, remote reboot, … |
 
-What is left is in the plan: research items that need a person at a device or hardware the house
-lacks (an SW120277, an auxiliary keypad), and the live checks listed there.
+What is left is in the plan and in this repo's issues: [#6](https://github.com/home-controls/control4-z2m/issues/6) maps what each model still needs to be
+complete, [#7](https://github.com/home-controls/control4-z2m/issues/7)-[#16](https://github.com/home-controls/control4-z2m/issues/16) are the research and verification items (some need a person at a device, or a
+model no unit has been available to test, such as an SW120277 or an auxiliary keypad), [#18](https://github.com/home-controls/control4-z2m/issues/18) is the
+herdsman drift canary, and [#19](https://github.com/home-controls/control4-z2m/issues/19) is about how to contribute. Older docs and commit messages use issue
+numbers up to #118 from an archived tracker; those are not this repo's issues, and this README
+calls them "archived issue N".
 
 ## MQTT API
 
@@ -299,9 +343,12 @@ names alongside: `action_button`, `action_gesture`, `action_command`
 | `fast_single` … `fast_quadruple` | `remote_button_fast_short_press` … (taps counted inside the device's tap window, 0.55 s by default) |
 | `tap_known` | `remote_button_tap_known` |
 
-Buttons: `top` / `bottom` (paddles), `top` `high` `medium_high` `medium_low`
-`low` `off` (fan), `button_1`… (keypads, DIM1-Z, FS1-Z), `outlet_1` / `outlet_2`,
-remote key names (`select`, `up`, `play`, …).
+Buttons: `top` / `bottom` (APD120, FPD120 and SW120277 paddles), `top` `high`
+`medium_high` `medium_low` `low` `off` (fan), `button_1`… (keypads, KC120277,
+KD120, DIM1-Z, FS1-Z), `aux_top` / `aux_bottom` (a KD120's wired auxiliary
+keypad), `button_1` (ROSW120), `outlet_1` / `outlet_2` (LOZ-5S1-W, LOZ-5D1-W),
+and the SR250 / SR260 key names (`select`, `up`, `play`, `watch`, `page_up`, …;
+`SR250_BUTTONS` / `SR260_BUTTONS` in `src/core/constants.ts`).
 
 `tap_known` announces each tap the moment it is known to be a tap, not a
 hold: on the tap's release for a button already seen sending releases
@@ -330,7 +377,7 @@ Every action and event is also published to **`control4/event`** (and to
 several devices:
 
 ```json
-{"ieee": "0x000fff0000123456", "device": "Kitchen keypad", "model": "KPZ-6B1",
+{"ieee": "0x000fff0000123456", "device": "name_6e2a", "model": "KPZ-6B1",
  "action": "button_1_double", "button": "button_1", "gesture": "double",
  "command": "remote_button_double_press", "button_id": 0, "base": "zigbee2mqtt"}
 ```
@@ -383,13 +430,16 @@ Every instance publishes its status, retained, on **`control4/status/<base>`**
 when it starts and every minute:
 
 ```json
-{"base": "zigbee2mqtt", "at": "2026-10-26T20:15:00.000Z", "build": "bc2a0ed1fda7",
+{"base": "zigbee2mqtt", "at": "2026-10-26T20:15:00.000Z", "version": "0.2.0", "build": "bc2a0ed1fda7",
  "contract": 1, "problems": [],
  "totals": {"sent": 1520, "failed": 3, "route_refreshes": 1, "led_queue": 0},
  "traffic": {"frame_check": "armed", "last_frame_s": 4},
  "unreachable": []}
 ```
 
+- `version`: the release version of the files the instance loaded (`package.json`'s;
+  `dev` when run from source). Home Assistant shows it, with the build, as the
+  software version of the status entities.
 - `build`: a hash of the two files the instance loaded, so instances with the
   same build run the same code. `node tools/build-id.mjs [<dir>]` prints the
   build of a checkout's `dist/` (or of a data directory's two files); `null`
@@ -404,9 +454,9 @@ when it starts and every minute:
   | `interview_hook`, `ping_hook` | a herdsman hook did not install (typically after a Zigbee2MQTT update): new Control4 devices may show "interview failed", or offline with availability on |
   | `converter_missing` | the converter file isn't loaded |
   | `converter_api` | the two files come from checkouts whose extension and converter can't work together: copy both from one |
-  | `no_frames` | no Control4 frame has come through Zigbee2MQTT for 30 minutes, so Control4 buttons go unheard. Zigbee2MQTT has stopped handing the frames to the extension (a herdsman, coordinator firmware or adapter change?). It clears on the next frame. Watched only while the instance has a dimmer, paddle switch or KC120277: keepalive makes those answer within ~22 minutes, while keypads and remotes alone can be quiet for hours. |
+  | `no_frames` | no Control4 frame has come through Zigbee2MQTT for 30 minutes, so Control4 buttons go unheard. Zigbee2MQTT has stopped handing the frames to the extension (a herdsman, coordinator firmware or adapter change?). It clears on the next frame. Watched only while the instance has a router that answers Gets (a DIM1-Z, APD120, SW120277 or KC120277, or any other router that has answered a Get since Zigbee2MQTT started, such as a KD120 or FPD120 once its settings are read): keepalive makes those answer within ~22 minutes, while keypads and remotes alone can be quiet for hours. |
   | `sends_failing` | the last 5 sends got no delivery confirmation (no `messageSent` from herdsman), so commands to Control4 devices aren't getting through, or aren't being confirmed. It clears at the next confirmation. A dead device doesn't trip it: its sends come back confirmed as undelivered. |
-  | `devices_unreachable` | a dimmer, paddle switch or KC120277 has answered none of its last 3 keepalives, so commands to it are lost; `unreachable` names it. It may still have power, work from its own paddles, check in every hour and acknowledge what is sent to it at the radio level, while its Control4 firmware answers nothing. A paddle press does not bring it back; a reboot does. A DIM1-Z is normally rebooted remotely as it is listed (at most 3 times a day, an hour or more apart; see "A DIM1-Z can be rebooted remotely"); otherwise, or if it stays listed, press its Reboot button, tap the top paddle 15 times, or cut its power. It clears on the first frame it sends directly. It shows about 40 minutes after the device goes silent (keepalive starts at 20 minutes quiet and pokes every 10), or about 4 minutes after it re-joins without answering (Re-joins, below). |
+  | `devices_unreachable` | a router that answers Gets (as for `no_frames`: a DIM1-Z, APD120, SW120277, KC120277, or another that has answered one) has answered none of its last 3 keepalives, so commands to it are lost; `unreachable` names it. It may still have power, work from its own paddles, check in every hour and acknowledge what is sent to it at the radio level, while its Control4 firmware answers nothing. A paddle press does not bring it back; a reboot does. A DIM1-Z is normally rebooted remotely as it is listed (at most 3 times a day, an hour or more apart; see "A DIM1-Z can be rebooted remotely"); otherwise, or if it stays listed, press its Reboot button, tap the top paddle 15 times, or cut its power. It clears on the first frame it sends directly. It shows about 40 minutes after the device goes silent (keepalive starts at 20 minutes quiet and pokes every 10), or about 4 minutes after it re-joins without answering (Re-joins, below). |
 
   Each one logs an error when it starts and an info line when it clears.
 
@@ -467,21 +517,25 @@ with `{"<key>": <value>}`):
 | `set_ramp_rate` | dimmers | `{"index": 1-6 or 8-10, "time_ms": n}` |
 | `set_on_ramp`, `set_off_ramp` | dimmers | `{"time_ms": n}` |
 | `set_on_off_ramps` | dimmers | `{"on_time_ms": n, "off_time_ms": n}` |
-| `set_led_color` | c4.dmx devices, keypads, DIM1-Z | `{"button_id", "on_red", "on_green", "on_blue", "off_red", "off_green", "off_blue"}` |
+| `set_led_color` | APD120, FPD120, DIM1-Z, SW120277, 4SF120, KC120277, KD120, KP2 / KP3 / KP6 (not the outlets, ROSW120, FS1-Z, Z2IO or remotes) | `{"button_id", "on_red", "on_green", "on_blue", "off_red", "off_green", "off_blue"}` |
 | `set_led_mode` | 〃 | `{"button_id", "mode", "behavior", "color_mode"}`. On the c4.dmx models these are LED params 00-02: `mode` is the button wire a push-release LED listens to, `behavior` is the LED mode (`0` programmed, `1` follow load, `2` push-release), and `color_mode` is the load it follows |
 | `set_led_all_same_color` | 〃 | `{"num_buttons", "on_red", …, "off_blue"}` |
 | `set_all_led_modes` | 〃 | `{"num_buttons", "mode", "behavior", "color_mode"}` |
 | `set_led_single_on` | 〃 | `{"button_id", "button_idx", "behavior_on", "behavior_others"}` |
-| `led_effect`, `led_status`, `led_stop`, `led_refresh` | keypads, DIM1-Z, APD120, SW120277 | as the bridge requests below, for this device. On an APD120 / SW120277, LED 1 (or `top`, `button_1`) is the top LED and LED 2 (`bottom`, `button_2`) the bottom |
-| `relay_N_pulse` | Z2IO | `true` or `{"pulse_ms": n}` |
+| `led_effect`, `led_status`, `led_stop`, `led_refresh` | keypads, KC120277, KD120, DIM1-Z, APD120, FPD120, SW120277 | as the bridge requests below, for this device. On an APD120 / SW120277, LED 1 (or `top`, `button_1`) is the top LED and LED 2 (`bottom`, `button_2`) the bottom |
+| `relay_N_pulse` | Z2IO | any value (the Home Assistant entity sends `"pulse"`): energise relay N, then release it after `pulse_duration` ms; `{"pulse_ms": n}` sets this pulse's length. Both are clamped to 100-5000 ms (default 500) |
+| `poll` | Z2IO | any value: read the contacts, relays, temperatures and humidity now |
 | `reboot` | DIM1-Z | `"reboot"`: restart it remotely (`0i c4.dm.rb`), the **Reboot** button |
 | `paddle_local_control` | SW120277 | `ON` / `OFF`: both halves' button behaviour at once (on = top `load_on`, bottom `load_off`; off = both `event_only`) |
-| `led_N_bound` | KC120277 | `true` / `false`: LED N's mode, `push_release` / `programmed` |
-| `show_list`, `close_list`, `display_message`, `set_room_info`, … | remotes | see `src/devices/remote.ts` |
+| `led_N_bound` | KC120277, KD120 | `true` / `false`: LED N's mode, `push_release` / `programmed` |
+| `room_name`, `active_source`, `set_room_info` | remotes | the LCD's two rows (`set_room_info`: `{"room"?, "source"?}`), kept and pushed again at each wake |
+| `show_list`, `close_list`, `display_message`, `display_icon`, `gi_icon`, `gi_max_items`, `gi_reply_ep`, `gi_template`, `gi_item_template` | remotes | list menus, pop-up messages and the menu format; see `src/devices/remote.ts` |
+| `show_message` | SR260 | `{"message", "icon"?, "seconds"?}` (or the message alone): a pop-up message with an optional glyph, cleared after `seconds` unless a menu is up; an empty message clears it |
+| `text_color` | SR260 | the text colour: one RGB332 byte (`c4.zr.tc`; red bits 7-5, green 4-2, blue 1-0), which also sets how bright the text is. Takes `#rrggbb`, `#rgb`, a palette name, `[r, g, b]`, `{"r", "g", "b"}`, or the byte as a number or a decimal string. Input that isn't a colour is refused and the saved colour kept; empty stops re-sending it, and the remote keeps the colour it last got. The published state is the `#rrggbb` the byte shows. A set colour is sent again with every push of the LCD rows |
 | `c4_model` | all | the model string, when it is not learned yet |
 | `c4_identify` | all | send the controller identity now |
 | `c4_send` / `send_raw` | all but remotes | `"c4.dmx.led 00 03 ff0000"` or `{"cmd": …, "dst_ep": 1, "type": "s"}` — raw Set (`"type": "i"`: interrupt, `0i`), reply in `c4_reply` |
-| `c4_get` / `send_get` | all | as above, as a Get |
+| `c4_get` / `send_get` | all | as above, as a Get. On a remote, a name that looks like a reset, reboot, firmware, factory or erase command is refused |
 
 The `set_led_*`, `set_*ramp*`, `send_raw` and `send_get` keys are the ZHA quirks'
 LED-cluster (0xFC43) and ramp-cluster (0xFC44) commands under the same names and
@@ -513,7 +567,8 @@ colour written whatever it was last sent.
 | `republish` | `{}` — tells Zigbee2MQTT that every Control4 device's exposes changed, so Home Assistant discovery and `bridge/devices` follow a converter saved through `bridge/request/converter/save` (the save re-resolves the definitions but republishes none of them). Answers `{"devices": n}`, the number of devices. |
 
 `devices` takes IEEEs or friendly names. **No `devices` key means every
-Control4 keypad**; an explicit empty list means none. Colours are palette
+Control4 device with an LED engine** (the keypads, KC120277, KD120, DIM1-Z,
+APD120 / FPD120 and SW120277); an explicit empty list means none. Colours are palette
 names (off, white, warm_white, red, orange, amber, yellow, lime, green, teal,
 cyan, blue, purple, magenta, pink), `#rrggbb` or `[r, g, b]`. Buttons are
 1-based, top first: `"all"`, `3`, `"1,3"` or `[1, 3]`.
@@ -539,8 +594,9 @@ Copy to `/config/blueprints/automation/control4-z2m/`. They use the shared
 > `c4_sr260_media_player` and `c4_sr260_menu_dispatcher` trigger, and wait for a
 > menu pick, on `event.received` aimed at the chosen remote, with the
 > `remote_` event types (The event topic, above); a key on another remote or a
-> keypad no longer starts a run in them. To move an automation made from an
-> older copy:
+> keypad no longer starts a run in them. `c4_sr260_screen` also triggers on
+> `event.received` (`remote_menu_select`), so update the extension before it
+> too. To move an automation made from an older copy:
 >
 > 1. Update the extension on every Zigbee2MQTT instance, with Zigbee2MQTT's
 >    Home Assistant integration on. The older blueprints keep working
@@ -555,12 +611,42 @@ Copy to `/config/blueprints/automation/control4-z2m/`. They use the shared
 > notification for it. The room display and now-playing blueprints only send
 > to the remote and are unchanged.
 
-| Blueprint | Origin |
+`c4_sr250_menu`, `c4_sr250_color_menus`, `c4_sr250_now_playing` and
+`c4_sr250_room_display` take an SR250 or an SR260; `c4_sr250_media_player`
+takes an SR250 only, and the `c4_sr260_*` blueprints an SR260 only.
+
+| Blueprint | What it does |
 |---|---|
 | `c4_device.yaml` | Wall-device buttons → actions, per button and gesture, on the DIM1-Z, APD120, SW120277 and FS1-Z paddles (button 1 = top, 2 = bottom), the KC120277, KP3 and KP6 keypads, the 4SF120 fan (buttons 1-6 from the top: `top`, `high`, `medium_high`, `medium_low`, `low`, `off`) and the LOZ-5S1-W outlet (button 1 = `outlet_1`, 2 = `outlet_2`); its picker offers only these (generated by `tools/gen-c4-device.mjs`); each tap wakes only its own device's automation. Per paddle half, below |
-| `c4_kp_led_notify.yaml` | Keypad LED notification |
-| `c4_sr250_room_display.yaml`, `c4_sr250_now_playing.yaml`, `c4_sr250_menu.yaml`, `c4_sr250_color_menus.yaml`, `c4_sr250_media_player.yaml` | SR250 |
-| `c4_sr260_media_player.yaml`, `c4_sr260_menu_dispatcher.yaml` | SR260 |
+| `c4_kp_led_notify.yaml` | Keypad LED notification (ported) |
+| `c4_sr250_room_display.yaml`, `c4_sr250_now_playing.yaml`, `c4_sr250_menu.yaml`, `c4_sr250_color_menus.yaml`, `c4_sr250_media_player.yaml` | The SR250's LCD rows, now playing, list menus, colour-key menus and media player keys (ported) |
+| `c4_sr260_media_player.yaml`, `c4_sr260_menu_dispatcher.yaml` | The SR260's media player keys and its menu dispatcher (ported; `docs/guides/sr260-media-player.md` sets one up with these and `c4_sr260_screen`) |
+| `c4_sr260_screen.yaml` | SR260 LCD colour and now playing: text colour by the media player's state, night dimming to a level or an input_number helper, an alert colour, line 2 = the player's app, back to the app a set number of seconds after a menu pick; sends only what changed, comparing the colour as the RGB332 byte. Below (written here, not ported) |
+
+**SR260 LCD colour and now playing (`c4_sr260_screen`).** One form makes
+the SR260's LCD follow a media player. The text colour is a colour picker each
+for playing, paused and idle or off, and the alert colour, at full brightness,
+while any alert entity is on, open or unlocked. While its **Dark** entity is on
+the colours dim to the night level: the remote's text colour (`c4.zr.tc`, one
+RGB332 byte) also sets how bright the text is. The level is a percentage or an
+input_number helper, to tune it from a dashboard. RGB332 has 8 levels of red
+and green and 4 of blue, so not every step shows, and a lit channel never dims
+below the remote's lowest step: the text dims, it never goes black. Line 2
+(optional) shows the player's app, like `c4_sr250_now_playing`; after a pick
+in one of the remote's menus it shows the pick for a few seconds (**Back to the
+app after a menu pick**, 0 keeps it), then the app again. It sends only what
+the remote would show differently, read from the remote's text colour and LCD
+source entities (the colour as the byte, whether the entity holds `#rrggbb` or
+the byte), so a run that finds nothing new costs no Zigbee frame. Use it
+instead of `c4_sr250_now_playing` on an SR260, not with it.
+
+Two fixes in the ported SR260 blueprints, made by `tools/port-zha-blueprints.mjs`
+so a regeneration keeps them: `c4_sr260_media_player` sends Mute only to a
+volume target that can mute, one whose `supported_features` has feature 8
+(`VOLUME_MUTE`) set (an Apple TV cannot, and HA refused the call on every
+press), and `c4_sr260_menu_dispatcher` restarts instead of queueing, so
+pressing its show key while the menu is up shows it again at once instead of a
+second time after the pick.
 
 **Paddle halves in `c4_device`.** Each half either drives its device's own
 load or only sends its taps. A DIM1-Z's halves follow its **Paddle controls
@@ -592,9 +678,10 @@ Zigbee frame. A status frame that did not go out does not wait for the
 re-check: the extension sends it again by itself 30 s, 2 min and 10 min later
 (the **LED self-repaint**; a DIM1-Z whose read-back got no answer is read back
 again), and a device that announces (a power cut, a reboot) is repainted 20-30 s
-later. (The re-check was every 5 minutes: on a house with 26 devices, ~7,500
-automation runs a day and, on its 23 DIM1-Z, a read-back each. Every 30 minutes
-on 35 devices it was still ~1,700 of ~2,900 `c4_device` runs a day.)
+later. (The re-check was every 5 minutes: on a site with a few dozen devices,
+mostly DIM1-Zs, that was thousands of automation runs a day and a read-back for
+each DIM1-Z. Every 30 minutes it was still more than half of all `c4_device`
+runs.)
 
 The SR250/SR260/LED blueprints are generated from the ZHA ones by
 `tools/port-zha-blueprints.mjs` (the HA logic is untouched; only device I/O moves:
@@ -662,14 +749,14 @@ Restart Zigbee2MQTT after changing it. Start with these and watch failed sends
 and route refreshes (on each instance's Bridge device, or per device with
 `stats`) before going further.
 
-**Polling.** APD120 / SW120277 read ambient light and power every 30 s, and
-the KC120277 reads ambient light every 30 s. Per device, the options
+**Polling.** The APD120 / FPD120, SW120277 and KD120 read ambient light and
+power every 30 s, and the KC120277 reads ambient light every 30 s. Per device, the options
 `ambient_light_poll` and `power_poll` (seconds, minimum 10, `0` = never; `power_poll` reads power and energy)
 stretch or stop that; changes apply without a restart.
 
 **Tap window.** A tap sequence stays open 0.55 s after each tap for another
-one before its `fast_*` count is published. On KP3/KP6/KPZ keypads, the
-KC120277 and the DIM1-Z, the device option `tap_window` (seconds, 0.25-1.5;
+one before its `fast_*` count is published. On every model with buttons except
+the remotes and the Z2IO, the device option `tap_window` (seconds, 0.25-1.5;
 outside that it is clamped, and a value that isn't a number means 0.55)
 widens it for a room of slow tappers or narrows it for a faster single tap.
 A change applies from the next tap sequence, without a restart. Under the
@@ -678,11 +765,12 @@ multi-tap actions waits out this window; a tap toward ON runs at once (early
 commit, `docs/adr/0002-early-commit-only-toward-on.md`).
 
 **Availability.** With Zigbee2MQTT availability on, the extension answers its
-pings honestly: the models that answer a Control4 Get (DIM1-Z, APD120,
-SW120277, KC120277) must answer one; the other mains devices (keypads, fan,
-outlet, FS1-Z, Z2IO) count as online when the Get is delivered (acknowledged
-by their radio) and offline when it is not; either success refreshes
-`last_seen`. The battery remotes are not pinged. A frame a mains device sends
+pings honestly: the models known to answer a Control4 Get (DIM1-Z, APD120,
+SW120277, KC120277), and any other device that has answered one since
+Zigbee2MQTT started, must answer one; the other mains devices (keypads, KD120,
+FPD120, fan, outlets, ROSW120, FS1-Z, Z2IO, until they have answered a Get)
+count as online when the Get is delivered (acknowledged by their radio) and
+offline when it is not; either success refreshes `last_seen`. The battery remotes are not pinged. A frame a mains device sends
 directly to the coordinator counts as "seen" (and refreshes `last_seen`), so
 quiet devices are only pinged when they really went silent. Its broadcasts,
 such as the hourly check-in, don't: a device that still has power but can't be
@@ -691,7 +779,7 @@ after each one. A remote counts as seen on any frame.
 
 **Evidence in the log.** Zigbee2MQTT logs announces and address changes at
 debug level only. For Control4 devices the extension logs them at info, along
-with two more things worth knowing when one stops answering (issue #60):
+with two more things worth knowing when one stops answering (archived issue 60):
 
 - `<name> announced itself at network address N`: it re-joined or powered up.
 - `<name> (<ieee>) changed network address A -> B`: it re-joined under a new
@@ -708,7 +796,7 @@ held that address at the time.
 **Re-joins.** A Control4 device whose check-in goes unanswered counts its
 controller as lost and re-joins the network, often under a new address. On
 2026-11-04 two DIM1-Zs did this, and their firmware stayed deaf until rebooted
-(issue #60). So the extension never leaves a check-in unanswered, and watches
+(archived issue 60). So the extension never leaves a check-in unanswered, and watches
 every re-join:
 
 - **An undelivered check-in reply is retried.** The extension refreshes routes
@@ -719,7 +807,8 @@ every re-join:
   once,** by that address, while Zigbee2MQTT looks the address up.
 - **A device that announces itself gets the identity** three times, 4 s apart,
   starting 2–7 s in.
-- **A dimmer, paddle switch or KC120277 that re-joined must answer again.** It
+- **A router that answers Gets and re-joined must answer again** (a DIM1-Z,
+  APD120, SW120277, KC120277, or another that has answered a Get). It
   gets a Get 2 minutes after its announce and another at 4 minutes. If it
   answers neither, it's listed under `devices_unreachable` straight away, with
   the reboot advice, instead of after about 40 minutes of missed keepalives.
@@ -807,9 +896,24 @@ the entries of the devices it has.
 
 ## Development
 
+Contributions come as pull requests from a fork. `CONTRIBUTING.md` has the
+workflow, what a pull request needs, and the privacy check: install its pre-push
+hook once per clone (`git config core.hooksPath tools/hooks`), and keep people's
+names, room names, hostnames and addresses out of files, commits, issues and PRs.
+The repo is public, history included. Issue [#19](https://github.com/home-controls/control4-z2m/issues/19) is about how to contribute.
+
+Building and testing needs Node.js 20 or later (CI uses 22). `dist/` is
+committed, so a change to `src/` commits its rebuilt `dist/` too, and raises the
+version; CI fails when they differ. Code style: [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
+
 ```
 npm install
-npm run check        # typecheck + unit tests + build
+npm run check        # lint + typecheck + unit tests + build
+npm run lint         # the code convention (Biome; docs/CODE_STYLE.md)
+npm run format       # fix formatting and import order
+npm run build        # bundle src/ into dist/
+npm test             # unit tests (vitest)
+npm run typecheck    # tsc --noEmit
 npm run test:z2m     # the built files inside a real Zigbee2MQTT 2.14.2 (clones it to the temp dir)
 npm run canary -- dev   # the checks against the herdsman Zigbee2MQTT dev pins (or `release`)
 ```
@@ -829,15 +933,30 @@ same expected output.
 | `tools/build-id.mjs [<dir>]` | the build an instance running `dist/`'s two files (or `<dir>`'s) reports in its status |
 | `tools/deploy.mjs [--dry-run]` | push `dist/` to every instance on a site without a restart, **by hand only**, through its Home Assistant (`HA_URL=… HA_TOKEN_FILE=…`): finds the instances from their retained `bridge/info` and file lists, first checks that Home Assistant carries both files unchanged, then saves the converter and the extension on each one in turn, proves the push by the build in its status, sends `republish`, and rolls back and stops when a push isn't proven (Install, above) |
 | `tools/z2m-harness.mjs [ref]` | runs `test/z2m-harness/control4.test.ts` inside a Zigbee2MQTT checkout with its own mocks: loading, HA discovery for every family, `/set`, model learning, events, bridge requests |
-| `tools/herdsman-canary.mjs dev\|release` | the herdsman drift canary: installs the zigbee-herdsman and converters that Zigbee2MQTT `dev` or its newest release pins (not saved), runs typecheck, the unit tests and the harness at that ref, then puts the repo's pins back. Nightly in `.gitea/workflows/herdsman-canary.yml`, where a red opens one issue per target and pin set and a green closes it |
+| `tools/herdsman-canary.mjs dev\|release` | the herdsman drift canary: installs the zigbee-herdsman and converters that Zigbee2MQTT `dev` or its newest release pins (not saved), runs typecheck, the unit tests and the harness at that ref, then puts the repo's pins back. Nightly in `.github/workflows/herdsman-canary.yml`, where a red opens one issue here per target and pin set and a green closes it |
+| `tools/privacy-check.mjs [--range a..b] [--text f]` | keeps personal details (names, rooms, hostnames, addresses) out of the repo: checks the tracked files (and a range's commit messages, or one issue or PR body) against a pattern list the maintainer keeps, the `PRIVATE_PATTERNS` secret in CI or `~/.config/control4-z2m/private-patterns.txt` locally; it reports where and which pattern, never the text. CI runs it on every push and pull request (a fork's pull request has no secrets, so it is checked again after the merge); `tools/hooks/pre-push` runs it before a push. See `CONTRIBUTING.md` |
 | `tools/port-zha-blueprints.mjs <zha-blueprints-dir>` | regenerate the ported blueprints |
 | `tools/port-zha-packages.mjs <zha-packages-dir>` | regenerate the generated packages |
 | `tools/gen-c4-device.mjs` | regenerate `blueprints/c4_device.yaml` |
-| `tools/c4-scenarios.mjs` | live scenarios on a real Home Assistant, **by hand only** (it changes real lights, then puts them back): publishes contract-fixture payloads for one device's button on `control4/event` and the device's own topic, as the extension does, and reports what its Control4 events entity saw, which targets changed and when (a tap toward ON and toward OFF, double and triple taps, a hold), the colour its LED was sent, that other c4_device automations stay idle, that an unknown IEEE starts no run (and the dispatcher, if deployed, drops it), and that the dispatcher's device map survives a rename and heals when stale (both skipped without the package): `HA_URL=… HA_TOKEN_FILE=… node tools/c4-scenarios.mjs --device "Kitchen Keypad" [--button 1] [--only tap,known,fallback,double,triple,hold,led,idle,unknown,rename,stale]` |
+| `tools/c4-scenarios.mjs` | live scenarios on a real Home Assistant, **by hand only** (it changes real lights, then puts them back): publishes contract-fixture payloads for one device's button on `control4/event` and the device's own topic, as the extension does, and reports what its Control4 events entity saw, which targets changed and when (a tap toward ON and toward OFF, double and triple taps, a hold), the colour its LED was sent, that other c4_device automations stay idle, that an unknown IEEE starts no run (and the dispatcher, if deployed, drops it), and that the dispatcher's device map survives a rename and heals when stale (both skipped without the package): `HA_URL=… HA_TOKEN_FILE=… node tools/c4-scenarios.mjs --device "name_6e2a" [--button 1] [--only tap,known,fallback,double,triple,hold,led,idle,unknown,rename,stale]` |
 | `tools/ha-validate-blueprints.mjs` | read-only check of every blueprint and package against a live Home Assistant (`validate_config` + template syntax), and that it renders the conformance probe as the tests' engine does (`test/fixtures/jinja-conformance.*`): `HA_URL=… HA_TOKEN_FILE=… node tools/ha-validate-blueprints.mjs` |
+| `tools/c4-device-run.mjs` | helper module: reads one c4_device run in the domain's words (what it does, for which button, on which targets) from its top-level variables; the local render (`test/c4-device.ts`) reads its runs through it, and so could a Home Assistant trace |
+| `tools/ha-calls.mjs` | helper module: one request and its answer over Home Assistant's websocket, and which `render_template` answers show a broken template; used by `ha-validate-blueprints` and tested in `test/ha-calls.test.ts` |
+| `tools/jinja-conformance.mjs` | helper module: compares a rendering of the conformance probe with Home Assistant's output; used by the tests and by `ha-validate-blueprints` |
 | `tools/import-zha.mjs` | the settings importer above |
 | `tools/move-c4-settings.mjs` | move devices' saved settings between instances, with both stopped: only for a device whose old instance is down (otherwise the handoff does it) |
 
 Source layout: `src/core` (protocol, transport, link health, fast taps, LEDs,
 animation engine, store, runtime), `src/devices` (one class per family),
 `src/z2m` (definitions, extension, converter entry points).
+
+## Code of conduct
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+Apache License 2.0: see `LICENSE` and `NOTICE`.
+
+Control4 is a trademark of its respective owner. This project is not affiliated
+with or endorsed by Control4.

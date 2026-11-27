@@ -70,7 +70,14 @@ describe("event entity", () => {
         for (const model of ["C4-SR250B", "C4-SR260"]) {
             const types = typesOf(defs.find((d: Any) => d.model === model));
             expect([...types].sort(), model).toEqual(
-                ["remote_button_short_press", "remote_button_long_press", "remote_button_short_release", "remote_menu_select", "remote_menu_cancel", "remote_motion_wake"].sort(),
+                [
+                    "remote_button_short_press",
+                    "remote_button_long_press",
+                    "remote_button_short_release",
+                    "remote_menu_select",
+                    "remote_menu_cancel",
+                    "remote_motion_wake",
+                ].sort(),
             );
             expect(types).not.toContain(GESTURES.press);
         }
@@ -113,7 +120,10 @@ describe("event entity", () => {
         for (const def of withActions) {
             const actions = actionsOf(def);
             const shared = typesOf(def).filter((t) => actions.includes(t) || t in GESTURES);
-            expect(shared.every((t) => commandOf(t) === t && !(t in GESTURES)), `${def.model}: ${shared}`).toBe(true);
+            expect(
+                shared.every((t) => commandOf(t) === t && !(t in GESTURES)),
+                `${def.model}: ${shared}`,
+            ).toBe(true);
         }
     });
 

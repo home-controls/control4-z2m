@@ -79,8 +79,8 @@ function portClusterCalls(lines, file) {
         const keyInd = m[1] + (m[2] ? "  " : "");
         const head = m[1] + (m[2] ?? "");
         // The step = this line + the sibling `data:` block (same key indent).
-        let j = i + 1;
-        if (!lines[j] || lines[j].trim() !== "data:" || indentOf(lines[j]) !== keyInd.length) fail(file, `unexpected layout after line ${i + 1}`);
+        const j = i + 1;
+        if (lines[j]?.trim() !== "data:" || indentOf(lines[j]) !== keyInd.length) fail(file, `unexpected layout after line ${i + 1}`);
         const end = blockEnd(lines, j);
         const data = lines.slice(j + 1, end);
         const out = [];
@@ -145,7 +145,10 @@ function portEvents(lines, file) {
         const ind = m[1];
         const end = blockEnd(lines, i);
         const body = lines.slice(i + 1, end).map((l) => l.trim());
-        const cmd = body.find((l) => l.startsWith("command:"))?.split(":")[1].trim();
+        const cmd = body
+            .find((l) => l.startsWith("command:"))
+            ?.split(":")[1]
+            .trim();
         const id = body.find((l) => l.startsWith("id:"));
         const dev = /^device_id: (!input \w+)$/.exec(body.find((l) => l.startsWith("device_id:")) ?? "")?.[1];
         if (!cmd) fail(file, `zha_event without a command at line ${i + 1}`);
@@ -168,7 +171,7 @@ function portEvents(lines, file) {
 
 /** End the (folded) blueprint description with EVENTS_NOTE. */
 function noteEvents(lines, file) {
-    const i = lines.findIndex((l) => /^  description: >-?\s*$/.test(l));
+    const i = lines.findIndex((l) => /^ {2}description: >-?\s*$/.test(l));
     if (i < 0) fail(file, "no folded blueprint description");
     lines.splice(blockEnd(lines, i), 0, "", ...EVENTS_NOTE.map((l) => `    ${l}`));
 }
@@ -176,11 +179,17 @@ function noteEvents(lines, file) {
 /** Drop the old IEEE lookups; c4_ieee replaces them. */
 function dropIeeeVars(lines) {
     for (let i = 0; i < lines.length; i++) {
-        if (/^  remote_ieee: >-\s*$/.test(lines[i])) {
+        if (/^ {2}remote_ieee: >-\s*$/.test(lines[i])) {
             const end = blockEnd(lines, i);
-            lines.splice(i, end - i, "  remote_ieee: \"{{ c4_ieee }}\"");
+            lines.splice(i, end - i, '  remote_ieee: "{{ c4_ieee }}"');
         }
     }
+}
+
+/** text.replace that fails the port when the original no longer has what it replaces. */
+function mustReplace(text, re, by, file) {
+    if (!re.test(text)) fail(file, `nothing matching ${re}`);
+    return text.replace(re, by);
 }
 
 function insertAfter(lines, re, add, file) {
@@ -205,19 +214,45 @@ export function port(text, file) {
     // Descriptions.
     s = s
         .replace(/ZHA quirk \(control4_sr250\.py\)/g, "control4-z2m Zigbee2MQTT extension")
-        .replace(/Requires the C4-SR250B control4-z2m Zigbee2MQTT extension with\s+C4SR250DisplayCluster on EP1\./g, "Requires the control4-z2m Zigbee2MQTT extension.")
+        .replace(
+            /Requires the C4-SR250B control4-z2m Zigbee2MQTT extension with\s+C4SR250DisplayCluster on EP1\./g,
+            "Requires the control4-z2m Zigbee2MQTT extension.",
+        )
         .replace(/the quirk's SR250 display cluster \(0xFC47,\s+attribute (\w+)\)/g, "the remote's $1 (control4-z2m)")
         .replace(/The quirk caches/g, "The extension caches")
         .replace(/the quirk caches/g, "the extension caches")
         .replace(/The quirk puts/g, "The extension puts")
         .replace(/the quirk closes/g, "the extension closes");
-    s = s.replace(/^(  name: .+?)\s*$/m, "$1 (Zigbee2MQTT)");
+    s = s.replace(/^( {2}name: .+?)\s*$/m, "$1 (Zigbee2MQTT)");
     // Latent bugs in the ZHA originals: an unset optional input must still
     // validate. A target selector defaults to {} (not []), and the optional
     // room helper of the room display is a state-trigger entity, so it
     // defaults to [] (an empty list is a valid, inert trigger; "" is not).
-    s = s.replace(/(\n(\s+)default: )\[\](\n\2selector:\n\2  target:)/g, "$1{}$3");
-    if (file === "c4_sr250_room_display.yaml") s = s.replace(/(\n    room_helper:[\s\S]*?\n      default: )""/, "$1[]");
+    s = s.replace(/(\n(\s+)default: )\[\](\n\2selector:\n\2 {2}target:)/g, "$1{}$3");
+    if (file === "c4_sr250_room_display.yaml") s = s.replace(/(\n {4}room_helper:[\s\S]*?\n {6}default: )""/, "$1[]");
+    // Mute only a volume target that can mute: HA refuses media_player.volume_mute on one
+    // without MediaPlayerEntityFeature.VOLUME_MUTE (8), an Apple TV for one, and each press
+    // of the key then ends the run in an error.
+    if (file === "c4_sr260_media_player.yaml") {
+        s = mustReplace(
+            s,
+            /\n(\s+)- conditions: "\{\{ button == 'volume_mute' \}\}"\n/,
+            (_m, ind) =>
+                `\n${ind}- conditions:\n${ind}    - "{{ button == 'volume_mute' }}"\n${ind}    # A player without mute (feature 8) gets nothing: HA refuses volume_mute on it.\n${ind}    - "{{ ((state_attr(volume_target, 'supported_features') | int(0)) // 8) % 2 == 1 }}"\n`,
+            file,
+        );
+    }
+    // A press of the show key while the menu is up shows it again at once. Queued, that
+    // press waited behind the open menu and showed it a second time after the pick.
+    if (file === "c4_sr260_menu_dispatcher.yaml") {
+        s = mustReplace(s, /\nmode: queued\nmax: 5\n/, "\nmode: restart\n", file);
+        s = mustReplace(
+            s,
+            /instead of blocking until selection_timeout — otherwise the\n(\s+)# {4}next show-trigger press would queue behind a stuck run for up\n\s+# {4}to selection_timeout seconds\./,
+            "instead of blocking until selection_timeout (a show-trigger\n$1#    press meanwhile restarts the run and shows the menu afresh).",
+            file,
+        );
+    }
 
     const lines = s.split("\n");
     // The device input the blueprint addresses (remote, sr260_device ...).
@@ -238,16 +273,16 @@ export function port(text, file) {
     if (/zha_c4_patch\.keypad_led/.test(out)) {
         // After `kps:` - HA renders variables in order.
         out = out.replace(
-            /^(  kps: !input \w+)\n/m,
+            /^( {2}kps: !input \w+)\n/m,
             `$1\n  kp_ieees: >-\n    {% set ns = namespace(l=[]) %}\n    {% for d in (kps if kps is list else [kps]) %}\n      {% set i = ((device_attr(d, 'identifiers') or []) | map('last') | select('search', '^zigbee2mqtt_0x') | first | default('')) | replace('zigbee2mqtt_', '') %}\n      {% if i %}{% set ns.l = ns.l + [i] %}{% endif %}\n    {% endfor %}\n    {{ ns.l }}\n`,
         );
         out = out.replace(
-            /^(\s*)- action: zha_c4_patch\.keypad_led_effect\n\1  data: "\{\{ payload \}\}"/gm,
+            /^(\s*)- action: zha_c4_patch\.keypad_led_effect\n\1 {2}data: "\{\{ payload \}\}"/gm,
             (_m, ind) =>
                 `${ind}- if: "{{ kp_ieees | count > 0 }}"\n${ind}  then:\n${ind}    - action: mqtt.publish\n${ind}      data:\n${ind}        topic: control4/request/led_effect\n${ind}        payload: "{{ dict(payload, devices=kp_ieees) | to_json }}"`,
         );
         out = out.replace(
-            /^(\s*)- action: zha_c4_patch\.keypad_led_stop\n\1  data:\n\1    device_id: "\{\{ kps \}\}"\n\1    restore: true/gm,
+            /^(\s*)- action: zha_c4_patch\.keypad_led_stop\n\1 {2}data:\n\1 {4}device_id: "\{\{ kps \}\}"\n\1 {4}restore: true/gm,
             (_m, ind) =>
                 `${ind}- if: "{{ kp_ieees | count > 0 }}"\n${ind}  then:\n${ind}    - action: mqtt.publish\n${ind}      data:\n${ind}        topic: control4/request/led_stop\n${ind}        payload: "{{ {'devices': kp_ieees, 'restore': true} | to_json }}"`,
         );

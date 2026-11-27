@@ -8,7 +8,7 @@
 // `npm run check`.
 //
 //   HA_URL=http://host:8123 HA_TOKEN_FILE=/path/token.txt \
-//     node tools/c4-scenarios.mjs --device "Kitchen Keypad" [--button 1] [--only tap,hold,...]
+//     node tools/c4-scenarios.mjs --device "Keypad A" [--button 1] [--only tap,hold,...]
 //
 // Scenarios:
 //   tap      a known tap acts on the event the blueprint's response picks: under
@@ -85,7 +85,10 @@ const FIXTURE_MODEL = {
 /** The fixture model whose sequences a device of `model` follows; a model with none is refused, never given another's events. */
 function family(model) {
     const f = FIXTURE_MODEL[model];
-    if (!f) throw new Error(`c4-scenarios: the contract fixture has no events for a ${model || "device with no model"} (it has them for ${Object.keys(FIXTURE_MODEL).join(", ")})`);
+    if (!f)
+        throw new Error(
+            `c4-scenarios: the contract fixture has no events for a ${model || "device with no model"} (it has them for ${Object.keys(FIXTURE_MODEL).join(", ")})`,
+        );
     return f;
 }
 
@@ -93,7 +96,14 @@ function family(model) {
 const PADDLE_HALVES = {1: {name: "top", id: 0x01}, 2: {name: "bottom", id: 0x05}};
 
 /** The fan's buttons as its events name them (src/core/constants.ts FAN_BUTTONS): Buttons 1-6 from the top. */
-const FAN_BUTTONS = {1: {name: "top", id: 0}, 2: {name: "high", id: 1}, 3: {name: "medium_high", id: 2}, 4: {name: "medium_low", id: 3}, 5: {name: "low", id: 4}, 6: {name: "off", id: 5}};
+const FAN_BUTTONS = {
+    1: {name: "top", id: 0},
+    2: {name: "high", id: 1},
+    3: {name: "medium_high", id: 2},
+    4: {name: "medium_low", id: 3},
+    5: {name: "low", id: 4},
+    6: {name: "off", id: 5},
+};
 
 /** The outlet's buttons as its events name them (src/core/constants.ts OUTLET_BUTTONS). */
 const OUTLET_BUTTONS = {1: {name: "outlet_1", id: 0}, 2: {name: "outlet_2", id: 1}};
@@ -141,7 +151,16 @@ export function sequences(dev, button, gap = SECOND_PRESS) {
         return seq.map((e) => {
             const g = e.gesture;
             if (g === "press") press = gap * presses++;
-            const at = g === "press" ? press : g === "tap_known" ? last : /^fast_/.test(g) ? press + AFTER_PRESS.fast : g in AFTER_PRESS ? press + AFTER_PRESS[g] : press + AFTER_PRESS.count;
+            const at =
+                g === "press"
+                    ? press
+                    : g === "tap_known"
+                      ? last
+                      : /^fast_/.test(g)
+                        ? press + AFTER_PRESS.fast
+                        : g in AFTER_PRESS
+                          ? press + AFTER_PRESS[g]
+                          : press + AFTER_PRESS.count;
             last = at;
             return {at, payload: mine(e)};
         });
@@ -270,7 +289,11 @@ function connect(url, token) {
                 return () => ha.call({type: "unsubscribe_events", subscription: n}).catch(() => undefined);
             },
             async rest(method, p, body) {
-                const r = await fetch(`${url}${p}`, {method, headers: {Authorization: `Bearer ${token}`, "Content-Type": "application/json"}, body: body && JSON.stringify(body)});
+                const r = await fetch(`${url}${p}`, {
+                    method,
+                    headers: {Authorization: `Bearer ${token}`, "Content-Type": "application/json"},
+                    body: body && JSON.stringify(body),
+                });
                 if (!r.ok) throw new Error(`${method} ${p}: ${r.status} ${await r.text()}`);
                 return r.json();
             },
@@ -344,20 +367,35 @@ async function discover(ha, deviceArg, button) {
         const read = own.filter((id) => new RegExp(`^select\\..*_${half}_button_behaviour$`).test(id)).map(stateOf);
         if (read.length) behaviour[half] = read.includes("event_only") ? "event_only" : read[0];
     }
-    const dev = {id: d.id, ieee: ident.slice("zigbee2mqtt_".length), model: d.model_id ?? d.model ?? "", name: d.name_by_user ?? d.name, nameByUser: d.name_by_user, localSwitchOn, behaviour};
+    const dev = {
+        id: d.id,
+        ieee: ident.slice("zigbee2mqtt_".length),
+        model: d.model_id ?? d.model ?? "",
+        name: d.name_by_user ?? d.name,
+        nameByUser: d.name_by_user,
+        localSwitchOn,
+        behaviour,
+    };
     // The entity c4_device hears the device through (its unique_id is the extension's).
     dev.events = entities.find((x) => x.device_id === d.id && x.platform === "mqtt" && x.unique_id === `${dev.ieee}_control4_event`)?.entity_id;
-    if (!dev.events) throw new Error(`'${deviceArg}' has no Control4 events entity: update the extension on its Zigbee2MQTT instance, with its Home Assistant integration on`);
+    if (!dev.events)
+        throw new Error(
+            `'${deviceArg}' has no Control4 events entity: update the extension on its Zigbee2MQTT instance, with its Home Assistant integration on`,
+        );
     const autos = [];
     // The config API serves only UI-managed automations: YAML / package ones can't be read, so they aren't checked.
     const unreadable = [];
     for (const s of states.filter((x) => x.entity_id.startsWith("automation.") && x.attributes.id)) {
         const conf = await ha.rest("GET", `/api/config/automation/config/${encodeURIComponent(s.attributes.id)}`).catch(() => undefined);
         if (!conf) unreadable.push(s.entity_id);
-        else if (/c4_device\.yaml$/.test(conf.use_blueprint?.path ?? "")) autos.push({entity: s.entity_id, id: s.attributes.id, input: conf.use_blueprint.input ?? {}});
+        else if (/c4_device\.yaml$/.test(conf.use_blueprint?.path ?? ""))
+            autos.push({entity: s.entity_id, id: s.attributes.id, input: conf.use_blueprint.input ?? {}});
     }
     const mine = autos.find((a) => a.input.c4_device === dev.id);
-    if (!mine) throw new Error(`no c4_device automation for '${deviceArg}'${unreadable.length ? ` among those the config API can read (${unreadable.length} YAML / package automation(s) can't be read)` : ""}`);
+    if (!mine)
+        throw new Error(
+            `no c4_device automation for '${deviceArg}'${unreadable.length ? ` among those the config API can read (${unreadable.length} YAML / package automation(s) can't be read)` : ""}`,
+        );
     const cfg = buttonConfig(mine.input, button);
     if (!cfg.targets.length) throw new Error(`button ${button} of '${deviceArg}' has no targets`);
     return {dev, autos, unreadable, mine, cfg};
@@ -369,7 +407,8 @@ async function discover(ha, deviceArg, button) {
  */
 async function publish(ha, seq) {
     const t0 = Date.now();
-    const send = (topic, payload) => ha.call({type: "call_service", domain: "mqtt", service: "publish", service_data: {topic, payload: JSON.stringify(payload)}});
+    const send = (topic, payload) =>
+        ha.call({type: "call_service", domain: "mqtt", service: "publish", service_data: {topic, payload: JSON.stringify(payload)}});
     for (const s of seq) {
         const wait = t0 + s.at - Date.now();
         if (wait > 0) await sleep(wait);
@@ -401,7 +440,8 @@ async function observe(ha, targets, fn, settle = 2500, {autos = [], runs, errors
         }
         if (!targets.includes(entity_id)) return;
         const view = (s) => (s ? `${s.state}${s.attributes?.brightness != null ? ` @${s.attributes.brightness}` : ""}` : "none");
-        if (view(old_state) !== view(new_state)) changes.push({t: Date.parse(e.time_fired), entity_id, from: view(old_state), to: view(new_state), state: new_state});
+        if (view(old_state) !== view(new_state))
+            changes.push({t: Date.parse(e.time_fired), entity_id, from: view(old_state), to: view(new_state), state: new_state});
     });
     const startedAt = await haNow(ha);
     const startStates = Object.fromEntries((await snapshot(ha, targets)).map((st) => [st.entity_id, st]));
@@ -451,7 +491,12 @@ async function restore(ha, snap) {
         const [domain] = s.entity_id.split(".");
         try {
             if (s.state === "on" && domain === "light" && s.attributes.brightness != null) {
-                await ha.call({type: "call_service", domain: "light", service: "turn_on", service_data: {entity_id: s.entity_id, brightness: s.attributes.brightness}});
+                await ha.call({
+                    type: "call_service",
+                    domain: "light",
+                    service: "turn_on",
+                    service_data: {entity_id: s.entity_id, brightness: s.attributes.brightness},
+                });
             } else if (s.state === "on" || s.state === "off") {
                 await ha.call({type: "call_service", domain: "homeassistant", service: `turn_${s.state}`, service_data: {entity_id: s.entity_id}});
             }
@@ -459,7 +504,9 @@ async function restore(ha, snap) {
             failed.push(`${s.entity_id} (should be ${s.state}): ${e?.message ?? e}`);
         }
     }
-    const want = snap.filter((s) => s.state === "on" || s.state === "off").map((s) => [s.entity_id, {on: s.state === "on", brightness: s.state === "on" ? s.attributes.brightness : undefined}]);
+    const want = snap
+        .filter((s) => s.state === "on" || s.state === "off")
+        .map((s) => [s.entity_id, {on: s.state === "on", brightness: s.state === "on" ? s.attributes.brightness : undefined}]);
     await shown(ha, new Map(want));
     if (failed.length) throw new Error(`could not put back ${failed.join("; ")} - check it by hand`);
 }
@@ -530,7 +577,14 @@ async function eventRuns(ha, auto, since) {
  * from trusting those counts goes into ctx.idleBlockers.
  */
 function watched(ctx, name, seq, prepare, entities = ctx.cfg.targets) {
-    return observeRestoring(ctx.ha, entities, () => publish(ctx.ha, seq), 2500, {autos: ctx.autos, runs: ctx.runs, errors: ctx.idleBlockers, label: name, prepare, events: [ctx.dev.events]}).catch((e) => {
+    return observeRestoring(ctx.ha, entities, () => publish(ctx.ha, seq), 2500, {
+        autos: ctx.autos,
+        runs: ctx.runs,
+        errors: ctx.idleBlockers,
+        label: name,
+        prepare,
+        events: [ctx.dev.events],
+    }).catch((e) => {
         ctx.idleBlockers.push(`${name} failed before all its runs were seen: ${e?.message ?? e}`);
         throw e;
     });
@@ -593,7 +647,11 @@ function merge(results) {
     return {
         ok: results.every((r) => r.ok),
         lines: results.flatMap((r) => [`${r.label}:`, ...r.lines.map((l) => `  ${l}`)]),
-        restoreError: results.map((r) => r.restoreError).filter(Boolean).join("; ") || undefined,
+        restoreError:
+            results
+                .map((r) => r.restoreError)
+                .filter(Boolean)
+                .join("; ") || undefined,
     };
 }
 
@@ -625,9 +683,11 @@ const MID = 128;
  */
 export function prepareCall(cfg) {
     const lights = cfg.targets.filter((e) => e.startsWith("light."));
-    if (["on", "toggle", "room_master", "scene"].includes(cfg.mode)) return {domain: "homeassistant", service: "turn_off", service_data: {entity_id: cfg.targets}};
+    if (["on", "toggle", "room_master", "scene"].includes(cfg.mode))
+        return {domain: "homeassistant", service: "turn_off", service_data: {entity_id: cfg.targets}};
     if (cfg.mode === "off" || cfg.mode === "room_off") return {domain: "homeassistant", service: "turn_on", service_data: {entity_id: cfg.targets}};
-    if ((cfg.mode === "brighten" || cfg.mode === "dim") && lights.length) return {domain: "light", service: "turn_on", service_data: {entity_id: lights, brightness: MID}};
+    if ((cfg.mode === "brighten" || cfg.mode === "dim") && lights.length)
+        return {domain: "light", service: "turn_on", service_data: {entity_id: lights, brightness: MID}};
     return undefined;
 }
 
@@ -635,7 +695,11 @@ export function prepareCall(cfg) {
 async function prepare(ha, calls) {
     if (!calls.length) return;
     for (const call of calls) await ha.call({type: "call_service", ...call});
-    const want = calls.flatMap((c) => (["turn_on", "turn_off"].includes(c.service) ? [].concat(c.service_data.entity_id ?? []).map((e) => [e, {on: c.service === "turn_on", brightness: c.service_data.brightness}]) : []));
+    const want = calls.flatMap((c) =>
+        ["turn_on", "turn_off"].includes(c.service)
+            ? [].concat(c.service_data.entity_id ?? []).map((e) => [e, {on: c.service === "turn_on", brightness: c.service_data.brightness}])
+            : [],
+    );
     await shown(ha, new Map(want));
 }
 
@@ -649,7 +713,10 @@ async function prepare(ha, calls) {
 async function observePrepared(ctx, name, seq, calls = [prepareCall(ctx.cfg)].filter(Boolean), entities = ctx.cfg.targets) {
     const obs = await watched(ctx, name, seq, () => prepare(ctx.ha, calls), entities);
     const t0 = obs.fired[0]?.t;
-    const lines = [...obs.fired.map((f) => `event ${f.data.gesture}${f.data.tap_index != null ? ` #${f.data.tap_index}` : ""} ${t0 == null ? "" : ms(f.t, t0)}`), ...obs.changes.map((c) => `${c.entity_id}: ${c.from} -> ${c.to} ${t0 == null ? "" : ms(c.t, t0)}`)];
+    const lines = [
+        ...obs.fired.map((f) => `event ${f.data.gesture}${f.data.tap_index != null ? ` #${f.data.tap_index}` : ""} ${t0 == null ? "" : ms(f.t, t0)}`),
+        ...obs.changes.map((c) => `${c.entity_id}: ${c.from} -> ${c.to} ${t0 == null ? "" : ms(c.t, t0)}`),
+    ];
     const between = (i, until = () => true) => {
         const end = obs.fired.find((f, j) => j > i && until(f))?.t ?? Number.POSITIVE_INFINITY;
         return obs.changes.filter((c) => c.t >= obs.fired[i].t && c.t < end);
@@ -948,7 +1015,33 @@ async function holdScenario(ctx) {
 }
 
 /** A copy of c4_device's on_states (tools/gen-c4-device.mjs): the states an LED shows as on. */
-const ON_STATES = ["on", "open", "opening", "closing", "unlocked", "unlocking", "playing", "buffering", "home", "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "armed_home", "armed_away", "armed_night", "armed_vacation", "armed_custom_bypass", "triggered", "pending", "arming", "cleaning", "active"];
+const ON_STATES = [
+    "on",
+    "open",
+    "opening",
+    "closing",
+    "unlocked",
+    "unlocking",
+    "playing",
+    "buffering",
+    "home",
+    "heat",
+    "cool",
+    "heat_cool",
+    "auto",
+    "dry",
+    "fan_only",
+    "armed_home",
+    "armed_away",
+    "armed_night",
+    "armed_vacation",
+    "armed_custom_bypass",
+    "triggered",
+    "pending",
+    "arming",
+    "cleaning",
+    "active",
+];
 
 /** A copy of c4_device's led_buttons: how many of a model's buttons have an LED the extension finds by name. */
 const LED_BUTTONS = {"C4-DIM1-Z": 2, "C4-APD120": 2, "C4-SW120277": 2, "C4-KP3-Z": 3, "C4-KP6-Z": 6, "C4-KC120277": 6};
@@ -1005,7 +1098,8 @@ export function sceneState(actions, targets, stateOf) {
         if (st == null) bad = true;
         const s = stateOf(e);
         const v = s?.attributes?.brightness;
-        if ((s?.state ?? "unknown") !== st || (lvl != null && st === "on" && e.startsWith("light.") && (v == null || Math.abs(Number(v) - lvl) > SCENE_SLACK))) ok = false;
+        if ((s?.state ?? "unknown") !== st || (lvl != null && st === "on" && e.startsWith("light.") && (v == null || Math.abs(Number(v) - lvl) > SCENE_SLACK)))
+            ok = false;
     }
     return {active: ok && !bad, bad};
 }
@@ -1033,7 +1127,11 @@ export function expectedLed(input, button, stateOf, time) {
         lit = (input.led_match ?? "any") === "any" ? n > 0 : n === sts.length;
     }
     // A time selector also takes 9:3: pad each part, as c4_device does, so they compare with time as text.
-    const padded = (t) => [...String(t).split(":"), "0"].slice(0, 3).map((p) => `0${Number.parseInt(p, 10) || 0}`.slice(-2)).join(":");
+    const padded = (t) =>
+        [...String(t).split(":"), "0"]
+            .slice(0, 3)
+            .map((p) => `0${Number.parseInt(p, 10) || 0}`.slice(-2))
+            .join(":");
     const [start, end] = [padded(input.night_start ?? "21:00:00"), padded(input.night_end ?? "06:00:00")];
     const inWindow = start <= end ? start <= time && time < end : time >= start || time < end;
     const rooms = inputList(input, "room_lights");
@@ -1049,7 +1147,8 @@ export function expectedLed(input, button, stateOf, time) {
 }
 
 /** The time of day in time zone `tz`, as "HH:MM:SS". */
-const localTime = (tz) => new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"}).format(new Date());
+const localTime = (tz) =>
+    new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"}).format(new Date());
 
 /** How long after the targets change the LED scenario reads the LED: c4_device's LED delay, then time for a DIM1-Z's fade. */
 const LED_SETTLE = 3000;
@@ -1082,7 +1181,13 @@ async function ledScenario(ctx) {
         await sleep(LED_SETTLE);
         const states = new Map((await ha.call({type: "get_states"})).map((s) => [s.entity_id, s]));
         const want = expectedLed(mine.input, button, (e) => states.get(e), localTime(tz));
-        const got = sent.filter((l) => String(l.buttons).split(",").some((t) => nums.includes(t.trim()))).at(-1);
+        const got = sent
+            .filter((l) =>
+                String(l.buttons)
+                    .split(",")
+                    .some((t) => nums.includes(t.trim())),
+            )
+            .at(-1);
         sent.length = 0;
         const show = (l) => `${l.color}${l.brightness == null ? "" : ` ${l.brightness}%`}`;
         if (!got) {
@@ -1200,7 +1305,10 @@ async function staleScenario(ctx) {
     if (!real) return NO_DISPATCHER;
     const lost = Object.fromEntries(Object.entries(real.attributes.devices ?? {}).filter(([k]) => k !== dev.ieee));
     // Overwrite the sensor's state (until its next rebuild) with a map that lost the device.
-    await ha.rest("POST", `/api/states/${MAP_SENSOR}`, {state: String(Object.keys(lost).length), attributes: {...real.attributes, devices: lost, built: "c4-scenario-stale"}});
+    await ha.rest("POST", `/api/states/${MAP_SENSOR}`, {
+        state: String(Object.keys(lost).length),
+        attributes: {...real.attributes, devices: lost, built: "c4-scenario-stale"},
+    });
     const obs = await observeRestoring(ha, cfg.targets, () => publish(ha, seqs.tap.slice(0, 1)), 3000);
     const healed = (await mapNow(ha)).devices[dev.ieee] === dev.id;
     const got = obs.dispatched.filter((f) => f.data.device_id === dev.id).length;
@@ -1243,7 +1351,9 @@ async function main() {
         const found = await discover(ha, deviceArg, button);
         // runs: automation entity -> ids of runs a Control4 event started during the scenarios that watch them (for idle).
         const ctx = {ha, ...found, button, seqs: sequences(found.dev, button), runs: new Map(), idleBlockers: []};
-        console.log(`${found.dev.name} (${found.dev.model}, ${found.dev.ieee}) button ${button}: ${found.cfg.mode}, response ${found.cfg.response}, targets ${found.cfg.targets.join(", ")}`);
+        console.log(
+            `${found.dev.name} (${found.dev.model}, ${found.dev.ieee}) button ${button}: ${found.cfg.mode}, response ${found.cfg.response}, targets ${found.cfg.targets.join(", ")}`,
+        );
         for (const name of SCENARIOS.filter((s) => only.includes(s))) {
             const r = await RUN[name](ctx).catch((e) => ({ok: false, lines: [String(e?.message ?? e)]}));
             // A scenario that couldn't put its targets back fails, whatever it saw.

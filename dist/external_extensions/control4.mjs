@@ -1,26 +1,10 @@
-// control4-z2m 0.1.0 - Zigbee2MQTT external extension
+// control4-z2m 0.2.1 - Zigbee2MQTT external extension
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
 // src/z2m/extension.ts
 import path2 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-
-// src/core/build.ts
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-var sha256 = (data) => createHash("sha256").update(data).digest("hex");
-function fileHash(url) {
-  try {
-    return sha256(readFileSync(fileURLToPath(url)));
-  } catch {
-    return void 0;
-  }
-}
-function buildIdOf(extensionHash, converterHash) {
-  return sha256(`${extensionHash}:${converterHash}`).slice(0, 12);
-}
 
 // src/core/constants.ts
 var PROFILE_NETWORK = 49757;
@@ -314,7 +298,11 @@ var SR260_BUTTONS = {
   48: "digit_0",
   49: "hash"
 };
-var REMOTE_COMMANDS = { press: "remote_button_short_press", hold: "remote_button_long_press", release: "remote_button_short_release" };
+var REMOTE_COMMANDS = {
+  press: "remote_button_short_press",
+  hold: "remote_button_long_press",
+  release: "remote_button_short_release"
+};
 var PALETTE_NAMES = [
   "off",
   "white",
@@ -578,7 +566,9 @@ function moveToLevelWithOnOff(tsn, level, transitionTenths) {
   return buildZclCommand(tsn, 4, [Math.max(0, Math.min(254, Math.round(level))), t & 255, t >> 8]);
 }
 function rgbHex(rgb2) {
-  return rgb2.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")).join("");
+  return rgb2.map(
+    (c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")
+  ).join("");
 }
 function hexRgb(hex) {
   const n = Number.parseInt(hex, 16) || 0;
@@ -915,7 +905,9 @@ function resolveSpec(spec) {
 }
 function frame(buttons, pick) {
   const f = /* @__PURE__ */ new Map();
-  buttons.forEach((b, i) => f.set(b, pick(b, i)));
+  buttons.forEach((b, i) => {
+    f.set(b, pick(b, i));
+  });
   return f;
 }
 function* solid(s) {
@@ -1419,19 +1411,24 @@ var Animator = class {
     }
     if (this.healTimer || !this.host.alive || this.healTries >= LED_HEAL_DELAYS.length) return;
     const delay = LED_HEAL_DELAYS[this.healTries];
-    this.healTimer = setTimeout(() => {
-      this.healTimer = void 0;
-      if (!this.host.alive || !this.needsHeal()) return;
-      if (this.statusRun && !this.statusRun.cancelled) {
+    this.healTimer = setTimeout(
+      () => {
+        this.healTimer = void 0;
+        if (!this.host.alive || !this.needsHeal()) return;
+        if (this.statusRun && !this.statusRun.cancelled) {
+          this.healLost = false;
+          return;
+        }
+        if (this.host.unreachable?.()) return;
+        this.healTries++;
         this.healLost = false;
-        return;
-      }
-      if (this.host.unreachable?.()) return;
-      this.healTries++;
-      this.healLost = false;
-      this.engine.log.debug(`Control4 LED [${this.host.name}]: a status frame was lost or is unconfirmed; painting the status again (${this.healTries}/${LED_HEAL_DELAYS.length})`);
-      void this.applyStatus();
-    }, delay + Math.random() * delay * 0.2);
+        this.engine.log.debug(
+          `Control4 LED [${this.host.name}]: a status frame was lost or is unconfirmed; painting the status again (${this.healTries}/${LED_HEAL_DELAYS.length})`
+        );
+        void this.applyStatus();
+      },
+      delay + Math.random() * delay * 0.2
+    );
     this.healTimer.unref?.();
   }
   /** The device is going (unregistered): no self-repaint is left behind. */
@@ -1710,6 +1707,22 @@ async function ledStatus(animator, data) {
   });
 }
 
+// src/core/build.ts
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+var sha256 = (data) => createHash("sha256").update(data).digest("hex");
+function fileHash(url) {
+  try {
+    return sha256(readFileSync(fileURLToPath(url)));
+  } catch {
+    return void 0;
+  }
+}
+function buildIdOf(extensionHash, converterHash) {
+  return sha256(`${extensionHash}:${converterHash}`).slice(0, 12);
+}
+
 // src/core/handoff.ts
 var HANDOFF_TIMING = {
   /** How long the new instance collects offers: past it, the device starts as new. */
@@ -1818,7 +1831,16 @@ var Handoff = class {
     if (stored === void 0 && !holds) return;
     const had = Math.max(stored ?? 0, holds ? this.host.lastSeen(ieee) ?? 0 : 0);
     const profile = this.host.profile(ieee) ?? this.store.profile(ieee);
-    this.host.send(ieee, "offer", { from: this.host.base(), to, id, had, holds, model: this.store.model(ieee), settings: this.store.all(ieee), ...profile ? { profile } : {} });
+    this.host.send(ieee, "offer", {
+      from: this.host.base(),
+      to,
+      id,
+      had,
+      holds,
+      model: this.store.model(ieee),
+      settings: this.store.all(ieee),
+      ...profile ? { profile } : {}
+    });
   }
   /** Acked: drop the saved settings, evict a record still here, and say done. */
   async release(ieee, to, id) {
@@ -1922,77 +1944,375 @@ function wrapZ2mLogger(logger) {
   };
 }
 
-// src/core/fasttap.ts
-var FAST_TAP_RELEASE_TIMEOUT = 2e3;
-var FAST = { 1: "fast_single", 2: "fast_double", 3: "fast_triple" };
-var FastTaps = class {
-  taps = /* @__PURE__ */ new Map();
-  /** Keys seen sending a release; devices add the ones kept in their saved settings when they start. */
-  releasers = /* @__PURE__ */ new Set();
-  get pending() {
-    return this.taps.size;
+// src/devices/base.ts
+var UnsupportedKey = class extends Error {
+};
+var REPLY_CAPTURE_MS = 2e4;
+var DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+var RELEASING_BUTTONS_KEY = "releasing_buttons";
+var C4Device = class {
+  constructor(ctx, ieee, model, family) {
+    this.ctx = ctx;
+    this.ieee = ieee;
+    this.model = model;
+    this.family = family;
+    for (const button of this.releasingButtons()) ctx.fast.releasers.add(this.tapKey(button));
+  }
+  ctx;
+  ieee;
+  model;
+  family;
+  seq = 64;
+  tsn = 0;
+  timers = /* @__PURE__ */ new Set();
+  sleepers = /* @__PURE__ */ new Set();
+  stopped = false;
+  captureUntil = 0;
+  /** False for a device whose buttons never report a hold: its press is known to be a tap at once. */
+  hasHold = true;
+  get log() {
+    return this.ctx.log;
+  }
+  get name() {
+    return this.ctx.friendlyName(this.ieee);
+  }
+  get isRouter() {
+    return this.ctx.isRouter(this.ieee);
+  }
+  /** Shared 16-bit C4 transport sequence (seeded 0x0040 like the Director). */
+  nextSeq() {
+    const s = this.seq;
+    this.seq = s + 1 & 65535;
+    return s;
+  }
+  nextTsn() {
+    this.tsn = this.tsn + 1 & 255;
+    return this.tsn;
+  }
+  // -- transmit ---------------------------------------------------------------
+  async sendFrame(frame2, options) {
+    if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
+    await this.ctx.link.transmit(this.ieee, async () => {
+      if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
+      await this.ctx.send(this.ieee, frame2, options);
+    });
+  }
+  sendText(text, dstEp = 1, srcEp = 1, options) {
+    this.log.debug(`Control4 ${this.name} -> ${text}`);
+    return this.sendFrame({ profile: PROFILE_BUTTON, cluster: C4_CLUSTER, srcEp, dstEp, data: buildFrame(text) }, options);
+  }
+  /** `0s<seq> <cmd>`. Throws on a delivery failure. */
+  set(cmd, dstEp = 1) {
+    return this.sendText(`0s${hex4(this.nextSeq())} ${cmd}`, dstEp);
+  }
+  /** `0s<seq> <cmd>`, failures logged at debug and swallowed (LED / provisioning frames). */
+  async trySet(cmd, dstEp = 1) {
+    try {
+      await this.set(cmd, dstEp);
+      return true;
+    } catch (error) {
+      this.log.debug(`Control4 ${this.name}: '${cmd}' failed: ${error}`);
+      return false;
+    }
+  }
+  get(prop, timeout) {
+    return this.ctx.link.get(this, prop, timeout);
+  }
+  /** A ZCL attribute read on a standard cluster, paced like every other send. Throws on no answer. */
+  async zclRead(ep, cluster, attrs) {
+    if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
+    return this.ctx.link.transmit(this.ieee, async () => {
+      if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
+      this.log.debug(`Control4 ${this.name} -> ZCL read ${cluster} ${attrs.join(", ")}`);
+      return this.ctx.zclRead(this.ieee, ep, cluster, attrs);
+    });
+  }
+  // -- state ------------------------------------------------------------------
+  publish(payload) {
+    if (this.stopped || Object.keys(payload).length === 0) return;
+    this.ctx.publish(this.ieee, payload);
+  }
+  state() {
+    return this.ctx.state(this.ieee);
+  }
+  /** Whether the state published last says the load is on. */
+  isOn() {
+    return String(this.state().state ?? "OFF").toUpperCase() === "ON";
+  }
+  setting(key, fallback) {
+    const v = this.ctx.store.get(this.ieee, key);
+    return v === void 0 || v === null ? fallback : v;
+  }
+  saveSetting(key, value) {
+    this.ctx.store.set(this.ieee, key, value);
+  }
+  option(key) {
+    return this.ctx.deviceOption(this.ieee, key);
   }
   /**
-   * Feed one gesture before it is published. A sequence's fast count comes
-   * back one of two ways: `emit` fires it when a tap window ends the
-   * sequence, and a release that ends it returns it as `fastCount`, which
-   * the caller must publish after the release or it is lost. On a device
-   * with no hold (`hasHold` false) a press is known to be a tap at once.
+   * This device's tap window (ms): its `tap_window` option (seconds, a number
+   * or decimal text) clamped to the allowed range, else the default.
    */
-  observe(key, gesture, windowMs, emit, hasHold = true) {
-    const state = this.taps.get(key);
-    const clear = (s2) => {
-      if (s2?.timer) clearTimeout(s2.timer);
-    };
-    const end = (done) => {
-      this.taps.delete(key);
-      clear(done);
-      return FAST[done.count] ?? "fast_quadruple";
-    };
-    const windowClosed = () => {
-      const current = this.taps.get(key);
-      if (!current) return;
-      current.timer = void 0;
-      if (!current.awaitingRelease) {
-        emit(end(current), current.allTapsKnown);
-        return;
-      }
-      current.expired = true;
-      current.timer = setTimeout(() => this.taps.delete(key), FAST_TAP_RELEASE_TIMEOUT);
-      current.timer.unref?.();
-    };
-    if (gesture === "hold") {
-      clear(state);
-      this.taps.delete(key);
-      return {};
-    }
-    if (gesture === "release") {
-      this.releasers.add(key);
-      if (state) {
-        const knownTapIndex = state.awaitingRelease && state.allTapsKnown ? state.count : void 0;
-        state.awaitingRelease = false;
-        if (state.expired) return { tapIndex: state.count, fastCount: end(state), allTapsKnown: state.allTapsKnown, knownTapIndex };
-        return { tapIndex: state.count, knownTapIndex };
-      }
-      return {};
-    }
-    if (gesture !== "press") return {};
-    clear(state);
-    const s = state && !state.expired ? state : { count: 0, windowMs, awaitingRelease: false, expired: false, allTapsKnown: true };
-    if (s.awaitingRelease) s.allTapsKnown = false;
-    s.count += 1;
-    s.awaitingRelease = this.releasers.has(key);
-    if (!s.awaitingRelease && hasHold) s.allTapsKnown = false;
-    s.timer = setTimeout(windowClosed, s.windowMs);
-    s.timer.unref?.();
-    this.taps.set(key, s);
-    return { tapIndex: s.count, knownTapIndex: hasHold ? void 0 : s.count };
+  tapWindow() {
+    const raw = this.option(TAP_WINDOW_OPTION);
+    const seconds = typeof raw === "number" ? raw : typeof raw === "string" && DECIMAL.test(raw) ? Number(raw) : Number.NaN;
+    if (Number.isNaN(seconds)) return DEFAULT_TAP_WINDOW_MS;
+    return Math.min(MAX_TAP_WINDOW_MS, Math.max(MIN_TAP_WINDOW_MS, seconds * 1e3));
   }
-  clear() {
-    for (const s of this.taps.values()) if (s.timer) clearTimeout(s.timer);
-    this.taps.clear();
+  // -- timers -----------------------------------------------------------------
+  after(ms, fn) {
+    const t = setTimeout(() => {
+      this.timers.delete(t);
+      if (this.stopped) return;
+      this.spawn(fn());
+    }, ms);
+    t.unref?.();
+    this.timers.add(t);
+    return t;
+  }
+  cancel(t) {
+    if (!t) return;
+    clearTimeout(t);
+    this.timers.delete(t);
+  }
+  /** A sleep that ends early (resolves) when the handler stops, so nothing awaits forever. */
+  sleep(ms) {
+    if (this.stopped) return Promise.resolve();
+    return new Promise((resolve) => {
+      const wake = () => {
+        clearTimeout(t);
+        this.timers.delete(t);
+        this.sleepers.delete(wake);
+        resolve();
+      };
+      const t = setTimeout(wake, ms);
+      t.unref?.();
+      this.timers.add(t);
+      this.sleepers.add(wake);
+    });
+  }
+  spawn(value) {
+    if (value && typeof value.catch === "function") {
+      value.catch((error) => this.log.debug(`Control4 ${this.name}: background task failed: ${error?.stack ?? error}`));
+    }
+  }
+  // -- lifecycle --------------------------------------------------------------
+  /**
+   * Called once the handler exists (startup, join, or model learned). On a
+   * hot-load (`hotLoad`) Zigbee2MQTT kept running, so the device already had its
+   * once-per-process start-up work: skip it.
+   */
+  start(_hotLoad = false) {
+  }
+  /** LED colour keys, for devices that have them (keypads, dimmers, LED bars). */
+  get ledKeys() {
+    return void 0;
+  }
+  stop() {
+    this.stopped = true;
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
+    for (const wake of [...this.sleepers]) wake();
+    this.sleepers.clear();
+  }
+  /** Re-adopt a handler after a model change keeps the same family. */
+  get alive() {
+    return !this.stopped;
+  }
+  // -- actions ----------------------------------------------------------------
+  /**
+   * Publish a button gesture as a Z2M action (`button_1_double`) with the
+   * ZHA command name alongside. The fast-tap counter sees the gesture
+   * first, so its tap index is known before the gesture is published; a
+   * fast count the gesture closes is published after it.
+   */
+  emitAction(button, gesture, extra = {}, fastTaps = true) {
+    const emitFast = (fast, allTapsKnown) => this.emitAction(button, fast, { ...extra, action_known_taps: allTapsKnown }, false);
+    if (fastTaps && gesture === "release") this.rememberRelease(button);
+    const tap = fastTaps ? this.ctx.fast.observe(this.tapKey(button), gesture, this.tapWindow(), emitFast, this.hasHold) : {};
+    const payload = {
+      action: `${button}_${gesture}`,
+      action_button: button,
+      action_gesture: gesture,
+      action_command: GESTURES[gesture],
+      ...extra
+    };
+    this.publish(payload);
+    this.sendEvent(payload);
+    if (tap.knownTapIndex !== void 0) this.emitAction(button, "tap_known", { ...extra, action_tap_index: tap.knownTapIndex }, false);
+    if (tap.fastCount) emitFast(tap.fastCount, tap.allTapsKnown === true);
+  }
+  tapKey(button) {
+    return `${this.ieee}:${button}`;
+  }
+  /** The buttons seen sending a release, kept in the saved settings across starts. */
+  releasingButtons() {
+    const stored = this.setting(RELEASING_BUTTONS_KEY);
+    return Array.isArray(stored) ? stored.filter((b) => typeof b === "string") : [];
+  }
+  /** Keep a button's first release; one already kept writes nothing. */
+  rememberRelease(button) {
+    const buttons = this.releasingButtons();
+    if (!buttons.includes(button)) this.saveSetting(RELEASING_BUTTONS_KEY, [...buttons, button]);
+  }
+  /** A non-button action (motion_wake, menu_select, led_notification_end ...). */
+  emitEvent(action, extra = {}) {
+    const payload = { action, action_command: action, ...extra };
+    this.publish(payload);
+    this.sendEvent(payload);
+  }
+  /** The same event for blueprints: `action_` prefixes dropped, IEEE and model added. */
+  sendEvent(payload) {
+    if (this.stopped) return;
+    const event = { ieee: this.ieee, device: this.name, model: this.model };
+    for (const [k, v] of Object.entries(payload)) event[k === "action" ? k : k.replace(/^action_/, "")] = v;
+    this.ctx.event(this.ieee, event);
+  }
+  // -- receive ----------------------------------------------------------------
+  handleAscii(frame2) {
+    const t = frame2.tokens;
+    if (t.length < 2) return;
+    if (frame2.kind === "reply") {
+      this.onReply(frame2);
+      this.captureReply(frame2);
+      return;
+    }
+    if (t[1] === "sa" && t.length >= 3) {
+      this.onAnnounce(t[2], t.slice(3));
+      return;
+    }
+    if (this.ctx.now() <= this.captureUntil) this.log.warning(`Control4 FRAME ${this.name}: ${frame2.text}`);
+    this.onOther(frame2);
+  }
+  onAnnounce(namespace, data) {
+    this.log.debug(`Control4 ${this.name}: unhandled announcement ${namespace} ${data.join(" ")}`);
+  }
+  onReply(_frame) {
+  }
+  /** The device read the controller identity (0xC25D attributes 8/9/A), which it does after a re-join. */
+  onIdentityRead() {
+  }
+  onOther(frame2) {
+    this.log.debug(`Control4 ${this.name}: frame ${frame2.text}`);
+  }
+  /** EP2 / EP196 attribute 0x0000 from the check-in (a level on some families). */
+  onNetworkLevel(_value) {
+  }
+  /** EP198 attributes (outlet profile). */
+  onOutletAttributes(_attrs) {
+  }
+  // -- reply capture (protocol probing) ---------------------------------------
+  /** A probe of ours is waiting for the device's answer. */
+  get capturing() {
+    return this.ctx.now() <= this.captureUntil;
+  }
+  armCapture(ms = REPLY_CAPTURE_MS) {
+    this.captureUntil = Math.max(this.captureUntil, this.ctx.now() + ms);
+  }
+  captureReply(frame2) {
+    if (this.ctx.now() > this.captureUntil) return;
+    const t = frame2.tokens;
+    const reply = { sequence: frame2.seq, status: t[1], namespace: t[2], data: t.slice(3), raw_text: frame2.text };
+    this.log.warning(`Control4 REPLY ${this.name}: ${frame2.text}`);
+    this.publish({ c4_reply: reply });
+  }
+  // -- control ----------------------------------------------------------------
+  /** Handle one /set key. Returns the state to publish (optimistic), if any. */
+  async setValue(key, value, meta) {
+    if (key === "send_raw") key = "c4_send";
+    else if (key === "send_get") key = "c4_get";
+    switch (key) {
+      case "c4_send": {
+        const { cmd, dstEp } = commandArg(value);
+        const head = frameHead(value);
+        this.armCapture();
+        await this.sendText(`${head}${hex4(this.nextSeq())} ${cmd}`, dstEp, 1, sendAck(value) ? void 0 : { ack: false });
+        return void 0;
+      }
+      case "c4_raw": {
+        const raw = rawArg(value);
+        this.armCapture();
+        this.log.info(
+          `Control4 ${this.name} -> raw profile 0x${raw.profile.toString(16)} cluster ${raw.cluster} ep ${raw.srcEp}->${raw.dstEp}: ${raw.data.toString("hex")}`
+        );
+        await this.sendFrame(
+          { profile: raw.profile, cluster: raw.cluster, srcEp: raw.srcEp, dstEp: raw.dstEp, data: raw.data },
+          raw.ack ? void 0 : { ack: false }
+        );
+        return void 0;
+      }
+      case "c4_get": {
+        const { cmd, dstEp } = commandArg(value);
+        this.armCapture();
+        await this.sendText(`0g${hex4(this.nextSeq())} ${cmd}`, dstEp);
+        return void 0;
+      }
+      case "c4_identify":
+        await this.ctx.sendIdentity(this, "manual");
+        return void 0;
+    }
+    void meta;
+    throw new UnsupportedKey(`'${key}' is not supported by ${this.model}`);
+  }
+  /** Handle a /get key (poll the device); default: nothing to read. */
+  async getValue(_key) {
+  }
+  /**
+   * The one-off state read to queue at startup, join and announce, for a
+   * device whose state otherwise only comes from its own reports. Default: none.
+   */
+  stateReader() {
+    return void 0;
+  }
+  /** State to publish once at startup (persisted settings). */
+  initialState() {
+    return {};
   }
 };
+function commandArg(value) {
+  if (value && typeof value === "object") {
+    const v = value;
+    return { cmd: String(v.cmd ?? "").trim(), dstEp: Number(v.dst_ep ?? 1) || 1 };
+  }
+  return { cmd: String(value ?? "").trim(), dstEp: 1 };
+}
+function frameHead(value) {
+  const type = value && typeof value === "object" ? value.type : void 0;
+  if (type === void 0 || type === null || type === "") return "0s";
+  const t = String(type).trim();
+  if (/^[a-z]$/.test(t)) return `0${t}`;
+  if (/^[0-9][a-z]$/.test(t)) return t;
+  throw new Error(`c4_send: unknown type '${type}' (a frame type letter, "s" or "i", or a digit then a letter)`);
+}
+function rawArg(value) {
+  const v = value && typeof value === "object" ? value : {};
+  const num2 = (x, fallback) => {
+    if (x === void 0 || x === null || x === "") return fallback;
+    const n = typeof x === "string" && /^0x/i.test(x) ? Number.parseInt(x, 16) : Number(x);
+    if (!Number.isInteger(n) || n < 0 || n > 65535) throw new Error(`c4_raw: '${x}' is not a number`);
+    return n;
+  };
+  const profile = num2(v.profile, 49757);
+  if (![49756, 49757, 49758].includes(profile)) throw new Error("c4_raw: only the Control4 profiles (0xc25c, 0xc25d, 0xc25e)");
+  const hex = String(v.data ?? "").replace(/\s+/g, "");
+  if (!/^([0-9a-fA-F]{2})+$/.test(hex)) throw new Error("c4_raw: data must be hex bytes");
+  return { profile, cluster: num2(v.cluster, 1), srcEp: num2(v.src_ep, 2), dstEp: num2(v.dst_ep, 2), data: Buffer.from(hex, "hex"), ack: sendAck(value) };
+}
+function sendAck(value) {
+  const ack = value && typeof value === "object" ? value.ack : void 0;
+  return ack === void 0 || ack === null || toBool(ack);
+}
+function toBool(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const s = String(value).trim().toLowerCase();
+  return s === "on" || s === "true" || s === "1" || s === "yes";
+}
+function toNumber(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new Error(`'${value}' is not a number`);
+  return Math.max(min, Math.min(max, n));
+}
 
 // src/core/transport.ts
 var DeliveryError = class extends Error {
@@ -2439,7 +2759,8 @@ var Link = class {
     return this.host.devices().filter((d) => (this.pokeFailures.get(d.ieee) ?? 0) >= KEEPALIVE_WARN_AFTER).map((d) => {
       const out = { ieee: d.ieee, model: d.model, quietMin: Math.round(this.quietFor(d.ieee, now) / 6e4) };
       const rebootedAt = this.lastReboot.get(d.ieee);
-      if (rebootedAt !== void 0 && rebootedAt >= (this.lastUnicast.get(d.ieee) ?? this.startedAt)) out.rebootMin = Math.round((now - rebootedAt) / 6e4);
+      if (rebootedAt !== void 0 && rebootedAt >= (this.lastUnicast.get(d.ieee) ?? this.startedAt))
+        out.rebootMin = Math.round((now - rebootedAt) / 6e4);
       return out;
     }).sort((a, b) => b.quietMin - a.quietMin);
   }
@@ -2674,7 +2995,7 @@ var Link = class {
       for (let attempt = 0; attempt < 2; attempt++) {
         if (!current()) return;
         const reply = await this.get(dev, readProp);
-        if (!reply || reply.status !== "000") {
+        if (reply?.status !== "000") {
           this.host.log.debug(`Control4 verify ${label} on ${dev.ieee}: no usable reply`);
           return;
         }
@@ -2705,426 +3026,11 @@ var Link = class {
   }
 };
 
-// src/core/traffic.ts
-var SILENT_AFTER = 30 * 6e4;
-var UNCONFIRMED_LIMIT = 5;
-var CHECK_EVERY = 6e4;
-var TrafficWatch = class {
-  constructor(host) {
-    this.host = host;
-    this.startedAt = host.now();
-  }
-  host;
-  startedAt;
-  lastFrame;
-  unconfirmed = 0;
-  raised = /* @__PURE__ */ new Set();
-  timer;
-  start() {
-    this.startedAt = this.host.now();
-    if (this.timer) return;
-    this.timer = setInterval(() => this.check(), CHECK_EVERY);
-    this.timer.unref?.();
-  }
-  stop() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = void 0;
-  }
-  armed() {
-    return this.host.armed();
-  }
-  problems() {
-    return ["no_frames", "sends_failing"].filter((p) => this.raised.has(p));
-  }
-  /** Seconds since the last Control4 frame; null before the first. */
-  lastFrameSeconds() {
-    return this.lastFrame === void 0 ? null : Math.round((this.host.now() - this.lastFrame) / 1e3);
-  }
-  /** A Control4 frame came through the receive hook. */
-  frame() {
-    this.lastFrame = this.host.now();
-    if (this.lower("no_frames")) this.host.log.info("Control4: Control4 frames are coming through again");
-  }
-  /** A send ended: `messageSent` says whether herdsman confirmed it (undefined: the outcome doesn't tell). */
-  sent(messageSent) {
-    if (messageSent === void 0) return;
-    if (messageSent) {
-      this.unconfirmed = 0;
-      if (this.lower("sends_failing")) this.host.log.info("Control4: sends are confirmed again");
-      return;
-    }
-    this.unconfirmed++;
-    if (this.unconfirmed >= UNCONFIRMED_LIMIT && this.raise("sends_failing")) {
-      this.host.log.error(
-        `Control4: the last ${UNCONFIRMED_LIMIT} sends got no delivery confirmation (no messageSent from herdsman): commands to Control4 devices are not getting through, or not being confirmed. A herdsman, coordinator firmware or adapter change?`
-      );
-    }
-  }
-  check() {
-    if (!this.host.armed()) {
-      this.lower("no_frames");
-      return;
-    }
-    const quiet = this.host.now() - (this.lastFrame ?? this.startedAt);
-    if (quiet >= SILENT_AFTER && this.raise("no_frames")) {
-      this.host.log.error(
-        `Control4: no Control4 frame has come through Zigbee2MQTT for ${Math.round(quiet / 6e4)} min, though this instance has devices that answer keepalives: Control4 buttons here go unheard. Zigbee2MQTT has stopped handing Control4 frames to the extension - a herdsman, coordinator firmware or adapter change?`
-      );
-    }
-  }
-  raise(p) {
-    if (this.raised.has(p)) return false;
-    this.raised.add(p);
-    this.host.changed();
-    return true;
-  }
-  lower(p) {
-    if (!this.raised.delete(p)) return false;
-    this.host.changed();
-    return true;
-  }
-};
-
-// src/devices/base.ts
-var UnsupportedKey = class extends Error {
-};
-var REPLY_CAPTURE_MS = 2e4;
-var DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
-var RELEASING_BUTTONS_KEY = "releasing_buttons";
-var C4Device = class {
-  constructor(ctx, ieee, model, family) {
-    this.ctx = ctx;
-    this.ieee = ieee;
-    this.model = model;
-    this.family = family;
-    for (const button of this.releasingButtons()) ctx.fast.releasers.add(this.tapKey(button));
-  }
-  ctx;
-  ieee;
-  model;
-  family;
-  seq = 64;
-  tsn = 0;
-  timers = /* @__PURE__ */ new Set();
-  sleepers = /* @__PURE__ */ new Set();
-  stopped = false;
-  captureUntil = 0;
-  /** False for a device whose buttons never report a hold: its press is known to be a tap at once. */
-  hasHold = true;
-  get log() {
-    return this.ctx.log;
-  }
-  get name() {
-    return this.ctx.friendlyName(this.ieee);
-  }
-  get isRouter() {
-    return this.ctx.isRouter(this.ieee);
-  }
-  /** Shared 16-bit C4 transport sequence (seeded 0x0040 like the Director). */
-  nextSeq() {
-    const s = this.seq;
-    this.seq = s + 1 & 65535;
-    return s;
-  }
-  nextTsn() {
-    this.tsn = this.tsn + 1 & 255;
-    return this.tsn;
-  }
-  // -- transmit ---------------------------------------------------------------
-  async sendFrame(frame2, options) {
-    if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
-    await this.ctx.link.transmit(this.ieee, async () => {
-      if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
-      await this.ctx.send(this.ieee, frame2, options);
-    });
-  }
-  sendText(text, dstEp = 1, srcEp = 1, options) {
-    this.log.debug(`Control4 ${this.name} -> ${text}`);
-    return this.sendFrame({ profile: PROFILE_BUTTON, cluster: C4_CLUSTER, srcEp, dstEp, data: buildFrame(text) }, options);
-  }
-  /** `0s<seq> <cmd>`. Throws on a delivery failure. */
-  set(cmd, dstEp = 1) {
-    return this.sendText(`0s${hex4(this.nextSeq())} ${cmd}`, dstEp);
-  }
-  /** `0s<seq> <cmd>`, failures logged at debug and swallowed (LED / provisioning frames). */
-  async trySet(cmd, dstEp = 1) {
-    try {
-      await this.set(cmd, dstEp);
-      return true;
-    } catch (error) {
-      this.log.debug(`Control4 ${this.name}: '${cmd}' failed: ${error}`);
-      return false;
-    }
-  }
-  get(prop, timeout) {
-    return this.ctx.link.get(this, prop, timeout);
-  }
-  /** A ZCL attribute read on a standard cluster, paced like every other send. Throws on no answer. */
-  async zclRead(ep, cluster, attrs) {
-    if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
-    return this.ctx.link.transmit(this.ieee, async () => {
-      if (this.stopped) throw new Error(`Control4 ${this.ieee}: handler stopped`);
-      this.log.debug(`Control4 ${this.name} -> ZCL read ${cluster} ${attrs.join(", ")}`);
-      return this.ctx.zclRead(this.ieee, ep, cluster, attrs);
-    });
-  }
-  // -- state ------------------------------------------------------------------
-  publish(payload) {
-    if (this.stopped || Object.keys(payload).length === 0) return;
-    this.ctx.publish(this.ieee, payload);
-  }
-  state() {
-    return this.ctx.state(this.ieee);
-  }
-  /** Whether the state published last says the load is on. */
-  isOn() {
-    return String(this.state().state ?? "OFF").toUpperCase() === "ON";
-  }
-  setting(key, fallback) {
-    const v = this.ctx.store.get(this.ieee, key);
-    return v === void 0 || v === null ? fallback : v;
-  }
-  saveSetting(key, value) {
-    this.ctx.store.set(this.ieee, key, value);
-  }
-  option(key) {
-    return this.ctx.deviceOption(this.ieee, key);
-  }
-  /**
-   * This device's tap window (ms): its `tap_window` option (seconds, a number
-   * or decimal text) clamped to the allowed range, else the default.
-   */
-  tapWindow() {
-    const raw = this.option(TAP_WINDOW_OPTION);
-    const seconds = typeof raw === "number" ? raw : typeof raw === "string" && DECIMAL.test(raw) ? Number(raw) : Number.NaN;
-    if (Number.isNaN(seconds)) return DEFAULT_TAP_WINDOW_MS;
-    return Math.min(MAX_TAP_WINDOW_MS, Math.max(MIN_TAP_WINDOW_MS, seconds * 1e3));
-  }
-  // -- timers -----------------------------------------------------------------
-  after(ms, fn) {
-    const t = setTimeout(() => {
-      this.timers.delete(t);
-      if (this.stopped) return;
-      this.spawn(fn());
-    }, ms);
-    t.unref?.();
-    this.timers.add(t);
-    return t;
-  }
-  cancel(t) {
-    if (!t) return;
-    clearTimeout(t);
-    this.timers.delete(t);
-  }
-  /** A sleep that ends early (resolves) when the handler stops, so nothing awaits forever. */
-  sleep(ms) {
-    if (this.stopped) return Promise.resolve();
-    return new Promise((resolve) => {
-      const wake = () => {
-        clearTimeout(t);
-        this.timers.delete(t);
-        this.sleepers.delete(wake);
-        resolve();
-      };
-      const t = setTimeout(wake, ms);
-      t.unref?.();
-      this.timers.add(t);
-      this.sleepers.add(wake);
-    });
-  }
-  spawn(value) {
-    if (value && typeof value.catch === "function") {
-      value.catch((error) => this.log.debug(`Control4 ${this.name}: background task failed: ${error?.stack ?? error}`));
-    }
-  }
-  // -- lifecycle --------------------------------------------------------------
-  /**
-   * Called once the handler exists (startup, join, or model learned). On a
-   * hot-load (`hotLoad`) Zigbee2MQTT kept running, so the device already had its
-   * once-per-process start-up work: skip it.
-   */
-  start(_hotLoad = false) {
-  }
-  /** LED colour keys, for devices that have them (keypads, dimmers, LED bars). */
-  get ledKeys() {
-    return void 0;
-  }
-  stop() {
-    this.stopped = true;
-    for (const t of this.timers) clearTimeout(t);
-    this.timers.clear();
-    for (const wake of [...this.sleepers]) wake();
-    this.sleepers.clear();
-  }
-  /** Re-adopt a handler after a model change keeps the same family. */
-  get alive() {
-    return !this.stopped;
-  }
-  // -- actions ----------------------------------------------------------------
-  /**
-   * Publish a button gesture as a Z2M action (`button_1_double`) with the
-   * ZHA command name alongside. The fast-tap counter sees the gesture
-   * first, so its tap index is known before the gesture is published; a
-   * fast count the gesture closes is published after it.
-   */
-  emitAction(button, gesture, extra = {}, fastTaps = true) {
-    const emitFast = (fast, allTapsKnown) => this.emitAction(button, fast, { ...extra, action_known_taps: allTapsKnown }, false);
-    if (fastTaps && gesture === "release") this.rememberRelease(button);
-    const tap = fastTaps ? this.ctx.fast.observe(this.tapKey(button), gesture, this.tapWindow(), emitFast, this.hasHold) : {};
-    const payload = {
-      action: `${button}_${gesture}`,
-      action_button: button,
-      action_gesture: gesture,
-      action_command: GESTURES[gesture],
-      ...extra
-    };
-    this.publish(payload);
-    this.sendEvent(payload);
-    if (tap.knownTapIndex !== void 0) this.emitAction(button, "tap_known", { ...extra, action_tap_index: tap.knownTapIndex }, false);
-    if (tap.fastCount) emitFast(tap.fastCount, tap.allTapsKnown === true);
-  }
-  tapKey(button) {
-    return `${this.ieee}:${button}`;
-  }
-  /** The buttons seen sending a release, kept in the saved settings across starts. */
-  releasingButtons() {
-    const stored = this.setting(RELEASING_BUTTONS_KEY);
-    return Array.isArray(stored) ? stored.filter((b) => typeof b === "string") : [];
-  }
-  /** Keep a button's first release; one already kept writes nothing. */
-  rememberRelease(button) {
-    const buttons = this.releasingButtons();
-    if (!buttons.includes(button)) this.saveSetting(RELEASING_BUTTONS_KEY, [...buttons, button]);
-  }
-  /** A non-button action (motion_wake, menu_select, led_notification_end ...). */
-  emitEvent(action, extra = {}) {
-    const payload = { action, action_command: action, ...extra };
-    this.publish(payload);
-    this.sendEvent(payload);
-  }
-  /** The same event for blueprints: `action_` prefixes dropped, IEEE and model added. */
-  sendEvent(payload) {
-    if (this.stopped) return;
-    const event = { ieee: this.ieee, device: this.name, model: this.model };
-    for (const [k, v] of Object.entries(payload)) event[k === "action" ? k : k.replace(/^action_/, "")] = v;
-    this.ctx.event(this.ieee, event);
-  }
-  // -- receive ----------------------------------------------------------------
-  handleAscii(frame2) {
-    const t = frame2.tokens;
-    if (t.length < 2) return;
-    if (frame2.kind === "reply") {
-      this.onReply(frame2);
-      this.captureReply(frame2);
-      return;
-    }
-    if (t[1] === "sa" && t.length >= 3) {
-      this.onAnnounce(t[2], t.slice(3));
-      return;
-    }
-    this.onOther(frame2);
-  }
-  onAnnounce(namespace, data) {
-    this.log.debug(`Control4 ${this.name}: unhandled announcement ${namespace} ${data.join(" ")}`);
-  }
-  onReply(_frame) {
-  }
-  /** The device read the controller identity (0xC25D attributes 8/9/A), which it does after a re-join. */
-  onIdentityRead() {
-  }
-  onOther(frame2) {
-    this.log.debug(`Control4 ${this.name}: frame ${frame2.text}`);
-  }
-  /** EP2 / EP196 attribute 0x0000 from the check-in (a level on some families). */
-  onNetworkLevel(_value) {
-  }
-  /** EP198 attributes (outlet profile). */
-  onOutletAttributes(_attrs) {
-  }
-  // -- reply capture (protocol probing) ---------------------------------------
-  armCapture(ms = REPLY_CAPTURE_MS) {
-    this.captureUntil = Math.max(this.captureUntil, this.ctx.now() + ms);
-  }
-  captureReply(frame2) {
-    if (this.ctx.now() > this.captureUntil) return;
-    const t = frame2.tokens;
-    const reply = { sequence: frame2.seq, status: t[1], namespace: t[2], data: t.slice(3), raw_text: frame2.text };
-    this.log.warning(`Control4 REPLY ${this.name}: ${frame2.text}`);
-    this.publish({ c4_reply: reply });
-  }
-  // -- control ----------------------------------------------------------------
-  /** Handle one /set key. Returns the state to publish (optimistic), if any. */
-  async setValue(key, value, meta) {
-    if (key === "send_raw") key = "c4_send";
-    else if (key === "send_get") key = "c4_get";
-    switch (key) {
-      case "c4_send": {
-        const { cmd, dstEp } = commandArg(value);
-        const type = sendType(value);
-        this.armCapture();
-        if (type === "i") await this.sendText(`0i${hex4(this.nextSeq())} ${cmd}`, dstEp);
-        else await this.set(cmd, dstEp);
-        return void 0;
-      }
-      case "c4_get": {
-        const { cmd, dstEp } = commandArg(value);
-        this.armCapture();
-        await this.sendText(`0g${hex4(this.nextSeq())} ${cmd}`, dstEp);
-        return void 0;
-      }
-      case "c4_identify":
-        await this.ctx.sendIdentity(this, "manual");
-        return void 0;
-    }
-    void meta;
-    throw new UnsupportedKey(`'${key}' is not supported by ${this.model}`);
-  }
-  /** Handle a /get key (poll the device); default: nothing to read. */
-  async getValue(_key) {
-  }
-  /**
-   * The one-off state read to queue at startup, join and announce, for a
-   * device whose state otherwise only comes from its own reports. Default: none.
-   */
-  stateReader() {
-    return void 0;
-  }
-  /** State to publish once at startup (persisted settings). */
-  initialState() {
-    return {};
-  }
-};
-function commandArg(value) {
-  if (value && typeof value === "object") {
-    const v = value;
-    return { cmd: String(v.cmd ?? "").trim(), dstEp: Number(v.dst_ep ?? 1) || 1 };
-  }
-  return { cmd: String(value ?? "").trim(), dstEp: 1 };
-}
-function sendType(value) {
-  const type = value && typeof value === "object" ? value.type : void 0;
-  if (type === void 0 || type === null || type === "") return "s";
-  const t = String(type).trim();
-  if (t === "s" || t === "i") return t;
-  throw new Error(`c4_send: unknown type '${type}' (use "s" or "i")`);
-}
-function toBool(value) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  const s = String(value).trim().toLowerCase();
-  return s === "on" || s === "true" || s === "1" || s === "yes";
-}
-function toNumber(value, min, max) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new Error(`'${value}' is not a number`);
-  return Math.max(min, Math.min(max, n));
-}
-
 // src/devices/animkeys.ts
 var ANIMATION_KEYS = ["led_effect", "led_status", "led_stop", "led_refresh"];
 var AnimationKeys = class {
+  animator;
   constructor(dev, host, buttons, protocol) {
-    this.dev = dev;
     const full = {
       get ieee() {
         return dev.ieee;
@@ -3152,8 +3058,6 @@ var AnimationKeys = class {
     };
     this.animator = dev.ctx.anim.register(full, buttons, protocol);
   }
-  dev;
-  animator;
   handles(key) {
     return ANIMATION_KEYS.includes(key);
   }
@@ -3489,9 +3393,17 @@ var rgb = (a, p) => `${byte(a[`${p}_red`])}${byte(a[`${p}_green`])}${byte(a[`${p
 var count = (a) => Number.parseInt(byte(a.num_buttons, 12), 16);
 var LED_CLUSTER_COMMANDS = {
   set_led_color: (a) => [`c4.dmx.led ${byte(a.button_id)} 03 ${rgb(a, "on")}`, `c4.dmx.led ${byte(a.button_id)} 04 ${rgb(a, "off")}`],
-  set_led_mode: (a) => [`c4.dmx.led ${byte(a.button_id)} 00 ${byte(a.mode)}`, `c4.dmx.led ${byte(a.button_id)} 01 ${byte(a.behavior)}`, `c4.dmx.led ${byte(a.button_id)} 02 ${byte(a.color_mode)}`],
+  set_led_mode: (a) => [
+    `c4.dmx.led ${byte(a.button_id)} 00 ${byte(a.mode)}`,
+    `c4.dmx.led ${byte(a.button_id)} 01 ${byte(a.behavior)}`,
+    `c4.dmx.led ${byte(a.button_id)} 02 ${byte(a.color_mode)}`
+  ],
   set_led_all_same_color: (a) => Array.from({ length: count(a) }, (_, b) => [`c4.dmx.led ${hex2(b)} 03 ${rgb(a, "on")}`, `c4.dmx.led ${hex2(b)} 04 ${rgb(a, "off")}`]).flat(),
-  set_all_led_modes: (a) => Array.from({ length: count(a) }, (_, b) => [`c4.dmx.led ${hex2(b)} 00 ${byte(a.mode)}`, `c4.dmx.led ${hex2(b)} 01 ${byte(a.behavior)}`, `c4.dmx.led ${hex2(b)} 02 ${byte(a.color_mode)}`]).flat(),
+  set_all_led_modes: (a) => Array.from({ length: count(a) }, (_, b) => [
+    `c4.dmx.led ${hex2(b)} 00 ${byte(a.mode)}`,
+    `c4.dmx.led ${hex2(b)} 01 ${byte(a.behavior)}`,
+    `c4.dmx.led ${hex2(b)} 02 ${byte(a.color_mode)}`
+  ]).flat(),
   set_led_single_on: (a) => Array.from({ length: 12 }, (_, i) => `c4.dmx.led ${hex2(i)} 01 ${i === Number(a.button_idx) ? byte(a.behavior_on) : byte(a.behavior_others)}`)
 };
 async function ledClusterCommand(dev, key, value) {
@@ -3737,7 +3649,9 @@ var PowerSensor = class _PowerSensor extends Poller {
     if (typeof last === "number" && count2 < last) {
       offset += last - count2;
       this.dev.saveSetting(ENERGY_OFFSET_KEY, offset);
-      this.dev.log.info(`Control4 ${this.dev.name}: its energy counter fell from ${last} to ${count2} (a reboot restores its last save); the total carries on from ${last}`);
+      this.dev.log.info(
+        `Control4 ${this.dev.name}: its energy counter fell from ${last} to ${count2} (a reboot restores its last save); the total carries on from ${last}`
+      );
     }
     if (last !== count2) this.dev.saveSetting(ENERGY_RAW_KEY, count2);
     return Math.round((count2 + offset) * ENERGY_WH_PER_COUNT) / 1e3;
@@ -3953,7 +3867,7 @@ var Dim1z = class extends DmDevice {
       const ms = this.hold.sent(delivered);
       if (ms !== void 0) this.noteRamp(ms);
     },
-    // Its `rtl` time is a full 0-100 % sweep (tested 2026-11-07 on Linen Closet).
+    // Its `rtl` time is a full 0-100 % sweep (tested 2026-11-07 on a DIM1-Z).
     hardwareFade: "sweep",
     clampPct: (pct) => this.tv.clampPct(pct),
     liveLevel: () => this.hold.current(),
@@ -4202,7 +4116,8 @@ var Dim1z = class extends DmDevice {
     }
     this.saveSetting(SETTINGS_READ_KEY, Date.now());
     this.publish(read);
-    if (changed.length) this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k]} -> ${read[k]}`).join(", ")}`);
+    if (changed.length)
+      this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k]} -> ${read[k]}`).join(", ")}`);
     else this.log.debug(`Control4 ${this.name}: settings read from the device, as shown`);
     return "read";
   }
@@ -4285,7 +4200,9 @@ var Fs1z = class extends DmDevice {
       this.after(FS1_CONFIRM_TIMEOUT, () => {
         const r = this.lastReport;
         if (!r || r.at >= sentAt) return;
-        this.log.warning(`Control4 ${this.name}: no c4.dm.t0c confirmation within ${FS1_CONFIRM_TIMEOUT / 1e3}s - reverting to the last reported state`);
+        this.log.warning(
+          `Control4 ${this.name}: no c4.dm.t0c confirmation within ${FS1_CONFIRM_TIMEOUT / 1e3}s - reverting to the last reported state`
+        );
         this.publish({ state: r.on ? "ON" : "OFF" });
       });
       return result;
@@ -4420,12 +4337,20 @@ async function writeBehaviour(dev, wire, key, value) {
   const cmd = `c4.dmx.btn ${hex2(wire)} 01 ${code}`;
   await dev.set(cmd);
   dev.saveSetting(key, behaviour);
-  void dev.ctx.link.scheduleVerify(dev, `dmx btn ${hex2(wire)}`, `c4.dmx.btn ${hex2(wire)} 01`, (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour], () => dev.trySet(cmd), 500, (v) => {
-    const actual = behaviourFromCode(lastValue(v));
-    if (!actual) return;
-    dev.saveSetting(key, actual);
-    dev.publish({ [key]: actual });
-  });
+  void dev.ctx.link.scheduleVerify(
+    dev,
+    `dmx btn ${hex2(wire)}`,
+    `c4.dmx.btn ${hex2(wire)} 01`,
+    (v) => parseHex(lastValue(v)) === BUTTON_BEHAVIOURS[behaviour],
+    () => dev.trySet(cmd),
+    500,
+    (v) => {
+      const actual = behaviourFromCode(lastValue(v));
+      if (!actual) return;
+      dev.saveSetting(key, actual);
+      dev.publish({ [key]: actual });
+    }
+  );
   return { [key]: behaviour };
 }
 function modeFromCode(hex) {
@@ -4478,7 +4403,8 @@ var Gen3Device = class extends DmxDevice {
         prop: `c4.dmx.led ${hex2(slot)} 01`,
         parse: (v) => {
           const mode = modeFromCode(lastValue(v));
-          if (!mode) this.log.info(`Control4 ${this.name}: LED slot ${slot} is in a mode the extension doesn't name (${lastValue(v)}); left as it is`);
+          if (!mode)
+            this.log.info(`Control4 ${this.name}: LED slot ${slot} is in a mode the extension doesn't name (${lastValue(v)}); left as it is`);
           return mode ? { [key]: mode } : void 0;
         }
       });
@@ -4529,7 +4455,8 @@ var Gen3Device = class extends DmxDevice {
     const changed = Object.keys(read).filter((k) => shown[k] !== read[k]);
     for (const [key, value] of Object.entries(read)) this.saveSetting(key, value);
     this.publish(read);
-    if (changed.length) this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k] ?? "-"} -> ${read[k]}`).join(", ")}`);
+    if (changed.length)
+      this.log.info(`Control4 ${this.name}: settings read from the device: ${changed.map((k) => `${k} ${shown[k] ?? "-"} -> ${read[k]}`).join(", ")}`);
     else this.log.debug(`Control4 ${this.name}: settings read from the device, as shown`);
   }
   // -- health read at each start and re-join --------------------------------
@@ -4569,7 +4496,8 @@ var Gen3Device = class extends DmxDevice {
     const was = this.setting(FAULT_KEY);
     this.saveSetting(FAULT_KEY, fault);
     this.publish({ [FAULT_KEY]: fault });
-    if (fault && was !== true) this.log.warning(`Control4 ${this.name}: the device reports a fault (c4.dmx.warn 00 = ${hex}): a short circuit or overload on its load?`);
+    if (fault && was !== true)
+      this.log.warning(`Control4 ${this.name}: the device reports a fault (c4.dmx.warn 00 = ${hex}): a short circuit or overload on its load?`);
     else if (!fault && was === true) this.log.info(`Control4 ${this.name}: its fault has cleared`);
   }
   onWarning(data) {
@@ -4584,12 +4512,20 @@ var Gen3Device = class extends DmxDevice {
     await send();
     this.saveSetting(TX_POWER_KEY, dbm);
     this.saveSetting(TX_POWER_SET_KEY, true);
-    void this.ctx.link.scheduleVerify(this, "sy.zpw", "c4.sy.zpw", (v) => signedByte(lastValue(v)) === dbm, send, 500, (v) => {
-      const actual = signedByte(lastValue(v));
-      if (actual === void 0) return;
-      this.saveSetting(TX_POWER_KEY, actual);
-      this.publish({ [TX_POWER_KEY]: actual });
-    });
+    void this.ctx.link.scheduleVerify(
+      this,
+      "sy.zpw",
+      "c4.sy.zpw",
+      (v) => signedByte(lastValue(v)) === dbm,
+      send,
+      500,
+      (v) => {
+        const actual = signedByte(lastValue(v));
+        if (actual === void 0) return;
+        this.saveSetting(TX_POWER_KEY, actual);
+        this.publish({ [TX_POWER_KEY]: actual });
+      }
+    );
     return { [TX_POWER_KEY]: dbm };
   }
   /** A TX power set from Home Assistant is put back if the device has lost it (whether it survives a power cut is unknown). */
@@ -4598,7 +4534,7 @@ var Gen3Device = class extends DmxDevice {
     const want = this.setting(TX_POWER_KEY);
     if (typeof want !== "number") return;
     const reply = await this.get("c4.sy.zpw");
-    if (!reply || reply.status !== "000") return;
+    if (reply?.status !== "000") return;
     const have = signedByte(lastValue(reply.values));
     if (have === void 0 || have === want) return;
     this.log.info(`Control4 ${this.name}: its TX power is ${have} dBm, not the ${want} dBm set: putting it back`);
@@ -4614,7 +4550,10 @@ var Gen3Device = class extends DmxDevice {
     const slots = new Set(this.borrowedSlots());
     if (borrowed) slots.add(slot);
     else slots.delete(slot);
-    this.saveSetting(LED_BORROWED_KEY, [...slots].sort((a, b) => a - b));
+    this.saveSetting(
+      LED_BORROWED_KEY,
+      [...slots].sort((a, b) => a - b)
+    );
   }
   // -- keys -------------------------------------------------------------------
   async setValue(key, value, meta) {
@@ -4697,7 +4636,8 @@ var PaddleDevice = class extends Gen3Device {
     }
     for (const h of PADDLE_HALVES) {
       const bound = this.setting(`led_${h.slot + 1}_bound`);
-      if (typeof bound === "boolean" && this.setting(`led_${h.half}_mode`) === void 0) this.saveSetting(`led_${h.half}_mode`, bound ? "push_release" : "programmed");
+      if (typeof bound === "boolean" && this.setting(`led_${h.half}_mode`) === void 0)
+        this.saveSetting(`led_${h.half}_mode`, bound ? "push_release" : "programmed");
     }
   }
   loadOn() {
@@ -5083,7 +5023,8 @@ var Kc120277 = class extends Gen3Device {
   migrateBound() {
     for (let i = 1; i <= KC_LED_SLOTS; i++) {
       const bound = this.setting(`led_${i}_bound`);
-      if (typeof bound === "boolean" && this.setting(`led_${i}_mode`) === void 0) this.saveSetting(`led_${i}_mode`, bound ? "push_release" : "programmed");
+      if (typeof bound === "boolean" && this.setting(`led_${i}_mode`) === void 0)
+        this.saveSetting(`led_${i}_mode`, bound ? "push_release" : "programmed");
     }
   }
   /** Wires a press came from that the button_layout option doesn't list (each warned of once). */
@@ -5120,7 +5061,11 @@ var Kc120277 = class extends Gen3Device {
       const wire = kcWireOf(n, { wires: void 0, numbering: kcNumbering(this.option(KC_NUMBERING_OPTION)) === "pairs" ? "pairs" : "slots" });
       if (wire !== void 0 && wire < KC_POSITIONS) wires.add(wire);
     }
-    if (wires.size) this.saveSetting(KC_WIRES_KEY, [...wires].sort((a, b) => a - b));
+    if (wires.size)
+      this.saveSetting(
+        KC_WIRES_KEY,
+        [...wires].sort((a, b) => a - b)
+      );
   }
   /** A press from a wire not seen before: a fitted button. Its actions and LED are exposed from now on. */
   learnWire(wire) {
@@ -5128,11 +5073,16 @@ var Kc120277 = class extends Gen3Device {
     const set = parseLayout(this.option(KC_LAYOUT_OPTION));
     if (set && !set.includes(wire) && !this.unlisted.has(wire)) {
       this.unlisted.add(wire);
-      this.log.warning(`Control4 ${this.name}: a button at position ${wire + 1} is missing from its button_layout option (${this.option(KC_LAYOUT_OPTION)}): add it there`);
+      this.log.warning(
+        `Control4 ${this.name}: a button at position ${wire + 1} is missing from its button_layout option (${this.option(KC_LAYOUT_OPTION)}): add it there`
+      );
     }
     const known = this.learnedWires() ?? [];
     if (known.includes(wire)) return;
-    this.saveSetting(KC_WIRES_KEY, [...known, wire].sort((a, b) => a - b));
+    this.saveSetting(
+      KC_WIRES_KEY,
+      [...known, wire].sort((a, b) => a - b)
+    );
     this.log.info(`Control4 ${this.name}: a button at position ${wire + 1} (wire ${wire}); its actions and LED are exposed`);
     if (parseLayout(this.option(KC_LAYOUT_OPTION)) === void 0) this.ctx.exposesChanged(this.ieee);
   }
@@ -5165,7 +5115,7 @@ var Kc120277 = class extends Gen3Device {
       }
     ];
   }
-  /** The backlight (`c4.dmx.blc 00 05`, black = off) and its brightness (`blc 00 03`), both tested on the Kitchen Keypad 2026-11-07. */
+  /** The backlight (`c4.dmx.blc 00 05`, black = off) and its brightness (`blc 00 03`), both tested on the Keypad A 2026-11-07. */
   async setBacklight(key, value) {
     let cmd;
     let shown;
@@ -5843,7 +5793,23 @@ var Sr260 = class extends Remote {
       });
     }
   }
+  /**
+   * The rows, then the text colour when one is set: every path that pushes rows (setup,
+   * wake, /set) re-applies it. The colour going undelivered doesn't make the rows count as
+   * undelivered; the next push sends it again.
+   */
+  async sendRoomInfo(room, source) {
+    await super.sendRoomInfo(room, source);
+    const color = this.setting("text_color_byte");
+    if (typeof color === "number") await this.trySet(`c4.zr.tc ${hex2(color)}`);
+  }
   async setValue(key, value, meta) {
+    if (key === "text_color") {
+      const byte2 = rgb332(value);
+      this.saveSetting("text_color_byte", byte2);
+      if (byte2 !== void 0) await this.set(`c4.zr.tc ${hex2(byte2)}`);
+      return { text_color: byte2 === void 0 ? "" : rgb332Hex(byte2) };
+    }
     if (key === "show_message") {
       const obj = value && typeof value === "object" ? value : { message: value };
       await this.showMessage(String(obj.message ?? ""), obj.icon === void 0 ? void 0 : Number(obj.icon), Number(obj.seconds ?? 0) || 0);
@@ -5852,6 +5818,25 @@ var Sr260 = class extends Remote {
     return super.setValue(key, value, meta);
   }
 };
+function rgb332(value) {
+  if (value === void 0 || value === null || typeof value === "string" && !value.trim()) return void 0;
+  if (typeof value === "number" || typeof value === "string" && /^\s*\d+\s*$/.test(value)) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 255) throw new Error(`text colour byte ${value} is not 0-255`);
+    return n;
+  }
+  const obj = value;
+  const rgb2 = typeof value === "object" && !Array.isArray(value) ? [obj.r, obj.g, obj.b] : value;
+  if (Array.isArray(rgb2) && rgb2.some((c) => c === void 0 || c === null || !Number.isFinite(Number(c)))) {
+    throw new Error(`text colour ${JSON.stringify(value)} needs numeric r, g and b`);
+  }
+  const [r, g, b] = parseColour(rgb2);
+  return r & 224 | (g & 224) >> 3 | b >> 6;
+}
+function rgb332Hex(byte2) {
+  const part = (v, max) => hex2(Math.round(v * 255 / max));
+  return `#${part(byte2 >> 5 & 7, 7)}${part(byte2 >> 2 & 7, 7)}${part(byte2 & 3, 3)}`;
+}
 
 // src/devices/rosw120.ts
 var ROSW_READBACK_DELAY = 1e3;
@@ -5963,7 +5948,8 @@ var Unsupported = class extends C4Device {
     if (this.framesLogged < FRAME_LOG_LIMIT) {
       this.framesLogged++;
       this.log.info(`Control4 UNSUPPORTED ${this.name} (${this.model}) <- ${frame2.text}`);
-      if (this.framesLogged === FRAME_LOG_LIMIT) this.log.info(`Control4 ${this.name}: ${FRAME_LOG_LIMIT} frames logged; the rest of this run's go to debug`);
+      if (this.framesLogged === FRAME_LOG_LIMIT)
+        this.log.info(`Control4 ${this.name}: ${FRAME_LOG_LIMIT} frames logged; the rest of this run's go to debug`);
     }
     super.handleAscii(frame2);
   }
@@ -5995,7 +5981,8 @@ var Unsupported = class extends C4Device {
 };
 var answered = (found, prefix) => Object.entries(found).some(([prop, r]) => prop.startsWith(prefix) && r.startsWith("000"));
 function fingerprintHint(found) {
-  if (Object.values(found).every((r) => r === "no reply")) return "it answered no Get: an older model, or out of reach. Its button and check-in frames above are what there is to go on";
+  if (Object.values(found).every((r) => r === "no reply"))
+    return "it answered no Get: an older model, or out of reach. Its button and check-in frames above are what there is to go on";
   const parts = [];
   if (answered(found, "c4.dmx.")) parts.push("it speaks c4.dmx, the Gen3 board of the APD120 / SW120277 / KC120277");
   if (answered(found, "c4.dm.")) parts.push(`it has a c4.dm load${found["c4.dm.tv 01 00"]?.startsWith("000") ? " (two channels answer)" : ""}`);
@@ -6124,7 +6111,11 @@ var Z2io = class extends C4Device {
       const closed = Boolean(cts & 1 << ch);
       out[`contact_${ch + 1}`] = closed;
       if (this.contacts[ch] !== closed) {
-        changes.push({ channel: ch + 1, state: closed ? "closed" : "open", previous: this.contacts[ch] === void 0 ? "unknown" : this.contacts[ch] ? "closed" : "open" });
+        changes.push({
+          channel: ch + 1,
+          state: closed ? "closed" : "open",
+          previous: this.contacts[ch] === void 0 ? "unknown" : this.contacts[ch] ? "closed" : "open"
+        });
         this.contacts[ch] = closed;
       }
     }
@@ -6237,6 +6228,158 @@ var Z2io = class extends C4Device {
   }
   initialState() {
     return { io_mode: z2ioModeName(this.mode), pulse_duration: this.setting("pulse_duration", DEFAULT_PULSE_MS) };
+  }
+};
+
+// src/core/fasttap.ts
+var FAST_TAP_RELEASE_TIMEOUT = 2e3;
+var FAST = { 1: "fast_single", 2: "fast_double", 3: "fast_triple" };
+var FastTaps = class {
+  taps = /* @__PURE__ */ new Map();
+  /** Keys seen sending a release; devices add the ones kept in their saved settings when they start. */
+  releasers = /* @__PURE__ */ new Set();
+  get pending() {
+    return this.taps.size;
+  }
+  /**
+   * Feed one gesture before it is published. A sequence's fast count comes
+   * back one of two ways: `emit` fires it when a tap window ends the
+   * sequence, and a release that ends it returns it as `fastCount`, which
+   * the caller must publish after the release or it is lost. On a device
+   * with no hold (`hasHold` false) a press is known to be a tap at once.
+   */
+  observe(key, gesture, windowMs, emit, hasHold = true) {
+    const state = this.taps.get(key);
+    const clear = (s2) => {
+      if (s2?.timer) clearTimeout(s2.timer);
+    };
+    const end = (done) => {
+      this.taps.delete(key);
+      clear(done);
+      return FAST[done.count] ?? "fast_quadruple";
+    };
+    const windowClosed = () => {
+      const current = this.taps.get(key);
+      if (!current) return;
+      current.timer = void 0;
+      if (!current.awaitingRelease) {
+        emit(end(current), current.allTapsKnown);
+        return;
+      }
+      current.expired = true;
+      current.timer = setTimeout(() => this.taps.delete(key), FAST_TAP_RELEASE_TIMEOUT);
+      current.timer.unref?.();
+    };
+    if (gesture === "hold") {
+      clear(state);
+      this.taps.delete(key);
+      return {};
+    }
+    if (gesture === "release") {
+      this.releasers.add(key);
+      if (state) {
+        const knownTapIndex = state.awaitingRelease && state.allTapsKnown ? state.count : void 0;
+        state.awaitingRelease = false;
+        if (state.expired) return { tapIndex: state.count, fastCount: end(state), allTapsKnown: state.allTapsKnown, knownTapIndex };
+        return { tapIndex: state.count, knownTapIndex };
+      }
+      return {};
+    }
+    if (gesture !== "press") return {};
+    clear(state);
+    const s = state && !state.expired ? state : { count: 0, windowMs, awaitingRelease: false, expired: false, allTapsKnown: true };
+    if (s.awaitingRelease) s.allTapsKnown = false;
+    s.count += 1;
+    s.awaitingRelease = this.releasers.has(key);
+    if (!s.awaitingRelease && hasHold) s.allTapsKnown = false;
+    s.timer = setTimeout(windowClosed, s.windowMs);
+    s.timer.unref?.();
+    this.taps.set(key, s);
+    return { tapIndex: s.count, knownTapIndex: hasHold ? void 0 : s.count };
+  }
+  clear() {
+    for (const s of this.taps.values()) if (s.timer) clearTimeout(s.timer);
+    this.taps.clear();
+  }
+};
+
+// src/core/traffic.ts
+var SILENT_AFTER = 30 * 6e4;
+var UNCONFIRMED_LIMIT = 5;
+var CHECK_EVERY = 6e4;
+var TrafficWatch = class {
+  constructor(host) {
+    this.host = host;
+    this.startedAt = host.now();
+  }
+  host;
+  startedAt;
+  lastFrame;
+  unconfirmed = 0;
+  raised = /* @__PURE__ */ new Set();
+  timer;
+  start() {
+    this.startedAt = this.host.now();
+    if (this.timer) return;
+    this.timer = setInterval(() => this.check(), CHECK_EVERY);
+    this.timer.unref?.();
+  }
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = void 0;
+  }
+  armed() {
+    return this.host.armed();
+  }
+  problems() {
+    return ["no_frames", "sends_failing"].filter((p) => this.raised.has(p));
+  }
+  /** Seconds since the last Control4 frame; null before the first. */
+  lastFrameSeconds() {
+    return this.lastFrame === void 0 ? null : Math.round((this.host.now() - this.lastFrame) / 1e3);
+  }
+  /** A Control4 frame came through the receive hook. */
+  frame() {
+    this.lastFrame = this.host.now();
+    if (this.lower("no_frames")) this.host.log.info("Control4: Control4 frames are coming through again");
+  }
+  /** A send ended: `messageSent` says whether herdsman confirmed it (undefined: the outcome doesn't tell). */
+  sent(messageSent) {
+    if (messageSent === void 0) return;
+    if (messageSent) {
+      this.unconfirmed = 0;
+      if (this.lower("sends_failing")) this.host.log.info("Control4: sends are confirmed again");
+      return;
+    }
+    this.unconfirmed++;
+    if (this.unconfirmed >= UNCONFIRMED_LIMIT && this.raise("sends_failing")) {
+      this.host.log.error(
+        `Control4: the last ${UNCONFIRMED_LIMIT} sends got no delivery confirmation (no messageSent from herdsman): commands to Control4 devices are not getting through, or not being confirmed. A herdsman, coordinator firmware or adapter change?`
+      );
+    }
+  }
+  check() {
+    if (!this.host.armed()) {
+      this.lower("no_frames");
+      return;
+    }
+    const quiet = this.host.now() - (this.lastFrame ?? this.startedAt);
+    if (quiet >= SILENT_AFTER && this.raise("no_frames")) {
+      this.host.log.error(
+        `Control4: no Control4 frame has come through Zigbee2MQTT for ${Math.round(quiet / 6e4)} min, though this instance has devices that answer keepalives: Control4 buttons here go unheard. Zigbee2MQTT has stopped handing Control4 frames to the extension - a herdsman, coordinator firmware or adapter change?`
+      );
+    }
+  }
+  raise(p) {
+    if (this.raised.has(p)) return false;
+    this.raised.add(p);
+    this.host.changed();
+    return true;
+  }
+  lower(p) {
+    if (!this.raised.delete(p)) return false;
+    this.host.changed();
+    return true;
   }
 };
 
@@ -6642,7 +6785,9 @@ var Runtime = class {
         }
         if (sent === false) return;
       }
-      this.log.info(`Control4: ${name()}'s controller identity is still not delivered after ${IDENTITY_RETRIES.length} retries - it may count its controller as lost and re-join`);
+      this.log.info(
+        `Control4: ${name()}'s controller identity is still not delivered after ${IDENTITY_RETRIES.length} retries - it may count its controller as lost and re-join`
+      );
     } finally {
       this.recovering.delete(ieee);
     }
@@ -6680,7 +6825,9 @@ var Runtime = class {
       this.log.info(`Control4: answered a check-in from network address ${nwk}, which Zigbee2MQTT does not know yet, with the controller identity`);
     } catch (error) {
       this.traffic.sent(messageSentOf(error));
-      this.log.info(`Control4: the controller identity to network address ${nwk} (not known to Zigbee2MQTT yet) was not delivered: ${error.message}`);
+      this.log.info(
+        `Control4: the controller identity to network address ${nwk} (not known to Zigbee2MQTT yet) was not delivered: ${error.message}`
+      );
     }
   }
   /**
@@ -6742,6 +6889,12 @@ var Runtime = class {
     if (!isC4Ieee(ieee)) return false;
     if (frame2.unicast || !this.ctx.isRouter(ieee)) this.host.noteSeen(ieee, frame2.lqi, frame2.rssi);
     this.link.noteRx(ieee, frame2.unicast);
+    const probed = this.devices.get(ieee);
+    if (probed?.capturing && frame2.profile !== PROFILE_BUTTON) {
+      this.log.warning(
+        `Control4 RAW ${this.host.friendlyName(ieee)}: profile 0x${frame2.profile.toString(16)} cluster ${frame2.cluster} ep ${frame2.srcEp}->${frame2.dstEp}: ${frame2.data.toString("hex")}`
+      );
+    }
     try {
       if (frame2.profile === PROFILE_BUTTON) this.onAscii(ieee, frame2);
       else if (frame2.profile === PROFILE_NETWORK) this.onNetwork(ieee, frame2);
@@ -7016,6 +7169,9 @@ var Store = class {
   }
 };
 
+// src/core/version.ts
+var VERSION = true ? "0.2.1" : "dev";
+
 // src/z2m/global.ts
 var RUNTIME_KEY = "__control4_z2m_runtime__";
 var CONVERTER_KEY = "__control4_z2m_converter__";
@@ -7049,10 +7205,30 @@ var ENTITIES = [
   },
   { component: "sensor", key: "build", name: "Control4 build", config: { value_template: "{{ value_json.build or 'unknown' }}", icon: "mdi:source-commit" } },
   { component: "sensor", key: "contract", name: "Control4 contract", config: { value_template: "{{ value_json.contract }}", icon: "mdi:handshake-outline" } },
-  { component: "sensor", key: "sent", name: "Control4 messages sent", config: { value_template: "{{ value_json.totals.sent }}", state_class: "total_increasing", icon: "mdi:upload" } },
-  { component: "sensor", key: "failed", name: "Control4 failed sends", config: { value_template: "{{ value_json.totals.failed }}", state_class: "total_increasing", icon: "mdi:upload-off" } },
-  { component: "sensor", key: "route_refreshes", name: "Control4 route refreshes", config: { value_template: "{{ value_json.totals.route_refreshes }}", state_class: "total_increasing", icon: "mdi:routes" } },
-  { component: "sensor", key: "led_queue", name: "Control4 LED queue", config: { value_template: "{{ value_json.totals.led_queue }}", state_class: "measurement", icon: "mdi:tray-full" } }
+  {
+    component: "sensor",
+    key: "sent",
+    name: "Control4 messages sent",
+    config: { value_template: "{{ value_json.totals.sent }}", state_class: "total_increasing", icon: "mdi:upload" }
+  },
+  {
+    component: "sensor",
+    key: "failed",
+    name: "Control4 failed sends",
+    config: { value_template: "{{ value_json.totals.failed }}", state_class: "total_increasing", icon: "mdi:upload-off" }
+  },
+  {
+    component: "sensor",
+    key: "route_refreshes",
+    name: "Control4 route refreshes",
+    config: { value_template: "{{ value_json.totals.route_refreshes }}", state_class: "total_increasing", icon: "mdi:routes" }
+  },
+  {
+    component: "sensor",
+    key: "led_queue",
+    name: "Control4 LED queue",
+    config: { value_template: "{{ value_json.totals.led_queue }}", state_class: "measurement", icon: "mdi:tray-full" }
+  }
 ];
 function discoveryConfigs(o) {
   return ENTITIES.map((e) => [
@@ -7071,7 +7247,7 @@ function discoveryConfigs(o) {
       availability_mode: "all",
       // Only the identifier: Zigbee2MQTT's own discovery names and describes its bridge device.
       device: { identifiers: [`zigbee2mqtt_bridge_${o.coordinatorIeee}`] },
-      origin: { name: "control4-z2m", ...o.build ? { sw: o.build } : {} }
+      origin: { name: "control4-z2m", sw: o.build ? `${o.version} (build ${o.build})` : o.version }
     }
   ]);
 }
@@ -7263,7 +7439,9 @@ var Control4Extension = class {
       (error) => this.log.warning(`Control4: could not subscribe to ${SHARED_TOPIC}/#: ${error}`)
     );
     const kind = hotLoad ? "hot-load, without the start-up identity sends, state reads, Z2IO provisioning or remote bootstrap" : "first start since Zigbee2MQTT started";
-    this.log.info(`Control4: extension started: ${kind} (${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`);
+    this.log.info(
+      `Control4: extension started: ${kind} (control4-z2m ${VERSION}, ${transport ? "ember" : "no radio access"}, ${runtime.devices.size} devices, store ${file})`
+    );
     this.publishDiscovery();
     this.publishStatus();
     this.statusTimer = setInterval(() => this.publishStatus(), STATUS_INTERVAL);
@@ -7381,7 +7559,9 @@ var Control4Extension = class {
       });
       this.hooks.ping = true;
     } else {
-      this.log.warning("Control4: herdsman has no ping hook - with availability on, Control4 devices may show offline (they never answer herdsman's own ping)");
+      this.log.warning(
+        "Control4: herdsman has no ping hook - with availability on, Control4 devices may show offline (they never answer herdsman's own ping)"
+      );
     }
   }
   makeHost(transport, store) {
@@ -7409,7 +7589,8 @@ var Control4Extension = class {
       c4Devices: () => this.c4ZhDevices().map((d) => String(d.ieeeAddr).toLowerCase()),
       publish: (ieee, payload) => {
         const dev = this.z2mDevice(ieee);
-        if (dev) void Promise.resolve(this.publishEntityState(dev, payload)).catch((error) => this.log.debug(`Control4: publish failed: ${error}`));
+        if (dev)
+          void Promise.resolve(this.publishEntityState(dev, payload)).catch((error) => this.log.debug(`Control4: publish failed: ${error}`));
       },
       publishEvent: (ieee, payload) => {
         const event = { ...payload, base: this.baseTopic() };
@@ -7593,9 +7774,9 @@ var Control4Extension = class {
   sendEventEntity(prefix, ieee, payload) {
     if (this.eventEntities.get(ieee) === payload) return;
     this.eventEntities.set(ieee, payload);
-    void Promise.resolve(this.mqtt.publish(`event/${ieee}/control4_event/config`, payload, { clientOptions: { retain: true, qos: 1 }, baseTopic: prefix })).catch(
-      (error) => this.log.debug(`Control4: event entity publish failed for ${ieee}: ${error}`)
-    );
+    void Promise.resolve(
+      this.mqtt.publish(`event/${ieee}/control4_event/config`, payload, { clientOptions: { retain: true, qos: 1 }, baseTopic: prefix })
+    ).catch((error) => this.log.debug(`Control4: event entity publish failed for ${ieee}: ${error}`));
   }
   // -- instance status -----------------------------------------------------------
   statusTopic() {
@@ -7614,10 +7795,17 @@ var Control4Extension = class {
   currentStatus() {
     const rt = this.runtime;
     if (!rt) return void 0;
-    const unreachable = rt.link.unreachable().map((u) => ({ ieee: u.ieee, name: rt.host.friendlyName(u.ieee), model: u.model, quiet_min: u.quietMin, ...u.rebootMin === void 0 ? {} : { reboot_min: u.rebootMin } }));
+    const unreachable = rt.link.unreachable().map((u) => ({
+      ieee: u.ieee,
+      name: rt.host.friendlyName(u.ieee),
+      model: u.model,
+      quiet_min: u.quietMin,
+      ...u.rebootMin === void 0 ? {} : { reboot_min: u.rebootMin }
+    }));
     return {
       base: this.baseTopic(),
       at: (/* @__PURE__ */ new Date()).toISOString(),
+      version: VERSION,
       build: this.build(),
       contract: CONTRACT,
       problems: problemsOf({
@@ -7638,9 +7826,9 @@ var Control4Extension = class {
   publishStatus() {
     const status = this.currentStatus();
     if (!status) return;
-    void Promise.resolve(this.mqtt.publish(`status/${status.base}`, JSON.stringify(status), { baseTopic: SHARED_TOPIC, clientOptions: { retain: true } })).catch(
-      (error) => this.log.debug(`Control4: status publish failed: ${error}`)
-    );
+    void Promise.resolve(
+      this.mqtt.publish(`status/${status.base}`, JSON.stringify(status), { baseTopic: SHARED_TOPIC, clientOptions: { retain: true } })
+    ).catch((error) => this.log.debug(`Control4: status publish failed: ${error}`));
   }
   /** The status entities on this instance's Zigbee2MQTT Bridge device, when Home Assistant discovery is on. */
   publishDiscovery() {
@@ -7648,7 +7836,13 @@ var Control4Extension = class {
     const coordinatorIeee = this.controller?.getDevicesByType?.("Coordinator")?.[0]?.ieeeAddr;
     if (ha?.enabled !== true || !coordinatorIeee) return;
     const prefix = ha.discovery_topic ?? "homeassistant";
-    for (const [topic, config] of discoveryConfigs({ base: this.baseTopic(), statusTopic: this.statusTopic(), coordinatorIeee, build: this.build() })) {
+    for (const [topic, config] of discoveryConfigs({
+      base: this.baseTopic(),
+      statusTopic: this.statusTopic(),
+      coordinatorIeee,
+      build: this.build(),
+      version: VERSION
+    })) {
       void Promise.resolve(this.mqtt.publish(topic, JSON.stringify(config), { baseTopic: prefix, clientOptions: { retain: true, qos: 1 } })).catch(
         (error) => this.log.debug(`Control4: discovery publish failed: ${error}`)
       );

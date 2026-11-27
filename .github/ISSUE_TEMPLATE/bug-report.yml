@@ -1,0 +1,40 @@
+name: Bug report
+description: Something control4-z2m does wrong (a crash, a wrong state, a blueprint that misbehaves)
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Everything here is public:** remove names that identify people or rooms, addresses and hostnames from what you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: Steps, the /set payload or the blueprint inputs involved.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: control4-z2m version
+      description: From the Control4 build sensor, the instance status, or the start-up line.
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Zigbee2MQTT, coordinator and device models
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The Zigbee2MQTT log around it (debug level helps).
+      render: text

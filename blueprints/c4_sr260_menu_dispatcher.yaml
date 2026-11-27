@@ -177,8 +177,7 @@ blueprint:
       selector:
         action: {}
 
-mode: queued
-max: 5
+mode: restart
 
 # The user's show trigger is the only top-level trigger.  The
 # menu_select event is awaited inline below — that side-steps the
@@ -219,9 +218,8 @@ action:
   # ----------------------------------------------------------------
   # 2. Wait for the user's menu_select OR menu_cancel event from this
   #    SR260.  Cancel fires `menu_cancel` so we can exit immediately
-  #    instead of blocking until selection_timeout — otherwise the
-  #    next show-trigger press would queue behind a stuck run for up
-  #    to selection_timeout seconds.
+  #    instead of blocking until selection_timeout (a show-trigger
+  #    press meanwhile restarts the run and shows the menu afresh).
   # ----------------------------------------------------------------
   - wait_for_trigger:
       - trigger: event.received
