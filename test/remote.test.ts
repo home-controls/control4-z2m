@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
+import {rgb332, rgb332Hex} from "../src/devices/remote";
 import {Rig, tick} from "./rig";
 
 let rig: Rig;
@@ -191,6 +192,78 @@ describe("LCD text length", () => {
         expect(frames[0].text).toMatch(/^0s[0-9a-f]{4} c4\.ln\.ri "The Upstairs Family Room" "A very long/);
         // The full text is still what Zigbee2MQTT shows.
         expect(rig.store.get(R250, "active_source")).toBe(long);
+    });
+});
+
+describe("SR260 text colour", () => {
+    it("maps #rrggbb to RGB332 and sends c4.zr.tc", async () => {
+        expect(rgb332("#ff0000")).toBe(0xe0);
+        expect(rgb332("#00ff00")).toBe(0x1c);
+        expect(rgb332([0, 0, 255])).toBe(0x03);
+        expect(rgb332({r: 176, g: 208, b: 224})).toBe(0xbb);
+        expect(rgb332("")).toBeUndefined();
+        const from = rig.transport.sent.length;
+        await set(R260, "text_color", "#ff0000");
+        expect(rig.cmds(from)).toEqual(["c4.zr.tc e0"]);
+    });
+
+    it("re-applies the colour after the rows", async () => {
+        await set(R260, "text_color", "#00ff00");
+        const from = rig.transport.sent.length;
+        await set(R260, "room_name", "Den");
+        expect(rig.cmds(from)).toEqual(['c4.ln.ri "Den" ""', "c4.zr.tc 1c"]);
+    });
+
+    it("takes the byte as a number or a decimal string, and palette names", () => {
+        expect(rgb332(224)).toBe(0xe0);
+        expect(rgb332("224")).toBe(0xe0);
+        expect(rgb332(" 3 ")).toBe(0x03);
+        expect(rgb332("red")).toBe(0xe0);
+        expect(rgb332("#0f0")).toBe(0x1c);
+        for (const bad of ["#ff000", "notacolour", "256", 3.5, -1, {r: 1, g: 2}, [1, 2]]) expect(() => rgb332(bad)).toThrow();
+    });
+
+    it("publishes the colour it applied as #rrggbb", async () => {
+        expect(rgb332Hex(0xe0)).toBe("#ff0000");
+        expect(rgb332Hex(0x03)).toBe("#0000ff");
+        expect(rgb332Hex(0xff)).toBe("#ffffff");
+        expect(await set(R260, "text_color", {r: 0, g: 0, b: 255})).toEqual({text_color: "#0000ff"});
+        expect(await set(R260, "text_color", [255, 0, 0])).toEqual({text_color: "#ff0000"});
+        expect(await set(R260, "text_color", "224")).toEqual({text_color: "#ff0000"});
+        expect(await set(R260, "text_color", "")).toEqual({text_color: ""});
+    });
+
+    it("keeps the saved colour when the input isn't a colour", async () => {
+        await set(R260, "text_color", "#ff0000");
+        const bad = rig.runtime.set(R260, "text_color", "#ff000", {message: {}}).catch((e: Error) => e);
+        await tick(100);
+        expect(await bad).toBeInstanceOf(Error);
+        const from = rig.transport.sent.length;
+        await set(R260, "room_name", "Den");
+        expect(rig.cmds(from)).toEqual(['c4.ln.ri "Den" ""', "c4.zr.tc e0"]);
+    });
+
+    it("re-sends the colour at commissioning and on a wake", async () => {
+        await set(R260, "text_color", "#00ff00");
+        let from = rig.transport.sent.length;
+        await tick(20_000); // the start-up commissioning
+        expect(rig.cmds(from)).toContain("c4.zr.tc 1c");
+        await tick(60_000);
+        from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(2_000);
+        expect(rig.cmds(from)).toContain("c4.zr.tc 1c");
+    });
+
+    it("doesn't count delivered rows as undelivered when only the colour fails", async () => {
+        await set(R260, "text_color", "#00ff00");
+        rig.transport.failWith = (f) => (f.data.toString("latin1").includes("c4.zr.tc") ? Object.assign(new Error("asleep"), {name: "DeliveryError"}) : undefined);
+        await set(R260, "room_name", "Den");
+        rig.transport.failWith = undefined;
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.bb 10 0000 0000 00000000");
+        await tick(1_000);
+        expect(rig.cmds(from).filter((c) => c.startsWith("c4.ln.ri"))).toEqual([]);
     });
 });
 

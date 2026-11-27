@@ -765,10 +765,13 @@ function remoteFamily(buttons, sr260) {
     e.text("room_name", ea.STATE_SET).withLabel("LCD room").withDescription("Row 1 of the LCD (c4.ln.ri)"),
     e.text("active_source", ea.STATE_SET).withLabel("LCD source").withDescription("Row 2 of the LCD (c4.ln.ri)")
   ];
-  if (sr260) exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
+  if (sr260) {
+    exposes.push(e.text("display_message", ea.STATE_SET).withLabel("LCD message").withDescription("Pop-up message (empty clears it)"));
+    exposes.push(e.text("text_color", ea.STATE_SET).withLabel("Text colour").withDescription("#RRGGBB (or a palette name, or the 0-255 byte), matched to the remote's 256 colours (c4.zr.tc); empty stops re-sending it, and the remote keeps the last colour it was sent"));
+  }
   return {
     exposes,
-    keys: [...REMOTE_KEYS, ...sr260 ? ["show_message"] : []],
+    keys: [...REMOTE_KEYS, ...sr260 ? ["show_message", "text_color"] : []],
     options: [e.text("lcd_default_room", ea.SET).withDescription("Room shown on the LCD until room_name is set (default: Home)")]
   };
 }
