@@ -513,6 +513,52 @@ The extension now reads and writes these settings (build `0ed43578d0ac`). What i
 - **The KC120277's layout, learned:** the Kitchen Keypad's buttons send from wires 0, 2 and 4 (three double-height
   buttons), and their LEDs are slots 0, 2 and 4.
 
+## Remote reboot and radio power, tested (2026-11-15)
+
+On the Kitchen Keypad and the Dining Room Hanging Light, at the user's request. The sniffer measured radio power from
+the keypad's own frames (by MAC source); the keypad talks straight to the coordinator.
+
+**`0i c4.sy.rb` reboots both models.**
+
+| | Kitchen Keypad (KC120277) | Dining Room Hanging Light (APD120) |
+|---|---|---|
+| Reply | `000`, then a reboot | `000`, then a reboot |
+| Proof | `c4.sy.ri` went from `CRS AST` to `" SW RBT"`. Its APS counter fell from 128 to 95, and its boot check-in (the model string, broadcast) came 4 s after the reply | Its energy counter fell from 2476 to its last save, 2000, and its APS counter started again at 11. It was already ` SW RBT` |
+| After | No device announce. Its ambient reading went from `ff` to `00` | The light stayed off; the extension carried the energy total on from 2476 |
+
+- **Unlike the DIM1-Z, it answers before it restarts.** So its APS acknowledgement goes out, and no retry reboots it
+  again. Sending without an ack is still the safe default.
+- **It sends no device announce.** The extension's re-join handling (its health read, the LED repaint) doesn't run
+  after this reboot. A Reboot button for these models should read the reset reason again itself.
+- **`c4.dm.rb` exists too** (`e00` to a Get on both), and was left untried. So were `c4.dmx.bl` and `c4.dmx.rbp`,
+  for the reason above.
+- **Names that don't exist** (`n01`): `c4.dmx.rb` and `c4.kp.rb` on the keypad. The DIM1-Z's other `0i` verbs (`op`,
+  `tf`, `tp`, `bp`, `bl`) under `c4.dm` on both models, and under `c4.dmx` on the keypad.
+
+**`c4.sy.zpw` sets the radio's transmit power, and the radio follows it.**
+
+| Set | Reply | Reads back |
+|---|---|---|
+| `03` to `7f` (+3 dBm and up) | `v01` | unchanged |
+| `02`, `01`, `00` (+2 to 0) | `000` | the same |
+| `f7`, `f8` (-9, -8) | `000` | the same |
+| `f6` (-10) | `000` | **`f5` (-11)** |
+| `f5` (-11) | `v01` | unchanged |
+| `f4`, `f0`, `e0` (-12 and below) | `v01` | unchanged |
+
+| Keypad set to | Frames | RSSI at the sniffer (mean / median) | Against 0 dBm |
+|---|---|---|---|
+| 0 dBm (19:30-19:55) | 183 | -63.2 / -63 | |
+| +2 dBm (19:57-20:01) | 68 | -59.5 / -60 | +3.7 dB |
+| -9 dBm (20:03-20:07) | 21 | -70.7 / -71 | -7.5 dB |
+
+- **The range is -10 to +2 dBm,** and -10 reads back as -11, a step of the radio's own. The extension's `tx_power`
+  takes -8 to +2.
+- **From +2 down to -9 the signal moved 11.2 dB,** against the 11 asked for.
+- **The power survived a reboot:** it read `02` after the `0i c4.sy.rb`. Whether it survives a power cut is still
+  open.
+- **Restored to `00`** after the test.
+
 ## Open questions and the tests they need
 
 Still open. Each needs a write (restored after), the light switched, or someone at the device:
@@ -521,13 +567,10 @@ Still open. Each needs a write (restored after), the light switched, or someone 
 - **The rest of the `blc` table**: what `ch 00 i 01` accepts, what i 00 / i 02 / i 04 do, and ch 01 (status LED
   brightness?), in a dark and a lit room.
 - **Aux keypad (C4-KA) presses**: what wire id they report, if any.
-- **Remote reboot.** `0i c4.dm.rb` (no arguments) reboots a DIM1-Z: back in about 2 s with its level and settings,
-  no reply, and the frame counter jumps to the next `0x1000` boundary (the DIM1-Z map has the details). The `0s`
-  attempts failed only on the frame type. Here `c4.dm.rb` and `c4.sy.rb` answered `e00` as `0s` and are worth
-  retrying as `0i`, one at a time with the user's go-ahead. `c4.sy.ri` would then read ` SW RBT` on a keypad that
-  reads `CRS AST` now, a clean check. **Send it without an APS ack:** on the DIM1-Z each APS retry of an
-  unacknowledged reboot frame rebooted the dimmer again (fixed in build 342f7a3a92e1 for the DIM1-Z). **Leave `c4.dmx.bl` and `c4.dmx.rbp` alone:** their meaning is unknown, and
-  `bl` could be a bootloader entry that leaves a device unusable until reflashed.
+- **What `c4.dm.rb` does** on these models (exists, untried). **Leave `c4.dmx.bl` and `c4.dmx.rbp` alone:** their
+  meaning is unknown, and `bl` could be a bootloader entry that leaves a device unusable until reflashed.
+- **The rest of the namespace:** no full name sweep has been run on these models, as one was on the DIM1-Z. See
+  `docs/plans/2026-11-15-frame-type-survey.md`.
 
 ## What this could mean in Home Assistant
 
