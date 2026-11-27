@@ -2,7 +2,8 @@
 
 Thank you for testing. Most of the devices here were built from protocol notes, and other people's code, without
 a unit to try them on. A model only becomes **supported** once someone has paired one, worked through its
-checklist, and sent back the results. This guide covers what to do, what to record, and what to send.
+checklist, and reported the results. This guide covers what to install, what to try on each device, what to
+record, and how to report back.
 
 A session takes 15-30 minutes per device. You need nothing beyond Home Assistant, Zigbee2MQTT and the device.
 
@@ -15,16 +16,29 @@ A session takes 15-30 minutes per device. You need nothing beyond Home Assistant
 | **Supported** | Someone confirmed its checklist on real hardware | Only reports of anything that breaks |
 
 The README's device table marks every untested model. From your report we either confirm the model, fix what
-was wrong, or (for an unsupported one) write it, and then send you a new build to check again.
+was wrong, or (for an unsupported one) write it, and then publish a new release for you to check
+again.
 
 ## Before you start
 
-1. **An Ember coordinator** (SkyConnect / ZBT-1 / ZBT-2, Sonoff ZBDongle-E, HA Yellow or Green) with
-   `serial.adapter: ember`. TI (zstack) and ConBee coordinators can't run this.
-2. **Install the latest release** from the GitHub repo's Releases page, as the README's **Install** section says
-   (two files into the Zigbee2MQTT data folder, `enable_external_js: true`, restart). Note the build: Home Assistant
-   shows it as the **Control4 build** sensor on the Zigbee2MQTT Bridge device, and the Zigbee2MQTT log says
-   `Control4: extension started ...`.
+1. **Zigbee2MQTT 2.x on an Ember coordinator**: a Silicon Labs radio such as the SkyConnect / ZBT-1 / ZBT-2, the
+   Sonoff ZBDongle-E, or the HA Yellow. `configuration.yaml` needs `serial.adapter: ember` and
+   `advanced.enable_external_js: true`. zstack (TI), deCONZ / ConBee, zigate and the legacy `ezsp` driver are not
+   supported (an `ezsp` transport is in review as pull request #1).
+2. **Install the latest release** from the repo's
+   [Releases page](https://github.com/home-controls/control4-z2m/releases). Each release is a version,
+   named "control4-z2m <version>" (tag `v<version>`):
+   - Download `control4-z2m.zip` from the latest one (always at
+     <https://github.com/home-controls/control4-z2m/releases/latest/download/control4-z2m.zip>) and unzip it into
+     the Zigbee2MQTT data folder, the one holding `configuration.yaml` (`/config/zigbee2mqtt` in the Home
+     Assistant add-on). That gives `external_extensions/control4.mjs` and `external_converters/control4.mjs`.
+   - Or download `control4-extension.mjs` and `control4-converter.mjs` and save each as `control4.mjs` in
+     `external_extensions/` and `external_converters/` respectively.
+   - `SHA256SUMS` in the same release lets you check the downloads.
+
+   Then restart Zigbee2MQTT. The README's **Install** section has the details. Note the version: the Zigbee2MQTT log
+   says `Control4: extension started: … (control4-z2m <version>, …)`, and Home Assistant shows the **Control4
+   build** sensor on the Zigbee2MQTT Bridge device, whose build matches the one in the release notes.
 3. **Turn on Control4 debug logging**, for this extension only. In `configuration.yaml`:
 
    ```yaml
@@ -57,8 +71,9 @@ remove the two files and restart Zigbee2MQTT.
    - The model shown, or the **Reported model**.
    - The log line `Control4: learned model ...` or `Control4: <name> is a ...` (or, for an unknown model, the warning
      `... reports model ..., which this build doesn't support yet`).
-   - The firmware: Zigbee2MQTT's device page shows it as **Firmware build**; the dimmers, switches and keypads also
-     have a **Firmware version** entity.
+   - The firmware: Zigbee2MQTT's device page shows it as **Firmware build**. The KC120277, APD120, SW120277, FPD120
+     and keypad dimmers (KD120 / KD277 / KD240) also have a **Firmware version** entity; the DIM1-Z, FS1-Z and the
+     KP2 / KP3 / KP6 keypads don't.
    - A photo of the device's label (model / part number) and, for any keypad, of its button layout.
 
 If it never joins: power-cycle it (the air gap, or its breaker), then do 13-4-13 and 4 taps again with Permit join
@@ -76,16 +91,22 @@ enough for us to write it.
 3. **Its load**, if it has one, from the device itself: turn it on, off, dim it up and down (hold), and note what
    the load did each time.
 4. **Anything else** it has: a second outlet, an LED that changes, a rocker.
-5. Send the report and the log (below).
+5. Report it with the log (below).
 
 If we ask for a specific question to the device, it is sent like this, from Home Assistant: **Developer tools →
 Actions → MQTT: Publish**, topic `zigbee2mqtt/<device friendly name>/set`, payload `{"c4_get": "c4.sy.fwv"}`. The
 answer appears in the log as `Control4 REPLY <name>: ...`.
 
-## Part C: checklists for untested models
+## Part C: checklists
 
-For each step, record **pass**, **fail** or **partly**, plus the time and anything odd. "From HA" means the
-device's entity in Home Assistant (or the Zigbee2MQTT frontend). Every checklist starts with Part A.
+Checklists for the untested models, and for supported ones where something is still open. For each step, record
+**pass**, **fail** or **partly**, plus the time and anything odd. "From HA" means the device's entity in Home
+Assistant (or the Zigbee2MQTT frontend). Every checklist starts with Part A.
+
+The FS1-Z fireplace switch, the 4SF120 fan controller and the KP3 / KP6 keypads have no checklist here: what is
+still to learn about them is collected in
+[issue #16](https://github.com/home-controls/control4-z2m/issues/16). If you have one, report it with Part A and
+whatever that issue asks for.
 
 ### C4-KD120 / KD277 / KD240 keypad dimmer
 
@@ -99,7 +120,7 @@ device's entity in Home Assistant (or the Zigbee2MQTT frontend). Every checklist
 | 6 | From HA: set one button's LED idle colour to red | Note which physical LED turned red |
 | 7 | From HA: set **Backlight colour** to blue, then off | The engraving lights blue, then goes dark |
 | 8 | With the light on: read **Power**, **Voltage**, **Energy** | Plausible values for the load |
-| 9 | If an auxiliary keypad (C4-KA) is wired to it: tap its top and bottom | Actions `aux_top_single` / `aux_bottom_single` |
+| 9 | If an auxiliary keypad (C4-KA) is wired to it: tap its top and bottom | Actions `aux_top_single` / `aux_bottom_single`. More on the C4-KA in [issue #7](https://github.com/home-controls/control4-z2m/issues/7) |
 | 10 | If it has the split up/down button: tap, double-tap and hold each half | Note the actions. **We don't know what these send yet** |
 
 ### C4-FPD120 forward-phase dimmer
@@ -113,6 +134,24 @@ It runs on the APD120's code.
 | 3 | Paddle: tap top, tap bottom, hold top, hold bottom, double-tap top | Actions `top_single`, `bottom_single`, `top_hold`, ...; the light reacts as the paddle should |
 | 4 | From HA: set **Top LED on colour** to red, turn the light on | The top LED is red while on |
 | 5 | Read **Dimming phase**, **Power**, **Voltage** | Phase `forward`. Note whether the power entities have values or stay empty |
+
+### C4-SW120277 switch
+
+Its code comes from older protocol notes. What is still open is in
+[issue #14](https://github.com/home-controls/control4-z2m/issues/14). Use a load whose wattage you know.
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Wait two minutes | A `settings read from the device` line. Copy it |
+| 2 | From HA: turn it on, then off | The load switches; HA matches |
+| 3 | Paddle: tap top, tap bottom, hold top, hold bottom, double-tap top | Actions `top_single`, `bottom_single`, `top_hold`, ...; out of the box top turns the load on and bottom off, and nothing ramps |
+| 4 | With the load on: read **Power**, **Voltage**, **Current**, **Energy**, then send `{"c4_get": "c4.dmx.pwr"}` (as in Part B) | Copy the `REPLY` line. Note whether the entities match the load's wattage and your line voltage |
+| 5 | With the load off: the same | Copy the `REPLY` line |
+| 6 | Send `{"c4_get": "c4.dmx.dim"}` | A `REPLY` with `00` (a relay, no dimming phase). Copy it |
+| 7 | From HA: set **Top LED on colour** to red and **Bottom LED off colour** to blue, then turn the load on and off | Top LED red while on, bottom LED blue while off. Note if the colours land on the other LED |
+| 8 | From HA: set **Top LED mode** to `push_release`, press and hold the top, then set it back to `follow_load` | Note what the top LED shows in each mode |
+| 9 | From HA: set **Top button behaviour** to `event_only`, tap top; then `toggle`, tap top twice; then back to `load_on` | With `event_only` the load doesn't change but the action still fires; with `toggle` each tap flips it. Note whether HA's state stays right |
+| 10 | Set **Bottom button behaviour** to `toggle`, tap bottom twice, then back to `load_off` | Each tap flips the load; HA follows |
 
 ### C4-V-ROSW120 receptacle outlet switch
 
@@ -139,6 +178,8 @@ Plug a dimmable lamp into each outlet. In HA it has two lights, `l1` and `l2`.
 
 ### LOZ-5S1-W switched outlet
 
+What is still open on it is in [issue #15](https://github.com/home-controls/control4-z2m/issues/15).
+
 | # | Do | Expect |
 |---|---|---|
 | 1 | From HA: `l1` on / off, then `l2` | Each outlet switches on its own; HA matches. Note which physical outlet is `l1` |
@@ -163,25 +204,40 @@ Plug a dimmable lamp into each outlet. In HA it has two lights, `l1` and `l2`.
 
 ### C4-SR260 remote (and SR250)
 
+A remote's keys send **press**, **hold** and **release**, not taps or double-taps. How the remote's screen and
+menus work is in [the SR260 research notes](research/sr260-remote.md), and setting one up as a media remote in
+[the SR260 media player guide](guides/sr260-media-player.md).
+
 | # | Do | Expect |
 |---|---|---|
-| 1 | Press a range of keys: tap, double-tap and hold | Actions named for each key |
-| 2 | From HA: set **LCD room** and **LCD source** | Both rows show on the screen |
-| 3 | From HA: set **LCD message** (SR260 only) | The message pops up; empty clears it |
-| 4 | Read **Battery** | A plausible percentage |
+| 1 | Press and release a range of keys, then hold one for 2 s | Actions `<key>_press` and `<key>_release` (for example `watch_press`), and `<key>_hold` while held |
+| 2 | Put the remote down, wait for its screen to go dark, then pick it up | Action `motion_wake` |
+| 3 | From HA: set **LCD room** and **LCD source** | Both rows show on the screen |
+| 4 | From HA: set **LCD message** (SR260 only) | The message pops up; empty clears it |
+| 5 | From HA: set **Text colour** (SR260 only) to `#FF0000`, then a palette name such as `blue`, then a byte such as `224` | The text changes colour each time. A darker colour also makes the text dimmer: the colour sets its brightness too |
+| 6 | Read **Battery** | A plausible percentage |
 
-## What to send back
+On an SR260, also try the blueprints, if you use them:
 
-Send each device's report and its log **privately**: a direct message to **curtis8523** on the Home Assistant
-Community forum or on Discord, or a private GitHub issue in the tester repo. Logs hold your device names and Zigbee
-addresses, so don't post them publicly.
+| # | Do | Expect |
+|---|---|---|
+| 7 | `c4_sr260_screen` with a media player: play, pause, then stop the player | The text takes the playing, paused and idle colours in turn |
+| 8 | `c4_sr260_screen`: turn its "dark" entity on, then an alert entity | The colours dim to the night level; the alert colour shows at full brightness while the alert is on |
+| 9 | `c4_sr260_screen` with line 2 on: pick an item in one of the remote's menus | Line 2 shows the player's app; after the pick it shows the pick for a few seconds, then the app again |
+| 10 | `c4_sr260_media_player`: press Mute with a volume target that can mute, then one that can't | The first toggles mute; the second gets nothing, and no error in Home Assistant's log |
+| 11 | `c4_sr260_menu_dispatcher`: show the menu and pick an item | The item's action runs. The log has `menu_select list=0x....` with a list id of `0x0002` or higher |
+| 12 | `c4_sr260_menu_dispatcher`: show the menu, then press its show key again while it is up | The menu shows again at once |
+| 13 | `c4_sr260_menu_dispatcher`: show the menu and press Cancel | Action `menu_cancel`; the menu goes and no item's action runs |
 
-A forum message takes only images (JPG, PNG or GIF, up to 3 MB) as attachments, and up to 32,000 characters of
-text. Paste the report into it and attach the photos, then send the log file on Discord or attached to a GitHub
-issue. If the log's `Control4` lines are short enough, you can paste them into the forum message in a code block
-instead.
+## How to report back
 
-1. **The report**, filled in from this template:
+Open an issue on <https://github.com/home-controls/control4-z2m/issues> with the **Device report** template, one
+issue per device. Everything there is public, so before you post: rename devices whose friendly names name a
+person or a room, or strip those names from the log. The Zigbee addresses (`0x...`) can stay.
+
+The issue takes:
+
+1. **The report**: the template's fields, and the result of each checklist step:
 
    ```markdown
    ## <model> test report
@@ -202,11 +258,14 @@ instead.
    Anything else odd:
    ```
 
-2. **The log** from the start of the session to the end, as a file. In the Home Assistant add-on it is in the
-   Zigbee2MQTT data folder (`/config/zigbee2mqtt/log/<date and time>/log.log`, readable through the File editor or
-   Samba add-ons). The whole file is fine. To send only our lines, keep those containing `Control4` (for example
-   `grep Control4 log.log > control4.txt`).
+2. **The log** from the start of the session to the end, attached to the issue as a file. In the Home Assistant
+   add-on it is in the Zigbee2MQTT data folder (`/config/zigbee2mqtt/log/<date and time>/log.log`, readable
+   through the File editor or Samba add-ons). Keep only our lines, those containing `Control4` (for example
+   `grep Control4 log.log > control4.txt`), and attach `control4.txt`; or attach the relevant excerpt of the
+   Zigbee2MQTT log.
 3. **Photos**: the device's label and, for keypads and keypad dimmers, its button layout.
+
+A fix to the code or the docs is welcome as a pull request from a fork: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 After testing, set `z2m:control4` back to `info` (or remove the `log_namespaced_levels` entry), as debug grows the
 log quickly.
@@ -216,6 +275,6 @@ log quickly.
 | Your report says | We do |
 |---|---|
 | Every step passed | Mark the model supported in the README |
-| Some step failed or did something unexpected | Fix it from your log, and send you a build to check that step again |
-| An unsupported model, with its fingerprint and button log | Add it (an alias of a model it matches, or new code) as untested, and send you its checklist |
+| Some step failed or did something unexpected | Fix it from your log, and publish a new release for you to check that step again |
+| An unsupported model, with its fingerprint and button log | Add it (an alias of a model it matches, or new code) as untested, with a checklist here |
 | It never paired | Look at its join from the log, and may ask for a second try with something to send it |

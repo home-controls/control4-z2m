@@ -1,22 +1,24 @@
 # KC120277 / APD120 / SW120277 capability map
 
-**2026-11-07.** Live read-only probes, Control4's own documents and the community's work, together, and the write
-tests that followed the same day with the user at each device. What remains is in Open questions and in
-`docs/plans/device-completion.md`.
+**2026-11-07, brought current 2026-11-27.** Live read-only probes, Control4's own documents and the community's
+work, together, and the write tests that followed the same day with the user at each device; then the build's
+findings (2026-11-08) and the remote reboot, radio power and frame types (2026-11-15). What remains is in Open
+questions and in `docs/plans/device-completion.md`.
 
 The C4-KC120277 configurable keypad, the C4-APD120 adaptive phase dimmer and the C4-SW120277 switch share one
 board and one firmware family (`c4.dmx.*`). Each model fits a subset of the same hardware: the APD120 and SW120277
 use two of its button wires (01 top, 05 bottom) and two of its LED slots. The KC120277 can use all of them.
 
-Probed on 2026-11-07 through the house's Zigbee2MQTT and this extension. Every probe was a read-only Get.
+Probed on 2026-11-07 through the test site's Zigbee2MQTT and this extension. Every probe was a read-only Get. The
+devices are named by label: keypad A and keypad B (two KC120277s) and an APD120 on an LED load.
 
 | Device | IEEE | Model | Firmware | Bootloader (`c4.sy.blv`) |
 |---|---|---|---|---|
-| Kitchen Keypad | `0x000fff00008dc3e0` | C4-KC120277 | 4.4.16 | `AT25DF041A-2.6.0.434810` |
-| Master Keypad | `0x000fff0000d9f6fe` | C4-KC120277 | 4.4.16 | `AT25DF041A-4.0.10.0` |
-| Dining Room Hanging Light | `0x000fff0000ee6079` | C4-APD120 | 5.1.1 | `AT25DF041A-4.0.10.0` |
+| Keypad A | `0x000fff0000000001` | C4-KC120277 | 4.4.16 | `AT25DF041A-2.6.0.434810` |
+| Keypad B | `0x000fff0000000002` | C4-KC120277 | 4.4.16 | `AT25DF041A-4.0.10.0` |
+| APD120 | `0x000fff0000000003` | C4-APD120 | 5.1.1 | `AT25DF041A-4.0.10.0` |
 
-There is no SW120277 on this house. Its rows below come from the ZHA-era notes
+There is no SW120277 at the test site. Its rows below come from the ZHA-era notes
 (`control4-zha-quirks/.../control4-sw120277-protocol.md`, fw 5.1.1) and are marked as such.
 
 It builds on the ZHA-era notes for these models (`control4-kc120277-protocol.md`, `control4-apd120-dimmer-protocol.md`,
@@ -40,7 +42,7 @@ own polls (`c4.dmx.amb 00`, `c4.dmx.pwr`) take sequence numbers from the same co
 content. Anchor: `c4.dmx.bmc 02` (answers `0683`, never sent by the extension), every 6-12 Gets. Duplicate
 replies (the same sequence number twice, after a retransmit) were counted once.
 
-One reply was lost (Kitchen Keypad, `blc 01 01`) and re-read. Once, the Kitchen Keypad went 22 s without
+One reply was lost (keypad A, `blc 01 01`) and re-read. Once, keypad A went 22 s without
 answering (20:02:23-20:02:45) and the Gets sent in that window got no reply; they were re-sent.
 
 ## What Control4 documents
@@ -108,7 +110,7 @@ configuration". The keypad dimmer (C4-KD120/277) is an APD120 and a KC120277 in 
 | Advanced Lighting scenes, "Sync This Scene" / "Sync All Scenes" | likely pushed to the device | `c4.dmx.rbp` / `bl`? |
 
 On the dimming mode: Composer's 8-channel panel says "autodetect usually picks reverse for LEDs". This APD120 has
-`plm` `00` and `dim` `02`. Of 51 APD120s reported to bharat (issue #76), 46 answer `dim 02` and one `dim 03`, so
+`plm` `00` and `dim` `02`. Of 51 APD120s reported to bharat (issue 76), 46 answer `dim 02` and one `dim 03`, so
 `dim` is not a model hint, and most likely reflects the phase mode. That fits `plm` = the configured mode
 (00 = autodetect) and `dim` = the phase in use (01 forward, 02 reverse, 00 a relay; 7 of 9 SW120277s answer `00`).
 A forum user re-runs "auto detect dimmer phase" after outages. Not tested: forcing the wrong phase can stress a
@@ -133,7 +135,7 @@ range. `v01` is what bounds each indexed table below.
 
 ## The readable namespace
 
-| Get | Kitchen KC | Master KC | APD120 | Meaning |
+| Get | Keypad A | Keypad B | APD120 | Meaning |
 |---|---|---|---|---|
 | `c4.sy.fwv` | `4.4.16` | `4.4.16` | `5.1.1` | Firmware |
 | `c4.sy.blv` | `AT25DF041A-2.6.0.434810` | `AT25DF041A-4.0.10.0` | `AT25DF041A-4.0.10.0` | Bootloader / external flash version |
@@ -174,8 +176,8 @@ So the paddle sits on wires 01 and 05 of a 7-position layout, the 2nd and 6th po
 between carry no button. The KC120277 has all its wires programmable (`03`): a pure keypad drives no load.
 
 `c4.dmx.led` has 13 slots (00-0c). On the APD120 the Control4-provisioned **follow-load** LEDs are slots
-`01` and `04` (the extension's "LED 2" and "LED 5"); the other slots are in programmed mode. The paint test
-confirmed them: slot 01 is the top LED and 04 the bottom, at positions 2 and 5 of the layout, the button wires' 1
+`01` and `04` (the extension's old "LED 2" and "LED 5", now "Top LED" and "Bottom LED"); the other slots are in
+programmed mode. The paint test confirmed them: slot 01 is the top LED and 04 the bottom, at positions 2 and 5 of the layout, the button wires' 1
 and 5 counted from 0.
 
 ### LED engine: `c4.dmx.led <slot> <param>`
@@ -191,27 +193,30 @@ Params `00`-`05` all answer a Get on these firmwares. bharat's decoding (on a KD
 | `04` | Colour: idle (push/release) or load-off (follow load) | |
 | `05` | bharat: persistent override, the colour shown in programmed mode; `e00` on their KD120 | **Readable here.** See below |
 
-This **reinterprets the extension's "bound" switch** (`led_N_bound`, which writes param `01` as `02` / `00`).
+This **reinterprets the extension's old "bound" switch** (`led_N_bound`, which wrote param `01` as `02` / `00`).
 "Bound" is push/release mode, and "unbound" is programmed mode, where the LED shows its param-05 colour instead
-of 03/04. Follow load (`01`), which the APD120 uses out of the box, has no switch at all.
+of 03/04. Follow load (`01`), which the APD120 uses out of the box, had no switch at all. **Fixed by archived PR
+100:** an LED mode select per slot (programmed / follow load / push-release) replaces `led_N_bound`
+(`src/z2m/definitions.ts`), and the APD120 and SW120277 expose only their two real LEDs.
 
 Param 05 looks like the colour the LED is showing right now:
 
 | Device / slot | Mode | 03 | 04 | 05 |
 |---|---|---|---|---|
-| Master KC slots 0-5 | push/release, at rest | `ff0000` | `660066` | `660066` (= idle) |
-| Kitchen KC slots 0, 2, 4 | push/release, at rest | `260026` | `260026` | `260026` |
+| Keypad B slots 0-5 | push/release, at rest | `ff0000` | `660066` | `660066` (= idle) |
+| Keypad A slots 0, 2, 4 | push/release, at rest | `260026` | `260026` | `260026` |
 | APD slots 01, 04 | follow load, load off | `002626` | `260026` | `260026` (= load-off colour) |
 | APD slots 00, 02, 03, 05 | programmed | `002626` | `260026` | `000000` |
 | APD slots 06-0b | programmed | `002626` | `260026` | `002626` |
 
 The programmed slots' 05 values (`000000` on 00-05, `002626` on 06-0b) don't follow from 03/04, so in programmed
-mode 05 is its own register, as bharat found. The extension never writes param 05, so something before it did.
+mode 05 is its own register, as bharat found. The extension had never written param 05 then (its status colours use
+it now), so something before it did.
 Write tests to tell "live colour" from "override register" are in Open questions.
 
 What others found on the same commands:
 
-- **APD120 bottom half:** the rocker presses on wire 05 but its LED is slot 04 (bharat PR #228). The probe here
+- **APD120 bottom half:** the rocker presses on wire 05 but its LED is slot 04 (bharat PR 228). The probe here
   agrees: buttons on wires 01 / 05, follow-load LEDs on slots 01 / 04.
 - **The firmware redraws an LED from 03 / 04 each time its own load changes**, which overwrites a param-05
   colour. bharat writes a tracked colour into 03, 04 and 05 so it sticks.
@@ -225,13 +230,13 @@ What others found on the same commands:
   load index, not just a mode.
 - **A Get needs the full address.** `led <slot>` and `btn <wire>` without the parameter answer `e00`.
 
-Slot `0c` read `00 00 00 000000 000000 000000` on the Kitchen KC, and `00 00 00 002626 000000 000000` on the
+Slot `0c` read `00 00 00 000000 000000 000000` on keypad A, and `00 00 00 002626 000000 000000` on the
 APD120. The ZHA notes saw varying junk there. Not used.
 
 ### Button behaviour: `c4.dmx.btn <wire> 01 <v>`
 
 bharat set each value on a KD120 button and watched the result. That matches the SW120277 decouple the extension
-already uses (`03` on both halves):
+used then (`paddle_local_control`, `03` on both halves; now an alias of the per-half button behaviour):
 
 | Value | Behaviour | Events | Load |
 |---|---|---|---|
@@ -268,14 +273,14 @@ More likely it is the **backlight / ambient-light table**:
   (data sheets).
 - Composer's Advanced properties have Ambient Light Profiles (presets, or each brightness level set by hand) and
   a Backlight Color where black means off.
-- Control4 bug #35499 ("custom ambient profiles below 25 broke on firmware 4.1.21") says the profile is applied
+- Control4 bug 35499 ("custom ambient profiles below 25 broke on firmware 4.1.21") says the profile is applied
   in the device firmware.
-- **`ch 00 i 05` is the backlight colour: confirmed** by bharat (PR #226) on a KD120 fw 5.1.1. It is written as
+- **`ch 00 i 05` is the backlight colour: confirmed** by bharat (PR 226) on a KD120 fw 5.1.1. It is written as
   `c4.dmx.blc 00 05 <rrggbb>`, read back the same way, and `000000` turns the backlight off. It is the table's
   one 3-byte entry: `0000ff` (blue) from the factory, and Control4 writes `000000` at provisioning.
 - The `1e` (30) Control4 wrote also matches `c4.dmx.amb 03` = `1e`.
 
-The single-byte entries, from the Kitchen Keypad test (2026-11-07, below): **`ch 00 i 03` sets the backlight
+The single-byte entries, from the keypad A test (2026-11-07, below): **`ch 00 i 03` sets the backlight
 brightness** (it dimmed at `40`, came back at `ff`). `ch 00 i 04` took `55` with no visible effect on the backlight.
 `ch 00 i 01` refuses (`v01`) every value tried below `ff` (`20`, `80`, `40`), even with i 03 and i 04 lowered first,
 so its rule is unknown. ch 00 i 00 / i 02 and ch 01 are untested. The table validates its values, so it isn't
@@ -283,7 +288,7 @@ free-form.
 
 ### Ambient light: `c4.dmx.amb <p>`
 
-| Param | Kitchen KC | Master KC | APD120 | Reading |
+| Param | Keypad A | Keypad B | APD120 | Reading |
 |---|---|---|---|---|
 | 00 | `12` | `00` | `30` | Light level 0-255 (confirmed in the ZHA notes) |
 | 01, 02 | `00` | `00` | `00` | |
@@ -298,7 +303,7 @@ free-form.
 `c4.dm.is` here is the `tv` table in slot order, one Get for the lot. The DIM1-Z's `is` has a different
 layout (level, default-on, fades, colours, flags).
 
-| Slot | APD120 | Meaning | Extension shows |
+| Slot | APD120 | Meaning | Extension showed (before archived PR 100) |
 |---|---|---|---|
 | 00 | `0000` | Live level % | |
 | 01 | `0064` | Default-on % (100) | 100 |
@@ -307,7 +312,7 @@ layout (level, default-on, fades, colours, flags).
 | 04 | `1388` | Hold ramp up, ms (5000) | **4000** |
 | 05 | `1388` | Hold ramp down, ms (5000) | **4000** |
 | 06 | `0064` | Max % (100) | 100 |
-| 07 | `0001` | Unknown (also `0001` on the DIM1-Z) | |
+| 07 | `0001` | Unknown. Also `0001` on the DIM1-Z, where it is a 0 / 1 flag with no measurable effect (2026-11-15) | |
 | 08 | `000a` | Min % (10) | **5** |
 | 09 | `0000` | Cold-start level % | not exposed |
 | 0a | `0000` | Cold-start time, ms | not exposed |
@@ -317,7 +322,10 @@ layout (level, default-on, fades, colours, flags).
 
 Channel `01` answers `v01` (the DIM1-Z answers filler for a missing channel instead).
 
-**Setting a level and fading to it** (others, untested here):
+**Fixed by archived PR 100:** the APD120's settings are read from the device in one `c4.dm.is`, and cold start
+(slots 09 / 0a) is exposed (`src/devices/gen3.ts`).
+
+**Setting a level and fading to it** (others' findings; tested here on 2026-11-07, below):
 
 - `c4.dm.tv <ch> 00 <pct>` sets the level at once. Slot 00 is the live level, writable (LOZ-5D1-W from a Control4
   HC-300 log; royceybaby on the SDAPD240).
@@ -334,7 +342,7 @@ frames.
 Seven fields. With the load off the APD120 reads `007d 0000 0000 0000 0000 07f5 0000`. The SW120277 in the ZHA
 notes read `0084 0168 001f 0030 028c 0016 0000` on and `0084 0000 0000 0000 0000 0016 0000` off.
 
-**The fields are volts, mA, W, VA, power factor × 1000, an energy counter, and 0.** bharat's PR #225 decodes
+**The fields are volts, mA, W, VA, power factor × 1000, an energy counter, and 0.** bharat's PR 225 decodes
 the same values in the `c4.dmx.ls` announcement (level, then V, mA, W, VA, PF × 1000). The SW120277's reading
 checks out against itself:
 
@@ -351,11 +359,14 @@ checks out against itself:
 The APD120's 125 V in field 0 matches its line. The "device model `007c`" in the ZHA notes' `ls` table is line
 voltage too.
 
-**So the extension's `power` sensor is not watts.** It takes field 4, the power factor, × 0.04247
-(`SCALE_POWER`, "42 W at 989"). A load with a power factor near 1 reads about 42 "W" whatever it draws. That is
-why the APD120's history sits at 41.3-41.8 every evening.
+**So the extension's `power` sensor was not watts.** It took field 4, the power factor, × 0.04247
+(`SCALE_POWER`, "42 W at 989"). A load with a power factor near 1 read about 42 "W" whatever it drew. That is
+why the APD120's history sat at 41.3-41.8 every evening. **Fixed by archived PR 100** (merged 2026-11-10): power,
+voltage, current, apparent power, power factor and energy now come from their own fields (`src/devices/sensors.ts`),
+and `SCALE_POWER` is gone.
 
-**Field 5 is not a temperature.** The extension publishes it as `device_temperature` in °C. Its recorded history on
+**Field 5 is not a temperature.** The extension published it as `device_temperature` in °C, until archived PR 100
+made it the energy sensor (`src/devices/sensors.ts`, with an offset that carries the total over a reboot's drop). Its recorded history on
 the APD120 (2026-10-28 to 2026-11-07, 608 points):
 
 - it climbs by exactly 1 about every 2 minutes while the load is on (polled every 30 s, so seen every 120-150 s);
@@ -364,7 +375,7 @@ the APD120 (2026-10-28 to 2026-11-07, 608 points):
   re-joined on 2026-11-06 19:38 (whose `c4.sy.ri` now reads ` SW RBT`), and climbs from there.
 
 So it's an accumulator, and the drop to a round 2000 looks like a reboot restoring the last value saved to
-flash, if the firmware saves every 1000 counts. HA shows it as 3698.6 °F today. The SW120277's `0016` reading in
+flash, if the firmware saves every 1000 counts. HA showed it as 3698.6 °F that day. The SW120277's `0016` reading in
 the ZHA notes was the same field: a counter that didn't tick during a short test.
 
 **It is lifetime energy.** Control4's data sheets say the SW120277 and APD120 "continuously measure energy", and
@@ -418,28 +429,34 @@ The APD120 answers every index tried, `ff` included, with no `v01`: `00 0000`, `
 minutes. Only index 00 (the warning the device announces) means anything. The rest look like whatever memory
 follows the table.
 
-## Bugs in the extension found by this
+## Bugs in the extension found by this (all fixed)
+
+Each was fixed by archived PR 100 (merged 2026-11-10). The findings stand; "Fixed" says where.
 
 1. **APD120 / SW120277 `power` is not watts.** It is field 4 of `c4.dmx.pwr`, the power factor × 1000, scaled by
-   0.04247. Any load with a power factor near 1 reads about 42 W. Real watts are field 2.
+   0.04247. Any load with a power factor near 1 reads about 42 W. Real watts are field 2. **Fixed:** power and energy
+   from their own fields (`src/devices/sensors.ts`).
 2. **APD120 / SW120277 `device_temperature` is the energy counter** (field 5), shown as °C: 3698.6 °F on the
-   APD120 today, and it jumps when the device reboots. There is no temperature in `pwr`.
+   APD120 that day, and it jumps when the device reboots. There is no temperature in `pwr`. **Fixed:** it is the
+   energy sensor, carried over a reboot's drop (`src/devices/sensors.ts`).
 3. **APD120 settings are never read from the device.** It shows hold ramps 4000 ms (the device holds 5000) and
    min 5 % (the device holds 10 %). The values it shows are Control4's provisioning defaults, from its 2013 boot
    log, not this device's. The DIM1-Z got a read-back on 2026-11-02, and the APD120 can do it in one Get
-   (`c4.dm.is`).
+   (`c4.dm.is`). **Fixed:** read from the device, with cold start exposed (`src/devices/gen3.ts`).
 4. **`led_N_bound`** is named for a misreading: it switches between push/release and programmed mode, and can't
-   set follow load.
+   set follow load. **Fixed:** an LED mode select per slot (`src/z2m/definitions.ts`).
 
 5. **The APD120 sets HA's light state from taps whatever the paddle does.** `syncClick` publishes ON for a top-half
    tap and OFF for a bottom-half tap. Tested with the top half set to programmable: three top taps left the light
    off, and HA showed it on. With the bottom half on toggle, HA flicked on → off → on at the first tap. The SW120277
    skips this while decoupled; the APD120 has no such guard. The light's own `c4.dmx.ls` reports are right, and
-   should be the only source of its state.
-6. **A brightness change re-applies every LED colour several times over.** The "LED look" automation's queued
+   should be the only source of its state. **Fixed:** the APD120's state comes from its reports alone, and the
+   SW120277 infers it only while a half drives the load (`src/devices/gen3.ts`).
+6. **A brightness change re-applies every LED colour several times over.** An LED automation's queued
    runs each called `led_brightness` before the first one's state came back. The extension then re-sent 24 of 24
    colours three times and 17 of 24 once (2026-11-07 20:39:09): about 90 frames for one change. Each re-apply
-   compares against what was last sent, but the writes still in flight hadn't counted yet.
+   compares against what was last sent, but the writes still in flight hadn't counted yet. **Fixed:** a re-apply
+   compares against what is queued too (`src/core/leds.ts`).
 
 ## Write tests on the APD120 (2026-11-07, user at the switch)
 
@@ -474,10 +491,10 @@ would take (the DIM1-Z map), so the two firmwares read it differently. `c4.dm.tv
 once on the APD120 too, and stops a running fade. HA showed the light's state changing about once a second through
 each fade (the APD120's level reports).
 
-## Write tests on the Kitchen Keypad (2026-11-07, user at the keypad)
+## Write tests on keypad A (2026-11-07, user at the keypad)
 
 Snapshotted first, restored after, and the restore read back: `led` params 00-05 on slots 00, 02, 04, and
-`blc 00 00`-`05`. The Master Keypad's backlight was set green for the first round (to tell which keypad the user was
+`blc 00 00`-`05`. Keypad B's backlight was set green for the first round (to tell which keypad the user was
 at) and put back to `0000ff` straight after, also read back.
 
 | Test | Done | Result |
@@ -492,7 +509,7 @@ at) and put back to `0000ff` straight after, also read back.
 The keypad's ambient reading moved between `0e` and `ff` during the test (the user's hand and the room lights), so
 the backlight brightness test ran in changing light.
 
-## What the build found on the house (2026-11-08)
+## What the build found at the test site (2026-11-08)
 
 The extension now reads and writes these settings (build `0ed43578d0ac`). What it met there:
 
@@ -510,17 +527,17 @@ The extension now reads and writes these settings (build `0ed43578d0ac`). What i
   - Off over 4000 ms from its 10 % minimum went off at once: there is nothing to fade through below the minimum.
 - **APD120 LED status colour:** `led 01 01 00` then `led 01 05 ff0000` painted the top LED. `led 01 01 01` then
   `led 01 05 260026` gave it back. Read back after: mode `01`, param 05 `260026`, the load-off colour on show.
-- **The KC120277's layout, learned:** the Kitchen Keypad's buttons send from wires 0, 2 and 4 (three double-height
+- **The KC120277's layout, learned:** keypad A's buttons send from wires 0, 2 and 4 (three double-height
   buttons), and their LEDs are slots 0, 2 and 4.
 
 ## Remote reboot and radio power, tested (2026-11-15)
 
-On the Kitchen Keypad and the Dining Room Hanging Light, at the user's request. The sniffer measured radio power from
+On keypad A and the APD120, at the user's request. The sniffer measured radio power from
 the keypad's own frames (by MAC source); the keypad talks straight to the coordinator.
 
 **`0i c4.sy.rb` reboots both models.**
 
-| | Kitchen Keypad (KC120277) | Dining Room Hanging Light (APD120) |
+| | Keypad A (KC120277) | APD120 |
 |---|---|---|
 | Reply | `000`, then a reboot | `000`, then a reboot |
 | Proof | `c4.sy.ri` went from `CRS AST` to `" SW RBT"`. Its APS counter fell from 128 to 95, and its boot check-in (the model string, broadcast) came 4 s after the reply | Its energy counter fell from 2476 to its last save, 2000, and its APS counter started again at 11. It was already ` SW RBT` |
@@ -529,7 +546,8 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
 - **Unlike the DIM1-Z, it answers before it restarts.** So its APS acknowledgement goes out, and no retry reboots it
   again. Sending without an ack is still the safe default.
 - **It sends no device announce.** The extension's re-join handling (its health read, the LED repaint) doesn't run
-  after this reboot. A Reboot button for these models should read the reset reason again itself.
+  after this reboot. A Reboot button for these models should read the reset reason again itself. Building it, and the automatic
+  reboots, is #12 (the SW120277 is untested).
 - **`c4.dm.rb` exists too** (`e00` to a Get on both), and was left untried. So were `c4.dmx.bl` and `c4.dmx.rbp`,
   for the reason above.
 - **Names that don't exist** (`n01`): `c4.dmx.rb` and `c4.kp.rb` on the keypad. The DIM1-Z's other `0i` verbs (`op`,
@@ -559,7 +577,7 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
   open.
 - **Restored to `00`** after the test.
 
-**Frame types (Kitchen Keypad, 2026-11-15).**
+**Frame types (keypad A, 2026-11-15).**
 - **What it acts on:** `0g`, `0i`, `0s` and `0t` (`c4.sy.fwv` answered as a Get, and `e00` to the other three).
 - **Any other letter:** it sends that same letter back with `00` (`0x005e 00`).
 - **A digit first:** it answers `<d>r<seq> 00`.
@@ -573,14 +591,21 @@ Still open. Each needs a write (restored after), the light switched, or someone 
 - **The rest of the `blc` table**: what `ch 00 i 01` accepts, what i 00 / i 02 / i 04 do, and ch 01 (status LED
   brightness?), in a dark and a lit room.
 - **Aux keypad (C4-KA) presses**: what wire id they report, if any.
-- **What `c4.dm.rb` does** on these models (exists, untried). **Leave `c4.dmx.bl` and `c4.dmx.rbp` alone:** their
-  meaning is unknown, and `bl` could be a bootloader entry that leaves a device unusable until reflashed.
-- **The rest of the namespace:** no full name sweep has been run on these models, as one was on the DIM1-Z. See
-  `docs/plans/frame-type-survey.md`.
+- ~~**A remote reboot**~~: answered. `0i c4.sy.rb` reboots the KC120277 and the APD120 (2026-11-15, above). Still
+  open: whether it reboots a SW120277 (#14), and what `c4.dm.rb` does on these models (exists, untried).
+- **Leave `c4.dmx.bl` and `c4.dmx.rbp` alone:** their meaning is unknown. On the DIM1-Z, `c4.dm.bl` turned out to
+  take 4-6 arguments and be no bootloader entry (2026-11-15), but the Gen3 `c4.dmx.bl` is untried.
+- **Whether TX power survives a power cut.** It survives a reboot (above).
+- **The rest of the namespace:** no full name sweep has been run on these models, as one was on the DIM1-Z. The frame
+  types are known (`0g`, `0i`, `0s`, `0t`, above). See `docs/plans/frame-type-survey.md`; tracked in #13.
 
 ## What this could mean in Home Assistant
 
-Ranked by value for effort. "Needs test" marks the ones that depend on an open question above.
+Ranked by value for effort, as planned on 2026-11-07. **Items 1-11 were built by archived PR 100** (merged
+2026-11-10): power and energy in `src/devices/sensors.ts`; the settings read, cold start, reset reason, TX power and
+button behaviour in `src/devices/gen3.ts`; the LED mode in `src/z2m/definitions.ts`; the backlight in
+`src/devices/keypad.ts`; hardware fades in `src/devices/dimming.ts`. Item 12 is still research (#13), and item 13 is
+the next build (#12).
 
 1. **Real power and energy on the APD120 and SW120277** (bugs 1 and 2). Publish field 2 as power (W), field 0 as
    voltage, field 1 as current, field 3 as apparent power and field 4 as power factor. Publish field 5 as
@@ -605,7 +630,7 @@ Ranked by value for effort. "Needs test" marks the ones that depend on an open q
    physical LEDs. Name the two real ones ("Top LED", slot 01, and "Bottom LED", slot 04, confirmed by the paint
    test) and leave the rest out, or behind an option.
 7. **Backlight colour and brightness** on the KC120277 (and the keypad dimmer): a colour entity on
-   `blc 00 05` (black = off) and a brightness number on `blc 00 03`. Both tested on the Kitchen Keypad.
+   `blc 00 05` (black = off) and a brightness number on `blc 00 03`. Both tested on keypad A.
 8. **Last reset reason** (`c4.sy.ri`) as a diagnostic sensor, read at start and after each re-join, with a log
    line on `CRS` (crash) or `WDG` (watchdog). Both keypads here last restarted on an assert.
 9. **Radio TX power** (`c4.sy.zpw`, -8 to +2 dBm) as a config number. All three devices here run at 0 dBm.
@@ -616,6 +641,8 @@ Ranked by value for effort. "Needs test" marks the ones that depend on an open q
     only after a careful test, since the wrong phase can stress a load.
 12. **The rest of the ambient light profile** (the other `blc` bytes), once a test maps them. The table refuses
     out-of-range values, so writes need its rules first.
+13. **A Reboot button and automatic reboots** on the KC120277 and APD120 (and the SW120277, once tested), using
+    `0i c4.sy.rb`, with the reset reason read again after it (#12).
 
 ## DIM1-Z
 

@@ -1,12 +1,15 @@
 # C4-DIM1-Z capability map
 
-Probed on Furn (`0x000fff000024d595`, Furnace Room, firmware `03.22.41`) on 2026-11-02, through the
-house's Zigbee2MQTT and this extension. It builds on the ZHA-era research in
+Probed on dimmer A (`0x000fff0000000001`, firmware `03.22.41`) on 2026-11-02, through the test site's
+Zigbee2MQTT and this extension. Later tests ran on other DIM1-Zs here, labelled dimmer B to F (dimmer C carried the
+frame-type survey of 2026-11-15); keypad A is a KC120277. It builds on the ZHA-era research in
 `control4-zha-quirks/custom_zha_quirks/control4/documentation/control4-dim1z-protocol.md`, and corrects it
 where the two disagree.
 
 What Control4's documents and the community add (tap sequences, Composer's names for the settings, the `0i`
-frame type and the fade, level and reboot leads it opens) is under "What outside sources add (2026-11-07)".
+frame type and the fade, level and reboot leads it opens) is under "What outside sources add (2026-11-07)". The
+frame-type survey's findings (2026-11-15) are in the tables and sections below, and summarised under "The
+frame-type survey".
 The KC120277 / APD120 / SW120277 have their own map, `kc-apd-sw-capability-map.md`.
 
 ## What a DIM1-Z can do
@@ -19,6 +22,9 @@ The KC120277 / APD120 / SW120277 have their own map, `kc-apd-sw-capability-map.m
   - read back the colour each LED shows right now (`l0v`, `l1v`);
   - invert which colour an LED shows for the load's state, per LED (`l0l`, `l1l`, or `ll <n>`);
   - freeze both LEDs on what they show (`lm` = 0).
+- Take commands as `0i` frames (2026-11-07 and 2026-11-15): a hardware fade (`rtl`), a reboot (`rb`), most likely on / off /
+  toggle (`op`, `tf`, `tp`), a remote paddle press (`bp`), and `bl`, which takes 4 to 6 arguments (most likely an
+  LED blink).
 - Be a member of Zigbee groups (it takes a group-add command; a command sent to the group is untested).
   **Not** Zigbee scenes: the Scenes cluster's attributes are there, but no scene can be stored or recalled
   (tested 2026-11-03, below).
@@ -26,12 +32,22 @@ The KC120277 / APD120 / SW120277 have their own map, `kc-apd-sw-capability-map.m
   like the Composer driver type and the model).
 
 That is the whole readable surface found. Nothing else answered, on either the Zigbee or the Control4 side,
-in about 25,000 Control4 Gets (see Coverage).
+in about 25,000 Control4 Gets by 2026-11-02, and nothing new but `c4.dm.is2` in about 63,000 more by 2026-11-15:
+every name of up to 3 characters is now swept (see Coverage).
+
+**Frame types.** The firmware acts on four: `0g` Get, `0s` Set, `0i` (interrupt, the commands above) and `0t`. `0t`,
+the type the devices use for their own announcements, uses the same name table but takes no command: every known
+name answers `e00` with 0 to 3 arguments, unknown names `n01`. Any other letter gets silence, and a digit first
+(`1g`) answers `<d>r<seq>004` with no space (2026-11-15).
+
+**Endpoints.** The interview lists 1 (Home Automation), 196 (0xC25D, cluster 1), 197 (0xC25C, clusters 1 and 0) and
+198 (0xC25E, cluster 2). The firmware ignores the destination endpoint: the extension's frames go to endpoints 1 and 2
+and are answered (2026-11-15; the network-profile and 0xC25E attributes are in `docs/plans/frame-type-survey.md`).
 
 ## Method
 
-- **Control4 Gets**: `zigbee2mqtt/Furn/set` `{"c4_get": "<prop> [args]"}`. Within 20 s of a `c4_get` the
-  extension logs every reply as `Control4 REPLY Furn: 0r<seq> <status> …` (warning level), so the Z2M log
+- **Control4 Gets**: `zigbee2mqtt/<dimmer>/set` `{"c4_get": "<prop> [args]"}`. Within 20 s of a `c4_get` the
+  extension logs every reply as `Control4 REPLY <dimmer>: 0r<seq> <status> …` (warning level), so the Z2M log
   file is the read-back. Status `000` echoes the property name. `n01` (no such name) and `e00` (wrong args)
   carry no name, so replies are matched to Gets by sequence number. A `c4.sy.fwv` anchor every 20 Gets
   proves the alignment. Paced at one Get per 0.3-0.45 s, the run produced no transmit backlog. Driven
@@ -40,7 +56,7 @@ in about 25,000 Control4 Gets (see Coverage).
   from a spec, one Get per 0.25 s (~230 a minute). It was deleted afterwards. The anchor was `c4.dm.td`,
   because the extension pings devices with `c4.sy.fwv` itself. A matching generator on the HA side paired
   replies with names by arrival order. It skipped the extension's own frames (Set acks, `is` read-backs) and
-  listed each name whose block came back short; those were re-probed. Once, at 22:12-22:13, Furn
+  listed each name whose block came back short; those were re-probed. Once, at 22:12-22:13, dimmer A
   reported many-to-one route failures for 20 s under the sustained load, and 10 Gets went unanswered. The
   coordinator never ran out of buffers.
 - **ZCL reads**: Zigbee2MQTT's generic converter, `{"read": {"cluster": …, "attributes": [one]}}` on the
@@ -48,7 +64,7 @@ in about 25,000 Control4 Gets (see Coverage).
   the whole read when any attribute in it is unsupported.
 - **Writes**, each restored straight after and checked against a `c4.dm.is` snapshot: the LED colour
   slots and `l0l` / `l1l` / `lt 00` / `ll 00` by raw `c4_send`; max and default-on brightness through
-  Furn's own HA number entities. The load was cycled twice (on at 50 %, then off), and is off.
+  dimmer A's own HA number entities. The load was cycled twice (on at 50 %, then off), and is off.
 
 ## Zigbee (ZCL), endpoint 1
 
@@ -72,7 +88,7 @@ configures power-on behaviour, fades or limits: all of that lives in `c4.dm.tv`.
 | Store the current 60 % as scene 1, group 0 (Z2M `scene_store`) | `INVALID_FIELD`; nothing stored |
 | Recall scene 1, group 0 | No reply at all (Z2M timed out after 10 s); level unchanged |
 | Remove all scenes, group 0 (Z2M `scene_remove_all`) | A reply too short to parse ("offset … must be <= 2") |
-| Add Furn to group 999 (raw `genGroups.add`), store the current 30 % as scene 1 there | Sent; `count` stays 0 |
+| Add dimmer A to group 999 (raw `genGroups.add`), store the current 30 % as scene 1 there | Sent; `count` stays 0 |
 | Set 70 %, recall group 999 scene 1 (with, then without, the optional transition time) | Level stays at 69 % |
 | Add scene 2 under group 999 with explicit level 25 % and a 3 s fade, recall it | `count` stays 0; level stays at 69 % |
 
@@ -80,7 +96,7 @@ configures power-on behaviour, fades or limits: all of that lives in `c4.dm.tv`.
 cluster answers reads, but nothing sets a level from a scene. Z2M's `zclcommand` `check_status` can't
 help here: herdsman checks `statusCode`, which only default responses have, so it passes every
 cluster-specific reply. Group 999 and anything under it were removed afterwards, and Z2M's database holds
-no scene for Furn.
+no scene for dimmer A.
 
 What this rules out: one Zigbee "recall" setting several DIM1-Zs to different levels. A look across DIM1-Zs
 still needs one level command per dimmer (or a group command, which sets them all to the same level).
@@ -90,10 +106,10 @@ still needs one level command per dimmer (or a group command, which sets them al
 Names are case-sensitive (`c4.sy.FWV` is `n01`), families match exactly, and there is no wildcard or
 listing: `c4.`, `c4.sy.`, `*` and `?` are all `n01`.
 
-| Get | Furn | Meaning |
+| Get | Dimmer A | Meaning |
 |---|---|---|
 | `c4.dm.is` | `00 64 01f4 01f4 080000 080000 000000 000000 0f` | Settings record, see below |
-| `c4.dm.is2` | `64 14 00 0000` (Garage Inside Lights) | **New (2026-11-15).** The second settings record: max %, min %, cold-start level %, cold-start time ms (`tv` slots 06, 08, 09, 0a) |
+| `c4.dm.is2` | `64 14 00 0000` (dimmer C) | **New (2026-11-15).** The second settings record: max %, min %, cold-start level %, cold-start time ms (`tv` slots 06, 08, 09, 0a), all four in one Get. With or without an argument. Hidden behind `is` by the prefix rule (the table holds it first, so `is2<anything>` answers as `is2`) |
 | `c4.dm.td` | `64` | **Default-on level %**, the same value as `tv 00 01` (default-on set to 80 → `td` = `50`). Not the live level. |
 | `c4.dm.t0s` | `00` off, `31` at 50 % | **New.** Live level of load 0, % (= `tv 00 00` = `is` field 0) |
 | `c4.dm.tv <ch> <slot>` | see the table below | Dimmer parameters. `e00` with fewer than 2 args |
@@ -102,19 +118,31 @@ listing: `c4.`, `c4.sy.`, `*` and `?` are all `n01`.
 | `c4.dm.l0o` `l0f` `l1o` `l1f` | `080000` `080000` `000000` `000000` | Stored colours: top / bottom × load on / off. **Readable**, not write-only |
 | `c4.dm.l0v` `l1v` | `080000` `000000` | **New.** The colour the LED shows right now: writing `l0f` with the load off changed `l0v` at once; writing `l0o` did not |
 | `c4.dm.l0l` `l1l` | `1` `1` | **New.** LED polarity. 1: on-colour while the load is on. 0: inverted (off: shows the on-colour; on: shows the off-colour) |
-| `c4.dm.ll <n>` | `1` | The same polarity flag, indexed: `ll 00 00` did exactly what `l0l 00` did; `ll 01` stayed 1 |
+| `c4.dm.ll <n>` | `1` | The same polarity flag, indexed: `ll 00 00` did exactly what `l0l 00` did; `ll 01` stayed 1. With no argument it answers `e0`, two characters, the only such status seen (2026-11-15) |
 | `c4.dm.lt <n>` | `1` | Per-index flag (`lt 00` = 0 left `lt 01` at 1). Changes neither LED nor the flags byte. Meaning unknown |
 | `c4.sy.fwv` | `03.22.41` | Firmware |
 | `c4.sy.info` | `c4:light_ip_control4:C4-DIM1-Z:` | **New.** Identity: `c4`, what looks like the Composer driver type, the model, then an empty field. The model, from a Get. |
 
-Write-only (from the ZHA research, not touched today): `bl` `bp` `op` `rb` `tf` `tp` `frs` `rtl` answer `e00` to
-every Get, and no Set shape tried there was accepted. Every Set tried was a `0s` frame. Sent as `0i` frames on
-2026-11-07, `rtl` fades and `rb` reboots (see "What outside sources add"); the Reboot button uses `rb` (#66).
-**Never write `frs`** (read as factory reset).
+### Write-only names: the `0i` commands
+
+`bl` `bp` `op` `rb` `tf` `tp` `frs` `rtl` answer `e00` to every Get (ZHA research), and no `0s` Set shape tried there
+was accepted. Every one but `frs` has since been sent as an `0i` frame:
+
+| Name | As `0i` | Tested |
+|---|---|---|
+| `rtl <ch> <level %> <ms>` | Hardware fade; the time is a full 0-100 % sweep (see "What outside sources add") | 2026-11-07; built (`src/devices/dimming.ts`) |
+| `rb` | Reboot, keeping level and settings; send without an APS ack | 2026-11-07; the Reboot button and automatic reboots (archived PR 66) |
+| `op`, `tf`, `tp` | Each was sent as `0i` (`docs/plans/frame-type-survey.md`, "Where things stand"). Most likely on, off and toggle; the evidence isn't written up here | by 2026-11-15 |
+| `bp <button> <event>` | **Presses the paddle remotely.** Button `00` top, `01` bottom, `ff` both (`02`: `v01`); event `00`-`02` (`03` and up: `v01`). Event `01` turned the load on through the dimmer's own logic, as a tap does; `02` took it from 29 % to full in half a second; `00` did nothing visible, likely a release. Nothing is announced (no `b0c` / `cc`), and no readable setting changed. With 0-1 arguments it answered `0r<seq>` with no status | 2026-11-15 |
+| `bl` | **Takes 4 to 6 arguments, and is no bootloader entry.** `e00` with 1-3; `bl ff ff ff ff ff ff` answered `000`, the dimmer kept running, nothing readable changed, and its radio didn't change. `c4.dm.blink` answers as `bl`, so most likely an LED blink, to be read with someone watching the switch | 2026-11-15 |
+| `frs` | Never sent | **Never write `frs`** (read as factory reset) |
+
+`v01` is the safe way to learn an `0i` command's argument count: out-of-range values are refused before anything
+runs (the method in `docs/plans/frame-type-survey.md`).
 
 ### `c4.dm.is`
 
-| Field | Furn | Meaning |
+| Field | Dimmer A | Meaning |
 |---|---|---|
 | 0 | `00` | Live level % |
 | 1 | `64` | **Default-on level %**, not max: max set to 90 left it at `64`; default-on set to 80 made it `50` |
@@ -124,7 +152,7 @@ every Get, and no Set shape tried there was accepted. Every Set tried was a `0s`
 
 ### `c4.dm.tv 00 <slot>`
 
-| Slot | Furn | Meaning | Extension setting |
+| Slot | Dimmer A | Meaning | Extension setting |
 |---|---|---|---|
 | 00 | `0000` off, `0031` at 50 % | Live level % | |
 | 01 | `0064` | Default-on level % | `default_on_brightness` |
@@ -133,7 +161,7 @@ every Get, and no Set shape tried there was accepted. Every Set tried was a `0s`
 | 04 | `1388` | Hold ramp up, ms (5000) | `hold_ramp_up`, which shows 4000 |
 | 05 | `1388` | Hold ramp down, ms (5000) | `hold_ramp_down`, which shows 4000 |
 | 06 | `0064` | Max level % | `max_brightness` |
-| 07 | `0001` | A flag: 0 and 1 stick, 2 reads back 1 (2026-11-15). At 0, neither the radio nor a turn-on to 50 % changed. Meaning unknown | |
+| 07 | `0001` | A 0 / 1 flag (2026-11-15, dimmer C): 0 and 1 stick, 2 answers `000` but reads back 1. At 0, nothing measurable changed: RSSI at the sniffer stayed −82 / −74 dBm (weak / strong half-cycle), and a turn-on to 50 % still went to 50 %. Control4 never writes it. Put back to 1. Meaning unknown | |
 | 08 | `0014` | Min level % | `min_brightness` |
 | 09 | `0028` | Cold-start level % | `cold_start_level` |
 | 0a | `01f4` | Cold-start time, ms | `cold_start_time` |
@@ -177,7 +205,16 @@ real name it starts with: `c4.sy.information` answers as `c4.sy.info`.
 |---|---|---|
 | 2 characters, a-z 0-9 | all 1,296 | none |
 | 3 letters | 17,056 (all but the 20 skipped prefixes below) | none |
-| Long words and house-style abbreviations | ~360 | `info` |
+| The 520 skipped 3-letter names (2026-11-15) | all 520 | none |
+| Long words and shorthand abbreviations | ~360 | `info` |
+| Every 3-character name with a digit (2026-11-15) | in the ~58,000 above | none |
+
+| Both families, 2026-11-15 | Probed | Found |
+|---|---|---|
+| Every uppercase 2-character name (A-Z, then A-Z / 0-9) | 1,872 | none (names are case-sensitive) |
+| Radio, power, network and diagnostic words of 4+ letters | 134 | none |
+| Radio-sounding 3-character shapes with a digit (`zp0`-`zp9`, `tx0`-`tx9`, …) | | none |
+| 15 radio-sounding families (`c4.zb.`, `c4.rf.`, `c4.em.`, …), 8 names each | 120 | none |
 
 | Families | Probed | Found |
 |---|---|---|
@@ -186,26 +223,29 @@ real name it starts with: `c4.sy.information` answers as `c4.sy.info`.
 
 The long-word list was about 360 words: identity, versions, network, radio, diagnostics, timing, dimming,
 load, LED and sensor vocabulary, each probed in its longest form (`serialnumber`, `temperature`,
-`dimmingcurve`, ...), plus house-style abbreviations (`hwv`, `zch`, `uptm`, ...).
+`dimmingcurve`, ...), plus shorthand abbreviations (`hwv`, `zch`, `uptm`, ...).
 
-**Skipped on purpose.** These were left out in case a Get of an action name does something:
+**Skipped on purpose.** These were left out of the first sweeps in case a Get of an action name does something:
 - 3-letter `c4.sy` names starting `rb rs rt fr fa fl fw bt bo bl er up dl ot wd wr ee wi cl pg` (520 names,
   covering reboot, reset, factory, flash, firmware, boot, erase, update, OTA, watchdog, write, EEPROM, wipe,
-  clear and program). `fwv` is the one known name among them.
+  clear and program). `fwv` is the one known name among them. **All 520 were probed on 2026-11-15** (the
+  frame-type survey): every one answered `n01` but `fwv`, and nothing acted.
 - Words that are, or start with, an action: boot, default, leave, join, sleep, standby, test, lock, disable, bind,
-  calibrate, and the abbreviations `zjn`, `zrj`, `zpj`, `ers`.
+  calibrate, and the abbreviations `zjn`, `zrj`, `zpj`, `ers`. The 3-letter ones fall in the sweep of every
+  3-letter name; the longer words are still skipped.
 
-No Get has ever been seen to do anything, but `c4.sy` is where such commands would live.
+No Get has ever been seen to do anything.
 
-Not swept: 4-character names beyond the word list (1.7 million per family with digits, 457,000 letters only), and
-families of 3+ letters. Every name of up to 3 characters is now done (2026-11-15).
+Not swept: 4-character names beyond the word list (1.7 million per family with digits, 457,000 letters only, about
+four days around the clock for both families on three dimmers), and families of 3+ letters. **Every name of up to 3
+characters is now done (2026-11-15):** letters, digits, uppercase, and the names hidden behind real ones.
 
 ## What outside sources add (2026-11-07)
 
 Checked against Control4's dealer documentation and the community projects that publish Control4 work (sources
-at the end). Only one of them captured a DIM1-Z (bharat's herdsman-converters fork, PR #2). The rest covers the
+at the end). Only one of them captured a DIM1-Z (bharat's herdsman-converters fork, PR 2). The rest covers the
 same generation (the LDZ-101 "Wireless Dimmer", the LOZ-5D1-W outlet dimmer, the KP keypads) or the newer
-`c4.dmx` models. So most items below are leads to test on Furn, not facts about the DIM1-Z.
+`c4.dmx` models. So most items below are leads to test on dimmer A, not facts about the DIM1-Z.
 
 ### Generation
 
@@ -230,7 +270,7 @@ builds, and no release notes for 03.22.41 are public. One DIM1-Z reported 03.06.
 The newer models' install guides (APD120, SW120277, KC120277) print 4 identify, 7 channel, 15 reboot, 9-4-9
 factory reset and 13-4-13 leave-and-reset. The sequences are common across the devices: 13-4-13 is the one to use
 to move a device, resetting it and taking it off its old network, and 4 more taps on top then put it in pairing
-mode. 15 (reboot) and 9-4-9 (reset to re-pair) work on this house's DIM1-Zs too. 5-5-5 is the only reset Control4
+mode. 15 (reboot) and 9-4-9 (reset to re-pair) work on the DIM1-Zs here too. 5-5-5 is the only reset Control4
 documents for this generation, and it is untried on a DIM1-Z.
 
 ### Hardware
@@ -260,7 +300,7 @@ bharat's `RESEARCH.md`) name the `tv` slots:
 
 - The log writes the slots in the order 02 03 01 04 05 08 06 09 0a, as 32-bit values
   (`0s5227 c4.dm.tv 00 02 000003e8`), and **never writes 07**. Slot 07 is not a Composer setting.
-- bharat labels 09 "Cold Start Time" and 0a "Cold Start Level" from that log alone. Furn measured the reverse
+- bharat labels 09 "Cold Start Time" and 0a "Cold Start Level" from that log alone. Dimmer A measured the reverse
   (09 caps a write at 100, so it is the level). Composer's help names three cold-start values (%, time, level);
   the third looks like the target level, not a slot.
 - **The extension's shared defaults (min 5 %, hold ramps 4000 ms, max and default-on 100 %) are exactly these
@@ -270,7 +310,7 @@ bharat's `RESEARCH.md`) name the `tv` slots:
 - `c4.dm.ba <0|1>` and `c4.dm.lm <0|1>` are Composer's SET_BUTTON_ATTACHED and SET_LED_ATTACHED, from an
   LDZ-101's HC-300 log (wmariz), shown in Composer as "Buttons Control Load" and "LEDs Follow Load". Both take one
   decimal digit. That matches this map: `ba` is the extension's `paddle_local_control`. The LDZ-101 notes say
-  colour writes only take while `lm` is 0. Furn showed the reverse (`lm` 1 shows the stored colours, 0 freezes
+  colour writes only take while `lm` is 0. Dimmer A showed the reverse (`lm` 1 shows the stored colours, 0 freezes
   them), and that direct test stands for the DIM1-Z.
 - Composer spaces its colour writes out: in one log, bursts lost three of four writes until the steps were 5 s
   apart.
@@ -283,7 +323,7 @@ refused `rtl` in `0g` and `0s` frames; `0i` was never tried.
 
 - **Ramp to level**: `0i<seq> c4.dm.rtl <ch> <level % hex2> <time ms hex8>`, as in Control4's log
   `0if088 c4.dm.rtl 00 32 000003e8`. royceybaby confirmed it fades a C4-SDAPD240 load linearly. There is no stop
-  verb: a later level command supersedes the fade. **It works on the DIM1-Z (tested 2026-11-07 on Linen Closet,
+  verb: a later level command supersedes the fade. **It works on the DIM1-Z (tested 2026-11-07 on dimmer B,
   build 4ac162f47c2f):**
 
   | Sent | Read back (`t0s`) |
@@ -298,44 +338,45 @@ refused `rtl` in `0g` and `0s` frames; `0i` was never tried.
   given. To fade from level `a` to `b` in `t` ms, send `t × 100 / |b − a|`. **The APD120 (fw 5.1.1) differs:**
   there the time is this move's own duration (0→50 % in 5 s, 50→0 % in 10 s, read from its power draw on
   2026-11-07; `kc-apd-sw-capability-map.md`). Fade code needs a rule per family. Readings are against the log's
-  1-second timestamps, and the extension's own LED writes (the Linen Closet LED automation) shared the link.
+  1-second timestamps, and the extension's own LED writes (dimmer B's LED automation) shared the link.
 - **Set the level now**: `0s c4.dm.tv <ch> 00 <level %>`, answered by `sa c4.dm.tc 00 <level>` on the LOZ-5D1-W
   (same HC-300 log). It also drives the SDAPD240's second load. **It works on the DIM1-Z (tested 2026-11-07):**
-  on Linen Closet (off, fades `tv 02` / `03` = 500 ms), `0s c4.dm.tv 00 00 32` answered `000`, turned the light
-  on (`t0s` read `32`) and Home Assistant showed it on. `tv 00 00 00` turned it off. Furn took `tv 00 00 64` and
-  `tv 00 00 0064` (2- and 4-digit values) at the level it already had, with no change. Furn was not dimmed
-  because its load powers a Hue bulb.
+  on dimmer B (off, fades `tv 02` / `03` = 500 ms), `0s c4.dm.tv 00 00 32` answered `000`, turned the light
+  on (`t0s` read `32`) and Home Assistant showed it on. `tv 00 00 00` turned it off. Dimmer A took `tv 00 00 64` and
+  `tv 00 00 0064` (2- and 4-digit values) at the level it already had, with no change. Dimmer A was not dimmed
+  because its load powers a smart bulb.
 - **Reboot: `0i c4.dm.rb` reboots a DIM1-Z (tested 2026-11-07).** On 2026-11-06, `c4.dm.rb`, `rb 00` and
-  `rb 01` sent as `0s` frames all got `e00` on Office Cans: the frame type was wrong, not the name. Sent as
-  `0i<seq> c4.dm.rb` with no arguments, it rebooted Linen Closet (twice) and Garage Entrance:
+  `rb 01` sent as `0s` frames all got `e00` on dimmer E: the frame type was wrong, not the name. Sent as
+  `0i<seq> c4.dm.rb` with no arguments, it rebooted dimmer B (twice) and dimmer D:
   - **No reply.** The dimmer restarts before or just after acknowledging the frame, so Zigbee2MQTT may report
     `delivery failed (status 0xc20)`. That still means it rebooted.
   - **Send it once, without an APS acknowledgement.** When it restarts before its APS ack, the coordinator's APS
-    retries each reach the freshly booted dimmer and reboot it again. The first Reboot-button press on Linen
-    Closet (build 1fc0cf7567fc, frame `0i0042 c4.dm.rb` sent three times) rebooted it three times in 3.5 s: its
+    retries each reach the freshly booted dimmer and reboot it again. The first Reboot-button press on dimmer
+    B (build 1fc0cf7567fc, frame `0i0042 c4.dm.rb` sent three times) rebooted it three times in 3.5 s: its
     frame counter stepped 0x4D000, 0x4E000, 0x4F000. From build 342f7a3a92e1 the frame asks for no APS ack.
-  - **The user watched Garage Entrance:** the LEDs flashed green, then white, then went back to their own
+  - **The user watched dimmer D:** the LEDs flashed green, then white, then went back to their own
     colours.
   - **Back in about 2 s.** The sniffer shows ~1.7 s of silence after the acknowledgement. Then the dimmer
     broadcasts Link Status and a route request, then its Control4 identity (`c4:light_ip_control4:C4-DIM1-Z`)
     on profile 0xC25D, then announces its level (`0t… sa c4.dm.t0c <level>`). No ZDO announce, and nothing at
     info level in the Z2M log.
-  - **The NWK frame counter jumps to the next multiple of 0x1000** (Linen Closet: 300631 to 0x4B000, then
+  - **The NWK frame counter jumps to the next multiple of 0x1000** (Dimmer B: 300631 to 0x4B000, then
     307309 to 0x4C000 = 311296), as a Silicon Labs EmberZNet device does at boot. The sniffer can prove a
     reboot this way.
-  - **Nothing is lost.** The load stays at its level through the reboot (30 % on Linen Closet, 99 % on Garage
-    Entrance), so the Hue bulbs on Garage Entrance's load never went unavailable. Every setting read back the
-    same afterwards: `is`, `tv` 01 / 04-0a, `lm`, `ba` (Garage Entrance's paddle stayed decoupled), `lt` and
+  - **Nothing is lost.** The load stays at its level through the reboot (30 % on dimmer B, 99 % on dimmer
+    D), so the smart bulbs on dimmer D's load never went unavailable. Every setting read back the
+    same afterwards: `is`, `tv` 01 / 04-0a, `lm`, `ba` (dimmer D's paddle stayed decoupled), `lt` and
     the LED colours.
 
   The same-generation KP6-Z reboots on `c4.kp.rb 00` (wmariz). The DIM1-Z answers `n01` to every `c4.kp.*`
   name. Still never write `frs`.
-- **Sending a `0i` frame:** `{"c4_send": {"cmd": "...", "type": "i"}}` (#66). Before that, `c4_send` could frame
-  only `0s`.
+- **Sending a `0i` frame:** `{"c4_send": {"cmd": "...", "type": "i"}}` (archived PR 66). Before that, `c4_send` could frame
+  only `0s`. Since 2026-11-15 it takes any frame type letter (`"type": "t"`, or a digit then a letter) and
+  `"ack": false`, and `c4_raw` sends raw bytes on a Control4 profile, cluster and endpoints.
 
 ### Other community findings
 
-- bharat's herdsman-converters fork, PR #2 (DIM1-Z captures, by aksondhi), agrees with the extension: `c4.dm.b<n>c`
+- bharat's herdsman-converters fork, PR 2 (DIM1-Z captures, by aksondhi), agrees with the extension: `c4.dm.b<n>c`
   is a tap, `b<n>b` / `b<n>e` hold begin / end (wire 0 top, 1 bottom), `t0c <pct>` the level while ramping, and
   `cc <n> <count>` comes about 1.5-2 s after a tap, with none after a hold. pstuart's 2014 reading of `t0c` /
   `b0c` as top / bottom was wrong.
@@ -358,7 +399,7 @@ for `lt` or slot 07.
   "Device settings for dimmers"; the APD120, SW120277 and KC120277 installation guides; Snap One's X4 sunset
   table and migration sheet.
 - bharat/homeassistant-control4-dimmers, `RESEARCH.md` (the 2013 HC-800 log); bharat/zigbee-herdsman-converters
-  PR #2.
+  PR 2.
 - wmariz/zha-device-handlers, branch `control4`: `c4_ramp_cluster.py`, `c4_attached_switch.py`,
   `control4_outlet_dimmer.py`, `documentation/control4-kpz6b1-keypad-protocol.md`.
 - royceybaby/ha-c4-keypads, `quirks/zz_c4_local_models.py`.
@@ -366,7 +407,7 @@ for `lt` or slot 07.
 
 ## The frame-type survey (2026-11-15)
 
-Summarised from `docs/plans/frame-type-survey.md`, which has the detail. Run on Garage Inside Lights.
+Summarised from `docs/plans/frame-type-survey.md`, which has the detail. Run on dimmer C.
 - **Frame types:** it acts on `0g`, `0i`, `0s` and `0t`, and on no other letter. `0t` uses the same name table (known
   names `e00`, unknown `n01`).
 - **`0i c4.dm.bp <button> <event>` presses the paddle remotely:**
@@ -376,7 +417,7 @@ Summarised from `docs/plans/frame-type-survey.md`, which has the detail. Run on 
   bootloader entry. `c4.dm.blink` answers as `bl`: most likely an LED blink.
 - **Network-profile cluster:**
   - **Writable:** `0x0001` (10), `0x0002` (300) and `0x0003`. Not `0x0015`.
-  - **`0x0003`** is a count since the last boot (4 here, 0 on two others, 0 after a reboot).
+  - **`0x0003`** is a count since the last boot (4 on dimmer C, 0 on two others, 0 after a reboot).
 - **Radio power:** none of it, nor about 3,300 more Gets (uppercase names, the skipped `c4.sy` names, radio words and
   families), changed or found a power setting. No over-the-air path sets this model's radio power.
 
@@ -395,8 +436,8 @@ Summarised from `docs/plans/frame-type-survey.md`, which has the detail. Run on 
 - **Endpoint 1** doesn't answer ZCL Discover Attributes.
 - **Every 3-character name with a digit,** under `c4.dm.` and `c4.sy.` (~58,000 Gets over three dimmers): nothing new.
   Every name of up to 3 characters is now swept.
-- **Its output may already be at the radio's maximum.** At the sniffer, Kitchen Cans' stronger half-cycle frames come in
-  about 6 dB above the Kitchen Keypad at 0 dBm. If the two sit close together, that's about +3 dBm, the EM250's top. The
+- **Its output may already be at the radio's maximum.** At the sniffer, dimmer F's stronger half-cycle frames come in
+  about 6 dB above keypad A at 0 dBm. If the two sit close together, that's about +3 dBm, the EM250's top. The
   pull-out whip antenna (Hardware, above) is the one way left to more signal from the dimmer itself.
 
 Detail in `docs/plans/frame-type-survey.md`, "Round two".
@@ -408,12 +449,11 @@ Detail in `docs/plans/frame-type-survey.md`, "Round two".
 - **`tv` slot 07** (`1`, device-wide): a 0 / 1 flag (2026-11-15). Nothing measured changed at 0; next, someone at the
   switch, tapping and holding with it at 0.
 - **Zigbee groups**: the DIM1-Z takes a group-add command, but whether it then follows a command sent to the
-  group is untested. Testing it needs a Z2M group (the coordinator has one spare group slot) and one
-  network-wide broadcast.
+  group is untested. Testing it needs a Z2M group (coordinators hold only a few) and one network-wide broadcast.
 - **`onLevel` = 255** (ZCL "use the previous level"): writable or not, untested.
-- **`0i` frames** (each needs the frame-type option first):
+- **`0i` frames:**
   - ~~`0i c4.dm.rtl`~~: works, and its time is a full-sweep rate (tested 2026-11-07, above). **A fade from off
-    skips the cold start** (Garage Inside Lights, 2026-11-08). With `tv 09` at 60 % for 1 s, `rtl 00 1e 00002710` from
+    skips the cold start** (dimmer C, 2026-11-08). With `tv 09` at 60 % for 1 s, `rtl 00 1e 00002710` from
     off reported 20 % (its minimum), then 30 %, never 60 %, and arrived in 2.1 s of the 3 s asked. The extension now
     holds a fade to min / max itself, and turns on from off with the ZCL level command when a cold start is set. So
     whether `rtl` respects min / max no longer matters. The full-sweep rule held again: 50 → 100 % with 8000 ms took
@@ -424,17 +464,20 @@ Detail in `docs/plans/frame-type-survey.md`, "Round two".
     does it cure a dimmer that is stuck re-joining, or whose Control4 side has gone deaf while ZDO still
     answers? A deaf firmware may not act on the frame at all; the ZDO leave-and-rejoin stays the fallback there.
     Does `rb` take an argument on this model (`0i c4.dm.rb 00` / `01`)? Untried, and not needed.
+  - **`0i c4.dm.bl`** (4 to 6 arguments, 2026-11-15): what it shows. Next, someone watching the switch while it is
+    sent.
+  - ~~`0i c4.dm.bp`~~: presses the paddle remotely (2026-11-15, above). Nothing in the extension needs it yet.
 - **5-5-5** taps: what they do on a DIM1-Z. Try them on one that has to be re-paired anyway.
 
 ## What this means for the extension
 
-Done (#58):
+Done (archived PR 58):
 
 - **The entities show what the dimmer holds.** Each DIM1-Z's settings are read once: `c4.dm.is` for
   default-on, both fades and the paddle flag, `tv 00 08 06 04 05 09 0a` for the rest. That's 7 Gets, 30 s after a
   start (a hot-load too), through the paced state-read queue and never mid-fade. They're read again after the
   dimmer leaves the network or arrives from another instance. Before this, `hold_ramp_up` / `hold_ramp_down`
-  showed 4000 while Furn held 5000, and `min_brightness` showed 5 where the factory value is 0.
+  showed 4000 while dimmer A held 5000, and `min_brightness` showed 5 where the factory value is 0.
 - **Until that read, a DIM1-Z shows its own factory values:** min 0 %, hold ramps 5000 ms. The APD120 keeps the
   shared defaults (Control4's own provisioning values, see "Composer's names for the settings"). Its slots, read
   on 2026-11-07, hold 10 % and 5000 ms (`kc-apd-sw-capability-map.md`).
@@ -442,22 +485,32 @@ Done (#58):
   stretched by the cold-start hold.
 - `src/core/leds.ts` names `is` field 1 as the default-on level, not "max".
 
-Not done:
+Done (archived PR 100, merged 2026-11-10):
+
+- **Hardware fades.** A `transition` is one `0i c4.dm.rtl` frame, a true fade of any length. The extension knows
+  the current level, so it turns the wanted duration into the sweep rate `rtl` takes (`src/devices/dimming.ts`). A
+  turn-on from off with a cold start set uses the level command, since `rtl` skips the cold start.
+- **The README** gives this generation's reboot (15 taps on top) and documented reset (5-5-5) next to the newer
+  models' 9-4-9 / 13-4-13, and suggests pulling out the antenna for a DIM1-Z that keeps dropping off.
+
+Declined (`docs/plans/device-completion.md`, P5.2 and P5.3; issues #8 and #9 keep them as research):
 
 - `c4.sy.info` names the model in one Get. The model already comes reliably from every check-in, so this
   would only confirm it.
 - `c4.dm.t0s` (or `tv 00 00`) reads the live level over the Control4 channel in one Get, where the
-  extension uses two ZCL reads. Untested: whether a Control4 Get is any safer mid-fade.
+  extension uses two ZCL reads. The extension's load read never runs mid-fade, so there is nothing to fix; and `t0s`
+  already read sensible levels mid-fade in the `rtl` tests above.
 - `l0v` / `l1v` read back what an LED shows now: a direct check of an LED paint, where `is` only shows
-  the stored slots.
+  the stored slots. A paint writes both stored colours of an LED, which `is` checks, so `is` stays.
+- `c4.dm.is2` would read max, min and cold start in one Get, in place of four `tv` Gets. Not needed: the
+  settings read runs once per start.
+
+Left out:
+
 - The LED polarity flags (`l0l` / `l1l`) are not exposed: the extension paints the LEDs itself, and an
   inverted LED would break its idea of which colour is showing.
-- `rtl` works, so a `transition` could be one frame and a true fade of any length. The extension knows the
-  current level, so it can turn the wanted duration into the sweep rate `rtl` takes.
-- The README could give this generation's reboot (15 taps on top) and documented reset (5-5-5) next to the newer
-  models' 9-4-9 / 13-4-13, and suggest pulling out the antenna for a DIM1-Z that keeps dropping off.
 
-Done (#66, 2026-11-07):
+Done (archived PR 66, 2026-11-07):
 
 - **`c4_send` takes `"type": "i"`**, which sends an interrupt frame (`0i<seq> <cmd>`).
 - **A Reboot button per DIM1-Z** (`/set` `reboot`), which sends `0i c4.dm.rb`. A delivery failure on that

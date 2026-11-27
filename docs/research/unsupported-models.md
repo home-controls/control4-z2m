@@ -1,54 +1,58 @@
-# Models people have that we don't support (2026-11-25)
+# Models people have that we don't support (2026-11-25, brought current 2026-11-27)
 
 Replies to the Home Assistant community post
 ([thread](https://community.home-assistant.io/t/control4-zigbee-dimmers-keypads-and-remotes-on-stock-zigbee2mqtt-no-control4-controller-would-you-use-it/1035683))
 named Control4 devices this project doesn't handle yet. This note covers what each one is, what we know about how it
-talks, and what adding it takes. It goes with the branch `c4-new-models`, which adds:
+talks, and what adding it takes. It went with the branch `c4-new-models`, now merged, which added:
 
-- **Probe mode.** A device that checks in with a model this build doesn't know stays usable and tells us about itself.
+- **Unsupported-model mode.** A device that checks in with a model this build doesn't know (an **unsupported model**)
+  stays usable and tells us about itself.
 - **Five models built from other projects' notes**, none yet tested on hardware: the C4-KD120 keypad dimmer, the
   C4-FPD120 forward-phase dimmer (as an APD120), the C4-V-ROSW120 receptacle outlet switch, the LOZ-5D1-W outlet
   dimmer and the C4-KP2-Z keypad.
 
 ## Who has what
 
+Testers in the thread are named here by letter, with the models they have.
+
 | Post | Who | Devices | Notes |
 |---|---|---|---|
-| #5 | niknam | "about 40 keypads and dimmers", no model numbers | TI coordinator now, an Ember one ordered. Will test |
-| #6 | Rowch | 100+: KD120, V-FPD120, V-SW120, KC120, V-ROSW120, LSZ-3W1, KPZ-6B1, LSZ-102, LOZ-5S1, LOZ-5D1, ZIO, maybe an SR-150 and SR250 | HA Yellow (Ember), Zigbee2MQTT. Will test with guidance |
-| #8 | jtela0 | SR260, Z2IO | Offered to test both |
+| 5 | Tester A | "about 40 keypads and dimmers", no model numbers | TI coordinator now, an Ember one ordered. Will test |
+| 6 | Tester B | 100+: KD120, V-FPD120, V-SW120, KC120, V-ROSW120, LSZ-3W1, KPZ-6B1, LSZ-102, LOZ-5S1, LOZ-5D1, ZIO, maybe an SR-150 and SR250 | HA Yellow (Ember), Zigbee2MQTT. Will test with guidance |
+| 8 | Tester C | SR260, Z2IO | Offered to test both |
 
 ## Model by model
 
 "Gen3" is the board the APD120, SW120277 and KC120277 share (the `c4.dmx.*` firmware,
 `kc-apd-sw-capability-map.md`). "Gen1/Gen2" is the LDZ / LSZ / KPZ / DIM1-Z generation (`c4.dm.*`,
 `c4.kp.*`, `dim1z-capability-map.md`). The check-in strings and protocol notes come from other
-projects' code (**What other projects found**, below). None of these models has been seen on our own networks.
+projects' code (**What other projects found**, below). The models marked untested have never been
+seen at the test site.
 
-| Rowch wrote | Part number (best match) | What it is | Talks | Status on this branch | What adding it needs |
+| Tester B wrote | Part number (best match) | What it is | Talks | Status | What adding it needs |
 |---|---|---|---|---|---|
 | KC120 | C4-KC120277 | Configurable keypad | Gen3 | **Supported** | Nothing |
 | KPZ-6B1 | KPZ-6B1 / C4-KP6-Z | 6-button keypad | Gen1/2 `c4.kp` | **Supported** | Nothing |
 | LOZ-5S1 | LOZ-5S1-W | Dual switched outlet (plug-in) | 0xC25E outlet profile | Supported, **never tested on hardware** | A tester: pair it, switch both outlets, press its buttons |
-| ZIO | C4-Z2IO-ZP | Contact / relay I/O | `c4.z2x` | Supported, **never tested on hardware** (jtela0 has one too) | A tester, as above |
+| ZIO | C4-Z2IO-ZP | Contact / relay I/O | `c4.z2x` | Supported, **never tested on hardware** (tester C has one too) | A tester, as above |
 | SR250 | C4-SR250B | LCD remote | `c4.ln` / remote | **Supported** | Nothing |
-| (jtela0) SR260 | C4-SR260 | LCD remote | as SR250 | Supported, **never tested on hardware** | A tester |
+| (tester C) SR260 | C4-SR260 | LCD remote | as SR250 | **Supported, tested on hardware** at the test site (firmware 2.2.50: commissioning, wakes, menus, text colour, sniffer captures) | Nothing. Tester C's would be a second unit |
 | KD120 | C4-KD120 (checks in as `c4:control4_light:C4-KD120`) | Keypad dimmer: "an APD120 and a KC120277 in one device" | Gen3, APD firmware line | **Added, untested** (below) | A tester to confirm the button wires and LED slots on our code |
-| V-FPD120 | C4-FPD120 | Forward-phase dimmer, Control4's replacement for the DIM1-Z | Gen3, as the APD120 | **Added, untested**: an APD120 under its own model | A tester. The "Essential" C4-V-FPD120 may check in differently, and stays in probe mode until one does |
-| V-SW120 | Probably C4-V-SW120277 (the driver's name; nothing public under "SW120") | Switch | Gen3 | Probe mode | Its check-in. If it is `C4-SW120277` it is already supported |
+| V-FPD120 | C4-FPD120 | Forward-phase dimmer, Control4's replacement for the DIM1-Z | Gen3, as the APD120 | **Added, untested**: an APD120 under its own model | A tester. The "Essential" C4-V-FPD120 may check in differently, and stays an unsupported model until one does |
+| V-SW120 | Probably C4-V-SW120277 (the driver's name; nothing public under "SW120") | Switch | Gen3 | Unsupported model | Its check-in. If it is `C4-SW120277` it is already supported |
 | V-ROSW120 | C4-V-ROSW120 (checks in as `c4:control4_light:C4-V-ROSW120`) | In-wall duplex receptacle with one button | ZCL on/off on EP1, no reports; one button (id 00) on `c4.dmx` | **Added, untested** (`src/devices/rosw120.ts`): ZCL on/off, its state read back 1 s after each command and tap, `c4.dmx.tc` as its button's switch, the button as `button_1` | A tester: switch it, tap the button, and check which outlet it switches |
 | LOZ-5D1 | LOZ-5D1-W | Plug-in dimmer, two dimmable outlets, 700 W total | Both outlets on the `c4.dm` channel protocol; both report `c4.dm.tc` | **Added, untested** (`src/devices/outlet-dimmer.ts`): lights `l1` / `l2` driven by `c4.dm.tv <ch> 00 <pct>` (as the Control4 controller drives them), fades by `0i c4.dm.rtl`, levels read with Gets at start | A tester: dim each outlet, fade one, press its buttons |
-| LSZ-102 | LSZ-102 / LSZ-101 | Gen1 unit: a switch (wmariz) or a dimmer (defjam903) | Gen1 `c4.dm` dialect, ZCL on EP1 | Probe mode | Its check-in, fingerprint and button frames. 2010-era units may run Embernet and never join |
-| LSZ-3W1 | LSZ-3W1-x | Gen1 three-way unit; "doesn't control the load" (pstuart) | Gen1 `c4.dm`? | Probe mode | As the LSZ-102 |
-| SR-150 | C4-SR150B-Z-B (bharat's list) | Remote without an LCD | Unknown | Probe mode | Its button frames: every key once, to build its button map |
+| LSZ-102 | LSZ-102 / LSZ-101 | Gen1 unit: a switch (wmariz) or a dimmer (defjam903) | Gen1 `c4.dm` dialect, ZCL on EP1 | Unsupported model | Its check-in, fingerprint and button frames. 2010-era units may run Embernet and never join |
+| LSZ-3W1 | LSZ-3W1-x | Gen1 three-way unit; "doesn't control the load" (pstuart) | Gen1 `c4.dm`? | Unsupported model | As the LSZ-102 |
+| SR-150 | C4-SR150B-Z-B (bharat's list) | Remote without an LCD | Unknown | Unsupported model | Its button frames: every key once, to build its button map |
 
-**Not from the thread.** One of the houses this already runs in has a **C4-KP2-Z** (2-button keypad). A 2014
+**Not from the thread.** A site this already runs at has a **C4-KP2-Z** (2-button keypad). A 2014
 SmartThings capture shows it checks in as `c4:control4_keypad:C4-KP2-Z` (firmware 03.22.41) and sends the KP3/KP6's
 `c4.kp.bb` / `bc` / `cc` frames, on button ids 00 and 02 (top and bottom, most likely). **Added, untested**: a
 `Keypad` whose `button_1` / `button_2` are ids 00 / 02, each with the LED slot of its id. To check on that one: tap
 each button, read the action, and set each button's colour.
 
-## Probe mode
+## Unsupported-model mode
 
 A check-in that names a model this build doesn't know used to leave the device stranded. Its Zigbee2MQTT record was
 stamped with that model, no definition matched it, and the generic `c4_get` / `c4_send` keys stopped reaching it.
@@ -136,13 +140,13 @@ A search of the other public Control4 Zigbee projects on GitHub: bharat's `homea
 SmartThings drivers, and the forum threads they link. Koenkk's upstream converters have no Control4 device.
 
 **C4-KD120.** The table above. The main outside evidence is one owner's five KD120s on firmware 5.1.1 (bharat's
-converter PR #1; his integration's issues #117 and #242 and PRs #193, #225, #226 and #252).
+converter PR 1; his integration's issues 117 and 242 and PRs 193, 225, 226 and 252).
 
 **C4-FPD120.** `"C4-FPD120"` in bharat's converter, on the APD120's definition (ZCL light on EP1, the text protocol
 on EP197). His README calls it the APD120's twin, top and bottom paddle. No frames published. Control4's driver
 files are named `C4-V-FPD120`, `C4-V-ROSW120` and `C4-V-SW120277`, so "V-" names a driver line, not always the model.
 
-**C4-V-ROSW120** (bharat's issue #2; converter lines 553-578). It checks in as `c4:control4_light:C4-V-ROSW120`
+**C4-V-ROSW120** (bharat's issue 2; converter lines 553-578). It checks in as `c4:control4_light:C4-V-ROSW120`
 (firmware 1.1.59). EP1 is HA but lists only Basic and Power Configuration. ZCL on/off on EP1 works anyway, with no
 default response, no reports and no binds, so its state has to be read back after each command. It answers
 `c4.dm.tv` but not `c4.dmx.dim`, `ls` or `amb`. Its one button sends `c4.dmx.bp 00`, `sc 00`, `tc 00 <level>` and
@@ -169,9 +173,9 @@ holds for the APD120 and SW120277 as well, which don't name those wires yet.
 
 ## Next steps
 
-1. **Get the build to Rowch and jtela0.** Rowch's LOZ-5S1, LOZ-5D1, ROSW120, ZIO, KD120 and FPD120 and jtela0's
-   SR260 and Z2IO all run on code that has never met a real device; so does the KP2-Z. The rest of Rowch's devices
-   are in probe mode and give us their logs.
+1. **Get the build to the testers.** Tester B's LOZ-5S1, LOZ-5D1, ROSW120, ZIO, KD120 and FPD120 and tester C's
+   Z2IO all run on code that has never met a real device; so does the KP2-Z. Tester C's SR260 runs on code tested
+   on an SR260 here. The rest of tester B's devices are unsupported models, and give us their logs.
 2. **From each log, add the model.** A Gen3 fingerprint with a known shape (the "Essential" V-FPD120, a V-SW120277)
    is an alias in `MODELS` plus a test. A new shape is a family.
 3. **The LOZ-5D1's open questions.** Whether outlet 2 has an EP2 (the two sources disagree; this build doesn't

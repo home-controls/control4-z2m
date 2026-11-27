@@ -1,11 +1,14 @@
-## This repo is readable by testers
+## This repo is public
 
-Everything committed here (history included), and every issue, PR and Actions log, can be read by
-the testers who have access. Never write people's or rooms' names, house names, home hosts, IP
+Everything committed here (history included), and every issue, PR and Actions log, is public. Never write people's or rooms' names, house names, home hosts, IP
 addresses or email addresses into a file, a commit message, an issue or a PR body. Run
 `node tools/privacy-check.mjs` before a commit and `node tools/privacy-check.mjs --text <body>`
-before posting; CI runs it on every push. Install the pre-push hook once per clone:
-`git config core.hooksPath tools/hooks`.
+before posting; CI runs it on every push and pull request. A fork's pull request gets no secrets, so
+there CI skips it: before merging one, run `node tools/privacy-check.mjs --range <base>..<head>`.
+Install the pre-push hook once per clone: `git config core.hooksPath tools/hooks`.
+
+A change to `dist/` raises `package.json`'s version (`tools/release-check.mjs`); the merge publishes
+it as release `v<version>`. See CONTRIBUTING.md.
 
 Issue numbers up to #118 in older docs and commits refer to the archived tracker, not this repo's.
 
@@ -17,7 +20,7 @@ Issues live in GitHub Issues on `home-controls/control4-z2m`, driven through the
 
 ### Triage labels
 
-The seven default triage labels, unchanged. See `docs/agents/triage-labels.md`.
+The seven default triage labels, plus `wayfinder:map|task|research|prototype|grilling` for planned work. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

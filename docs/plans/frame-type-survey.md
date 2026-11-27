@@ -4,12 +4,20 @@
 known to matter. It covers the KC120277, APD120 and SW120277 (the Gen3 board) first, then whatever the DIM1-Z
 has left.
 
+**Status, 2026-11-27.** The DIM1-Z part is finished: every name of up to 3 characters is swept, its last two unknown
+names (`bp`, `bl`) are read, and no over-the-air path sets its radio power. On the Gen3 board, Step 3 (frame types)
+is done on keypad A, the remote reboot is found and is now a build task (#12), and the full name sweep (Steps 1-2) is
+still to run (#13). The findings are in the two research maps as well as below.
+
+The devices tested are named by label: keypad A is a KC120277, and dimmers C, D and F are DIM1-Zs (the same labels as
+in the research maps).
+
 ## Why the frame type matters
 
 Each Control4 frame starts with a type: `0s` Set, `0g` Get, `0r` reply, `0t` announcement, and `0i`, which
 Control4's controller uses for some commands. For years the remote reboot and the hardware fade looked absent: `rb` and
 `rtl` answered `e00` to every Get and Set. Both were `0i` commands all along (2026-11-07). On 2026-11-15 the same idea
-found the Gen3 board's reboot (`0i c4.sy.rb`, on the Kitchen Keypad and the Dining Room Hanging Light). The same session
+found the Gen3 board's reboot (`0i c4.sy.rb`, on keypad A, a KC120277, and an APD120 on an LED load). The same session
 confirmed that `c4.sy.zpw` sets its radio power for real (see the research map).
 
 What the devices answer tells us a lot, before anything acts:
@@ -29,16 +37,16 @@ learn a command's argument count without running it.
 
 | Model | Names swept | Write-only names (`e00` to a Get) | Tried as `0i` |
 |---|---|---|---|
-| DIM1-Z | All 2- and 3-letter names under `c4.dm.` and `c4.sy.`, plus digit shapes and ~750 long words (the DIM1-Z map, Coverage) | `bl` `bp` `op` `rb` `tf` `tp` `frs` `rtl` | All but `bl` and `frs`. `bp`'s job is unknown |
+| DIM1-Z | Every name of up to 3 characters under `c4.dm.` and `c4.sy.` (letters, digits, uppercase, and the names hidden behind real ones), plus ~750 long words (the DIM1-Z map, Coverage) | `bl` `bp` `op` `rb` `tf` `tp` `frs` `rtl` | All but `frs`. `bp` presses the paddle; `bl` takes 4-6 arguments, most likely an LED blink (2026-11-15) |
 | APD120 | Only names from the ZHA-era notes and other models | `c4.sy.rb`, `c4.dm.rb`, `c4.dm.rtl` | `c4.sy.rb` (reboots), `c4.dm.rtl` (fades) |
 | KC120277 | The same | `c4.sy.rb`, `c4.dm.rb`, `c4.dmx.rbp`, `c4.dmx.bl` | `c4.sy.rb` (reboots) |
 | SW120277 | None here | | |
 
-The Gen3 board has never had a full name sweep. That's the biggest gap, and the safest place to look.
+The Gen3 board has never had a full name sweep. That's the biggest gap left, and the safest place to look.
 
 ## The method
 
-One device at a time, from the allowed list (the Kitchen Keypad and the Dining Room Hanging Light), with every write
+One device at a time, from the allowed list (keypad A, a KC120277, and an APD120 on an LED load), with every write
 snapshotted first and put back after.
 
 ### Step 1: find every name, by Gets (read-only)
@@ -78,8 +86,8 @@ Do the same as `0s`, for names that answer `e00` to a Get but may still be Sets 
 - Send a harmless name (`c4.sy.fwv`) under every type letter `a`-`z`, and with `1`-`9` in place of the leading `0`.
 - Note which answer (`000`, `e00`, `n01`, or silence).
 - Every type that answers gets Step 2 for the write-only names.
-- **This needs a small change to the extension:** `c4_send` takes only `"s"` and `"i"` today. Let it take any type
-  letter, and an `"ack": false` option, for commands that may reboot.
+- **This needed a small change to the extension,** now built: `c4_send` took only `"s"` and `"i"`. It takes any type
+  letter now, and an `"ack": false` option, for commands that may reboot (Results, below).
 
 ### Step 4: what each command does
 
@@ -91,7 +99,8 @@ Do the same as `0s`, for names that answer `e00` to a Get but may still be Sets 
 
 ### Rules that hold throughout
 
-- **Never send:** `bl`, `rbp`, `frs`, or `c4.dmx.btn <wire> 01 05`.
+- **Never send:** `c4.dmx.bl`, `rbp`, `frs`, or `c4.dmx.btn <wire> 01 05`. (The DIM1-Z's `c4.dm.bl` was sent, with
+  out-of-range values first, once the DIM1-Z work showed what it was not: Results, below.)
 - **Zero arguments only once the count is known to be zero,** and with the user's go-ahead (it may reboot).
 - **A command that may reboot goes without an APS ack** (the DIM1-Z reboots once per retry).
 - **Stop at anything unexpected:** a device that stops answering, a load that changes, an LED that does something new.
@@ -104,31 +113,32 @@ The `0i` idea has already been tried there:
 - **Control4's own provisioning:** it never set this generation's power.
 - **The hardware:** its output dips about 11 dB for half of every mains cycle, which no setting would fix.
 
-Three leads remain, in order of safety:
+Three leads remained, in order of safety. All three were tried on 2026-11-15, and none sets power (Results, below):
 
-1. **Step 3's new frame types,** sent with `zpw` and the other power-sounding names.
+1. **Step 3's new frame types,** sent with `zpw` and the other power-sounding names. Only `0t` is new, and it takes
+   no command.
 2. **Write Attributes on its network-profile cluster** (`0xC25D`, cluster 1, endpoint 2). Attribute `0x0015` is an
    int8 that reads `-1` and is otherwise unexplained, which is the shape a power offset would take.
    - **The test:** write it to `3`, read it back, compare its RSSI at the sniffer over a few minutes, and put `-1`
      back.
    - **Never write** `0x0008`-`0x000c`: they hold the controller's identity and the Zigbee channel.
-   - This needs the user's go-ahead, since nothing has been written to that cluster yet.
-3. **`bl`:** never. It may be a bootloader entry.
-
-The odds are low, but each test is short.
+   - **The result:** `0x0015` refuses writes (`0x86`). Only `0x0001`-`0x0003` take one, and none touches the radio.
+3. **`bl`:** feared as a bootloader entry. It takes 4 to 6 arguments, runs with out-of-range values, and leaves the
+   dimmer and its radio as they were: most likely an LED blink.
 
 ## What it would ship
 
 - **Already found, ready to build:**
-  - a **Reboot** button and the automatic reboots (ADR 0006) for the KC120277, APD120 and SW120277, using
-    `0i c4.sy.rb`. Read the reset reason again after it, since these models send no announce;
-  - the TX power note that the radio takes -10 to +2 dBm.
+  - a **Reboot** button and the automatic reboots (ADR 0006) for the KC120277 and APD120, using `0i c4.sy.rb`
+    (#12; the SW120277 is untested). Read the reset reason again after it, since these models send no announce;
+  - the TX power note that the radio takes -10 to +2 dBm (-10 reads back as -11), and that the setting survives a
+    reboot. The extension's `tx_power` takes -8 to +2.
 - **From the survey:** whatever Steps 1-4 find that is safe and useful, each with its research-map entry, its test and
   its README line, as in the completion plan.
 
-## Results so far (2026-11-15)
+## Results (2026-11-15)
 
-Run on Garage Inside Lights (DIM1-Z) and the Kitchen Keypad (KC120277), the sniffer pairing each probe with its
+Run on dimmer C (DIM1-Z) and keypad A (KC120277), the sniffer pairing each probe with its
 reply by sequence number. Two probe tools were added to the extension:
 - **`c4_send`** takes any frame type letter (`"type": "x"`, or a digit then a letter) and `"ack": false`.
 - **`c4_raw`** sends raw bytes on a Control4 profile, cluster and endpoints.
@@ -164,7 +174,7 @@ While a probe waits, any frame the device sends back is logged (`Control4 FRAME`
 - **Writable:** `0x0001` (10), `0x0002` (300) and `0x0003`, tested by writing each its own value. **Refused
   (`0x86`):** `0x0000`, `0x0005`, `0x0006`, `0x000b`, `0x0012` and `0x0015`. The controller's identity (`0x0008`-`0x000a`)
   was left alone.
-- **`0x0003` is a count since the last boot:** it was 4 on Garage Inside Lights and 0 on two others, and reads 0
+- **`0x0003` is a count since the last boot:** it was 4 on dimmer C and 0 on two others, and reads 0
   again after a reboot. Control4 reads it in the 90 s status report.
 - **Setting `0x0003` 4 → 0 changed nothing on the radio,** before or after a reboot.
 - **No discovery:** Discover Commands and Discover Attributes answer `0x82` (unsupported). Every other cluster ID on
@@ -179,7 +189,7 @@ While a probe waits, any frame the device sends back is logged (`Control4 FRAME`
 
 ### Round two (the same evening)
 
-Everything a first pass couldn't reach, on Garage Inside Lights unless named.
+Everything a first pass couldn't reach, on dimmer C unless named.
 
 **Names hidden behind real names.** A probe longer than a real name answers as that name, so no sweep could see a
 3-character name that starts with one of the 13 real 2-letter names (`is`, `tv`, `rb`, …), or a 4-character name that
@@ -230,7 +240,7 @@ The firmware ignores the destination endpoint: the extension's frames go to endp
   | 0x000b | 300 | Unknown, read-only |
   | 0x000c | 25 | The Zigbee channel |
 
-  The model check-in adds 0x0005 (5 on every DIM1-Z) and 0x0006. 0x0006 is 86 on Garage Inside Lights, rising
+  The model check-in adds 0x0005 (5 on every DIM1-Z) and 0x0006. 0x0006 is 86 on dimmer C, rising
   84 → 86 through today's reboots, and 71 on two others: most likely a lifetime boot count.
 - **0xC25C cluster 0:** no answer to a text frame or a ZCL read.
 - **0xC25E cluster 2 is new:**
@@ -244,12 +254,12 @@ The firmware ignores the destination endpoint: the extension's frames go to endp
 
   - **Everything else to 0x00ff is unsupported,** and Discover isn't supported.
   - **Writes are refused,** status 0x81, even writing an attribute its own value.
-  - **The same on Garage Inside Lights, Garage Entrance and Kitchen Cans,** and absent on the KC120277 and APD120.
+  - **The same on dimmers C, D and F,** and absent on the KC120277 and APD120.
   - Read-only, so 0x000e = 3 sets nothing, even if it is the radio's +3 dBm.
 - **Endpoint 1, ZCL Discover Attributes** (plain and with 0xABCD) on all seven clusters: no answer at all.
 
 **Every 3-character name with a digit, under both families (21:34-23:21).** A temporary script (since deleted)
-sent one Get every 0.3 s to each of Garage Inside Lights, Garage Entrance and Kitchen Cans. Together:
+sent one Get every 0.3 s to each of dimmers C, D and F. Together:
 - **What was sent:** about 58,000 Gets, the 36³ − 26³ names with at least one digit under `c4.dm.` and under `c4.sy.`.
 - **Missed and re-sent:** 57 Gets went unanswered, found from gaps in the reply sequence numbers and named from the
   sniffer, mostly while a slow probe held up one dimmer's queue. All 57 were re-sent.
@@ -266,9 +276,9 @@ about four days around the clock for both families on three dimmers at this pace
 - **Network profile:** its settings hold two timers and a boot count. Nothing else on any endpoint takes a write.
 - **Hardware:** its output dips about 11 dB for half of every mains cycle, which no setting would fix.
 
-**It may already be at full power.** The Kitchen Keypad, a Gen3 radio set to 0 dBm, and Kitchen Cans, a DIM1-Z, reach the
+**It may already be at full power.** Keypad A, a Gen3 radio set to 0 dBm, and dimmer F, a DIM1-Z, reach the
 sniffer at −62 and −56 dBm (median of each one's stronger half of frames, 21:00-21:40):
-- **Kitchen Cans comes in about 6 dB hotter.** If the two sit close together, the DIM1-Z already transmits at about
+- **Dimmer F comes in about 6 dB hotter.** If the two sit close together, the DIM1-Z already transmits at about
   +3 dBm or more, the top of the EM250 radio its generation is built on. There would be nothing left to raise.
 - **Still to confirm:** where the two sit, and the chip.
 
@@ -281,9 +291,9 @@ What does work for a weak DIM1-Z:
 
 ## Order
 
-1. The `c4_send` change (any type letter, `"ack": false`). Small, and needed by Steps 2 and 3.
-2. Step 3 on the Kitchen Keypad (about 35 frames, minutes).
-3. Step 1 on the Kitchen Keypad, then the names it finds on the APD120.
-4. Step 2 for every write-only name found.
-5. The DIM1-Z attribute test, with the go-ahead.
-6. Build what was found.
+1. **Done:** the `c4_send` change (any type letter, `"ack": false`), and `c4_raw`.
+2. **Done:** Step 3 on keypad A (about 35 frames, minutes).
+3. **Done:** the DIM1-Z: its attribute test, its last unknown names, and every name of up to 3 characters.
+4. Step 1 on keypad A, then the names it finds on the APD120 (#13).
+5. Step 2 for every write-only name found.
+6. Build what was found: first the Gen3 Reboot button and automatic reboots (#12).
