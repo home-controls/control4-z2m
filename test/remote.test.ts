@@ -327,12 +327,46 @@ describe("screen after a wake or re-join", () => {
         from = rig.transport.sent.length;
         await tick(20_000);
         expect(sent260(from)).toEqual([]);
-        // An identity read with nothing under way refreshes even inside the wake debounce.
+        // An identity read with nothing under way refreshes even inside the wake debounce; the
+        // menu that wake's refresh re-showed is on the screen already, so it is not sent again.
         rig.ascii(R260, "0t0002 sa c4.zr.mot");
         await tick(1_000);
         from = rig.transport.sent.length;
         identityRead();
         await tick(1_000);
+        expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri"]);
+    });
+
+    it("does not re-show a menu shown between a failed try and its retry", async () => {
+        rig.transport.failWith = (f) => (f.profile === PROFILE_BUTTON ? fails() : undefined);
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(500); // the first try failed
+        rig.transport.failWith = undefined;
+        const from = rig.transport.sent.length;
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(20_000);
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
+    });
+
+    it("does not re-show a menu shown after the wake when the identity read comes", async () => {
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(500); // that wake's refresh is done
+        const from = rig.transport.sent.length;
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"}); // out by 600 ms
+        await tick(300);
+        identityRead(); // about a second after the wake
+        await tick(20_000);
+        expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
+    });
+
+    it("retries only the menu when the rows went through and the menu did not", async () => {
+        await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
+        await tick(10_000);
+        let menuFails = 1;
+        rig.transport.failWith = (f) => (f.data.toString("latin1").includes("c4.ln.sl") && menuFails-- > 0 ? fails() : undefined);
+        const from = rig.transport.sent.length;
+        rig.ascii(R260, "0t0001 sa c4.zr.mot");
+        await tick(20_000);
         expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
     });
 });

@@ -38,11 +38,12 @@ export const DEFAULT_ROOM = "Home";
 const LOCALE = "en_US";
 const WAKE_REFRESH_MIN = 5_000;
 /**
- * When a wake's clock, rows and open menu go out (again). Right at a wake the
- * first sends can fail at once (DELIVERY_FAILED) while the remote re-joins, so
- * an undelivered refresh is tried again.
+ * The gaps before each try of a wake's clock, rows and open menu: right at a
+ * wake the first sends can fail at once (DELIVERY_FAILED) while the remote
+ * re-joins, so an undelivered refresh goes out again about 1.5, 5.5 and 13.5 s
+ * after the first try.
  */
-export const WAKE_TRIES = [0, 1_500, 4_000, 8_000];
+const WAKE_TRIES = [0, 1_500, 4_000, 8_000];
 const DIAG_POLL = 30 * 60_000;
 const PAGE_SIZE = 5;
 const GI_MAX_FRAME = 70;
@@ -92,6 +93,8 @@ interface Menu {
     cursor?: number;
     /** The c4.ln.sl that showed it, without the sequence: re-sent after a wake. */
     header?: string;
+    /** When the remote last took it (ctx.now()); undefined while it is going out. */
+    sentAt?: number;
 }
 
 export class Remote extends C4Device {
@@ -104,6 +107,7 @@ export class Remote extends C4Device {
     private rowsPending = false;
     private lastRefresh = Number.NEGATIVE_INFINITY;
     private refreshing = false;
+    private lastWake = Number.NEGATIVE_INFINITY;
     private lastDiag = Number.NEGATIVE_INFINITY;
     private bootstrapped = false;
 
@@ -263,8 +267,10 @@ export class Remote extends C4Device {
         const key = (data[0] ?? "").toLowerCase();
         if (ns === "c4.zr.bb" && key in this.pageKeys) this.pageList(this.pageKeys[key]);
         if (ns === "c4.zr.mot" || ns === "c4.zr.bb") this.diagPoll();
-        if (ns === "c4.zr.mot") this.wakeRefresh(true);
-        else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh(false);
+        if (ns === "c4.zr.mot") {
+            this.lastWake = this.ctx.now();
+            this.wakeRefresh({sendTime: true});
+        } else if (ns === "c4.zr.bb" && this.rowsPending) this.wakeRefresh({sendTime: false});
     }
 
     /**
@@ -275,21 +281,31 @@ export class Remote extends C4Device {
      * already under way.
      */
     override onIdentityRead(): void {
-        if (!this.refreshing) this.wakeRefresh(true, true);
+        if (this.refreshing) return;
+        // Usually a second after the motion wake: that wake is when the screen was last lost.
+        const now = this.ctx.now();
+        this.wakeRefresh({sendTime: true, force: true, wokeAt: now - this.lastWake < WAKE_REFRESH_MIN ? this.lastWake : now});
     }
 
-    /** One refresh at a time, tried again (WAKE_TRIES) while it goes undelivered. */
-    private wakeRefresh(sendTime: boolean, force = false): void {
+    /**
+     * One refresh at a time: the clock (with `sendTime`) and rows, then the open menu, each
+     * tried again (WAKE_TRIES) until delivered. `force` skips the wake debounce.
+     */
+    private wakeRefresh(opts: {sendTime: boolean; force?: boolean; wokeAt?: number}): void {
         const now = this.ctx.now();
-        if (this.refreshing || (!force && now - this.lastRefresh < WAKE_REFRESH_MIN)) return;
+        if (this.refreshing || (!opts.force && now - this.lastRefresh < WAKE_REFRESH_MIN)) return;
         this.lastRefresh = now;
         this.refreshing = true;
+        const wokeAt = opts.wokeAt ?? now;
         this.spawn(
             (async () => {
+                let rows = false;
                 try {
                     for (const delay of WAKE_TRIES) {
                         if (delay) await this.sleep(delay);
-                        if (!this.alive || (await this.refreshScreen(sendTime))) return;
+                        if (!this.alive) return;
+                        rows ||= await this.refreshRows(opts.sendTime);
+                        if (rows && (await this.reshowMenu(wokeAt))) return;
                     }
                 } finally {
                     this.refreshing = false;
@@ -298,10 +314,8 @@ export class Remote extends C4Device {
         );
     }
 
-    /** Clock (when asked), rows, and the open menu, which the remote drops while asleep; false when they were not delivered. */
-    private async refreshScreen(sendTime: boolean): Promise<boolean> {
-        // Only the menu open as the wake began: one shown since went out fresh, one picked or closed since must stay shut.
-        const menu = this.menu;
+    /** Clock (when asked) and rows; false when the rows were not delivered. */
+    private async refreshRows(sendTime: boolean): Promise<boolean> {
         if (sendTime) {
             try {
                 await this.sendTime();
@@ -310,12 +324,23 @@ export class Remote extends C4Device {
             }
             await this.sleep(200);
         }
-        if (!(await this.pushRoomInfo())) return false;
-        if (!menu?.header) return true;
+        return this.pushRoomInfo();
+    }
+
+    /**
+     * The open menu again, which the remote drops while asleep: only one it last took
+     * before `wokeAt`. One shown since (or still going out) is on its screen already, and
+     * one picked or closed meanwhile must stay shut. False when not delivered.
+     */
+    private async reshowMenu(wokeAt: number): Promise<boolean> {
+        const stale = (m: Menu | undefined): m is Menu & {header: string} => !!m?.header && m.sentAt !== undefined && m.sentAt < wokeAt;
+        if (!stale(this.menu)) return true;
+        const menu = this.menu;
         await this.sleep(200);
-        if (this.menu !== menu) return true;
+        if (this.menu !== menu || !stale(menu)) return true;
         try {
             await this.sendText(`0i${hex4(this.nextSeq())} ${menu.header}`);
+            menu.sentAt = this.ctx.now();
         } catch (error) {
             this.log.debug(`Control4 ${this.name}: menu re-show failed: ${error}`);
             return false;
@@ -357,6 +382,7 @@ export class Remote extends C4Device {
         this.menu.header = `${head}${shown}"`;
         try {
             await this.sendText(`0i${hex4(this.nextSeq())} ${this.menu.header}`);
+            if (this.menu?.listId === listId) this.menu.sentAt = this.ctx.now();
         } catch (error) {
             this.menu = undefined;
             if (isDeliveryFailure(error)) {
