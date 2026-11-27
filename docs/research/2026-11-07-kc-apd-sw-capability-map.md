@@ -559,6 +559,12 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
   open.
 - **Restored to `00`** after the test.
 
+**Frame types (Kitchen Keypad, 2026-11-15).**
+- **What it acts on:** `0g`, `0i`, `0s` and `0t` (`c4.sy.fwv` answered as a Get, and `e00` to the other three).
+- **Any other letter:** it sends that same letter back with `00` (`0x005e 00`).
+- **A digit first:** it answers `<d>r<seq> 00`.
+- **The plan:** `docs/plans/2026-11-15-frame-type-survey.md`.
+
 ## Open questions and the tests they need
 
 Still open. Each needs a write (restored after), the light switched, or someone at the device:

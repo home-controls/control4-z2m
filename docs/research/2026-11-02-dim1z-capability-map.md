@@ -361,6 +361,22 @@ for `lt` or slot 07.
 - royceybaby/ha-c4-keypads, `quirks/zz_c4_local_models.py`.
 - SmartThings community thread 3563 (pstuart, 2014).
 
+## The frame-type survey (2026-11-15)
+
+Summarised from `docs/plans/2026-11-15-frame-type-survey.md`, which has the detail. Run on Garage Inside Lights.
+- **Frame types:** it acts on `0g`, `0i`, `0s` and `0t`, and on no other letter. `0t` uses the same name table (known
+  names `e00`, unknown `n01`).
+- **`0i c4.dm.bp <button> <event>` presses the paddle remotely:**
+  - **Arguments:** the button is `00`, `01` or `ff`; the event is `00`-`02`.
+  - **Effects:** event `01` turned the load on as a tap does, and `02` took it to full. Nothing is announced.
+- **`0i c4.dm.bl` takes 4 to 6 arguments** (`000` with six `ff`s; `e00` with 1-3). The dimmer kept running, so it is no
+  bootloader entry. `c4.dm.blink` answers as `bl`: most likely an LED blink.
+- **Network-profile cluster:**
+  - **Writable:** `0x0001` (10), `0x0002` (300) and `0x0003`. Not `0x0015`.
+  - **`0x0003`** is a count since the last boot (4 here, 0 on two others, 0 after a reboot).
+- **Radio power:** none of it, nor about 3,300 more Gets (uppercase names, the skipped `c4.sy` names, radio words and
+  families), changed or found a power setting. No over-the-air path sets this model's radio power.
+
 ## Open questions
 
 - **`lt <n>`**: per-index and writable, but it changes nothing a Get can see. Next test: someone at the

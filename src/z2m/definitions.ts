@@ -132,7 +132,7 @@ function converter(keys: string[], endpoints?: string[]): any {
     };
 }
 
-const COMMON_KEYS = ["c4_send", "c4_get", "c4_identify", "c4_model", "send_raw", "send_get"];
+const COMMON_KEYS = ["c4_send", "c4_get", "c4_raw", "c4_identify", "c4_model", "send_raw", "send_get"];
 /** The ZHA LED cluster (0xFC43) commands, on every c4.dmx-family device. */
 const LED_CLUSTER_KEYS = ["set_led_color", "set_led_mode", "set_led_all_same_color", "set_all_led_modes", "set_led_single_on"];
 /** The ZHA ramp cluster (0xFC44) commands, on the dimmers. */

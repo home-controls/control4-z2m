@@ -660,6 +660,10 @@ export class Runtime {
         // pinged, so any frame of its counts.
         if (frame.unicast || !this.ctx.isRouter(ieee)) this.host.noteSeen(ieee, frame.lqi, frame.rssi);
         this.link.noteRx(ieee, frame.unicast);
+        const probed = this.devices.get(ieee);
+        if (probed?.capturing && frame.profile !== PROFILE_BUTTON) {
+            this.log.warning(`Control4 RAW ${this.host.friendlyName(ieee)}: profile 0x${frame.profile.toString(16)} cluster ${frame.cluster} ep ${frame.srcEp}->${frame.dstEp}: ${frame.data.toString("hex")}`);
+        }
         try {
             if (frame.profile === PROFILE_BUTTON) this.onAscii(ieee, frame);
             else if (frame.profile === PROFILE_NETWORK) this.onNetwork(ieee, frame);

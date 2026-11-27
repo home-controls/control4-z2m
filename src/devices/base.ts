@@ -328,6 +328,8 @@ export abstract class C4Device implements LinkDevice {
             this.onAnnounce(t[2], t.slice(3));
             return;
         }
+        // While a probe waits for its answer, a frame of any other type is part of it.
+        if (this.ctx.now() <= this.captureUntil) this.log.warning(`Control4 FRAME ${this.name}: ${frame.text}`);
         this.onOther(frame);
     }
 
@@ -348,6 +350,11 @@ export abstract class C4Device implements LinkDevice {
     onOutletAttributes(_attrs: Map<number, ZclValue>): void {}
 
     // -- reply capture (protocol probing) ---------------------------------------
+
+    /** A probe of ours is waiting for the device's answer. */
+    get capturing(): boolean {
+        return this.ctx.now() <= this.captureUntil;
+    }
 
     armCapture(ms = REPLY_CAPTURE_MS): void {
         this.captureUntil = Math.max(this.captureUntil, this.ctx.now() + ms);
@@ -371,10 +378,18 @@ export abstract class C4Device implements LinkDevice {
         switch (key) {
             case "c4_send": {
                 const {cmd, dstEp} = commandArg(value);
-                const type = sendType(value);
+                const head = frameHead(value);
                 this.armCapture();
-                if (type === "i") await this.sendText(`0i${hex4(this.nextSeq())} ${cmd}`, dstEp);
-                else await this.set(cmd, dstEp);
+                await this.sendText(`${head}${hex4(this.nextSeq())} ${cmd}`, dstEp, 1, sendAck(value) ? undefined : {ack: false});
+                return undefined;
+            }
+            case "c4_raw": {
+                // Probing: raw bytes on any Control4 profile, cluster and endpoints (a ZCL frame on
+                // the network profile, say). Whatever the device sends back is logged while it waits.
+                const raw = rawArg(value);
+                this.armCapture();
+                this.log.info(`Control4 ${this.name} -> raw profile 0x${raw.profile.toString(16)} cluster ${raw.cluster} ep ${raw.srcEp}->${raw.dstEp}: ${raw.data.toString("hex")}`);
+                await this.sendFrame({profile: raw.profile, cluster: raw.cluster, srcEp: raw.srcEp, dstEp: raw.dstEp, data: raw.data}, raw.ack ? undefined : {ack: false});
                 return undefined;
             }
             case "c4_get": {
@@ -416,13 +431,40 @@ function commandArg(value: unknown): {cmd: string; dstEp: number} {
     return {cmd: String(value ?? "").trim(), dstEp: 1};
 }
 
-/** `c4_send`'s frame type: "s" (Set, the default) or "i" (interrupt, `0i<seq> <cmd>`). */
-function sendType(value: unknown): "s" | "i" {
+/**
+ * `c4_send`'s frame head: `"type"` is the frame type letter ("s", a Set, the default; "i", an
+ * interrupt), so `0<type><seq> <cmd>`. Any letter goes, for probing the frame types nobody has
+ * tried, and so does a digit then a letter ("1g") in place of the leading 0.
+ */
+function frameHead(value: unknown): string {
     const type = value && typeof value === "object" ? (value as {type?: unknown}).type : undefined;
-    if (type === undefined || type === null || type === "") return "s";
+    if (type === undefined || type === null || type === "") return "0s";
     const t = String(type).trim();
-    if (t === "s" || t === "i") return t;
-    throw new Error(`c4_send: unknown type '${type}' (use "s" or "i")`);
+    if (/^[a-z]$/.test(t)) return `0${t}`;
+    if (/^[0-9][a-z]$/.test(t)) return t;
+    throw new Error(`c4_send: unknown type '${type}' (a frame type letter, "s" or "i", or a digit then a letter)`);
+}
+
+/** `c4_raw`'s frame: {"profile", "cluster", "src_ep", "dst_ep", "data": hex, "ack"}; only the Control4 profiles. */
+function rawArg(value: unknown): {profile: number; cluster: number; srcEp: number; dstEp: number; data: Buffer; ack: boolean} {
+    const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const num = (x: unknown, fallback: number) => {
+        if (x === undefined || x === null || x === "") return fallback;
+        const n = typeof x === "string" && /^0x/i.test(x) ? Number.parseInt(x, 16) : Number(x);
+        if (!Number.isInteger(n) || n < 0 || n > 0xffff) throw new Error(`c4_raw: '${x}' is not a number`);
+        return n;
+    };
+    const profile = num(v.profile, 0xc25d);
+    if (![0xc25c, 0xc25d, 0xc25e].includes(profile)) throw new Error("c4_raw: only the Control4 profiles (0xc25c, 0xc25d, 0xc25e)");
+    const hex = String(v.data ?? "").replace(/\s+/g, "");
+    if (!/^([0-9a-fA-F]{2})+$/.test(hex)) throw new Error("c4_raw: data must be hex bytes");
+    return {profile, cluster: num(v.cluster, 1), srcEp: num(v.src_ep, 2), dstEp: num(v.dst_ep, 2), data: Buffer.from(hex, "hex"), ack: sendAck(value)};
+}
+
+/** `c4_send`'s `"ack": false`: send without an APS acknowledgement (a command that may reboot the device). */
+function sendAck(value: unknown): boolean {
+    const ack = value && typeof value === "object" ? (value as {ack?: unknown}).ack : undefined;
+    return ack === undefined || ack === null || toBool(ack);
 }
 
 export function toBool(value: unknown): boolean {

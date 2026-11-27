@@ -3022,6 +3022,7 @@ var C4Device = class {
       this.onAnnounce(t[2], t.slice(3));
       return;
     }
+    if (this.ctx.now() <= this.captureUntil) this.log.warning(`Control4 FRAME ${this.name}: ${frame2.text}`);
     this.onOther(frame2);
   }
   onAnnounce(namespace, data) {
@@ -3039,6 +3040,10 @@ var C4Device = class {
   onOutletAttributes(_attrs) {
   }
   // -- reply capture (protocol probing) ---------------------------------------
+  /** A probe of ours is waiting for the device's answer. */
+  get capturing() {
+    return this.ctx.now() <= this.captureUntil;
+  }
   armCapture(ms = REPLY_CAPTURE_MS) {
     this.captureUntil = Math.max(this.captureUntil, this.ctx.now() + ms);
   }
@@ -3057,10 +3062,16 @@ var C4Device = class {
     switch (key) {
       case "c4_send": {
         const { cmd, dstEp } = commandArg(value);
-        const type = sendType(value);
+        const head = frameHead(value);
         this.armCapture();
-        if (type === "i") await this.sendText(`0i${hex4(this.nextSeq())} ${cmd}`, dstEp);
-        else await this.set(cmd, dstEp);
+        await this.sendText(`${head}${hex4(this.nextSeq())} ${cmd}`, dstEp, 1, sendAck(value) ? void 0 : { ack: false });
+        return void 0;
+      }
+      case "c4_raw": {
+        const raw = rawArg(value);
+        this.armCapture();
+        this.log.info(`Control4 ${this.name} -> raw profile 0x${raw.profile.toString(16)} cluster ${raw.cluster} ep ${raw.srcEp}->${raw.dstEp}: ${raw.data.toString("hex")}`);
+        await this.sendFrame({ profile: raw.profile, cluster: raw.cluster, srcEp: raw.srcEp, dstEp: raw.dstEp, data: raw.data }, raw.ack ? void 0 : { ack: false });
         return void 0;
       }
       case "c4_get": {
@@ -3098,12 +3109,31 @@ function commandArg(value) {
   }
   return { cmd: String(value ?? "").trim(), dstEp: 1 };
 }
-function sendType(value) {
+function frameHead(value) {
   const type = value && typeof value === "object" ? value.type : void 0;
-  if (type === void 0 || type === null || type === "") return "s";
+  if (type === void 0 || type === null || type === "") return "0s";
   const t = String(type).trim();
-  if (t === "s" || t === "i") return t;
-  throw new Error(`c4_send: unknown type '${type}' (use "s" or "i")`);
+  if (/^[a-z]$/.test(t)) return `0${t}`;
+  if (/^[0-9][a-z]$/.test(t)) return t;
+  throw new Error(`c4_send: unknown type '${type}' (a frame type letter, "s" or "i", or a digit then a letter)`);
+}
+function rawArg(value) {
+  const v = value && typeof value === "object" ? value : {};
+  const num2 = (x, fallback) => {
+    if (x === void 0 || x === null || x === "") return fallback;
+    const n = typeof x === "string" && /^0x/i.test(x) ? Number.parseInt(x, 16) : Number(x);
+    if (!Number.isInteger(n) || n < 0 || n > 65535) throw new Error(`c4_raw: '${x}' is not a number`);
+    return n;
+  };
+  const profile = num2(v.profile, 49757);
+  if (![49756, 49757, 49758].includes(profile)) throw new Error("c4_raw: only the Control4 profiles (0xc25c, 0xc25d, 0xc25e)");
+  const hex = String(v.data ?? "").replace(/\s+/g, "");
+  if (!/^([0-9a-fA-F]{2})+$/.test(hex)) throw new Error("c4_raw: data must be hex bytes");
+  return { profile, cluster: num2(v.cluster, 1), srcEp: num2(v.src_ep, 2), dstEp: num2(v.dst_ep, 2), data: Buffer.from(hex, "hex"), ack: sendAck(value) };
+}
+function sendAck(value) {
+  const ack = value && typeof value === "object" ? value.ack : void 0;
+  return ack === void 0 || ack === null || toBool(ack);
 }
 function toBool(value) {
   if (typeof value === "boolean") return value;
@@ -6716,6 +6746,10 @@ var Runtime = class {
     if (!isC4Ieee(ieee)) return false;
     if (frame2.unicast || !this.ctx.isRouter(ieee)) this.host.noteSeen(ieee, frame2.lqi, frame2.rssi);
     this.link.noteRx(ieee, frame2.unicast);
+    const probed = this.devices.get(ieee);
+    if (probed?.capturing && frame2.profile !== PROFILE_BUTTON) {
+      this.log.warning(`Control4 RAW ${this.host.friendlyName(ieee)}: profile 0x${frame2.profile.toString(16)} cluster ${frame2.cluster} ep ${frame2.srcEp}->${frame2.dstEp}: ${frame2.data.toString("hex")}`);
+    }
     try {
       if (frame2.profile === PROFILE_BUTTON) this.onAscii(ieee, frame2);
       else if (frame2.profile === PROFILE_NETWORK) this.onNetwork(ieee, frame2);

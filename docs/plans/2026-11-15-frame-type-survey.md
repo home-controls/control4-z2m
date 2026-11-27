@@ -126,6 +126,72 @@ The odds are low, but each test is short.
 - **From the survey:** whatever Steps 1-4 find that is safe and useful, each with its research-map entry, its test and
   its README line, as in the completion plan.
 
+## Results so far (2026-11-15)
+
+Run on Garage Inside Lights (DIM1-Z) and the Kitchen Keypad (KC120277), the sniffer pairing each probe with its
+reply by sequence number. Two probe tools were added to the extension:
+- **`c4_send`** takes any frame type letter (`"type": "x"`, or a digit then a letter) and `"ack": false`.
+- **`c4_raw`** sends raw bytes on a Control4 profile, cluster and endpoints.
+
+While a probe waits, any frame the device sends back is logged (`Control4 FRAME`, `Control4 RAW`).
+
+**Frame types (Step 3).** `c4.sy.fwv` under every letter `a`-`z`, and `1g`-`9g`:
+
+| | `g` | `i` | `s` | `t` | Any other letter | A digit first (`1g`) |
+|---|---|---|---|---|---|---|
+| DIM1-Z | the value (`03.22.41`) | `e00` | `e00` | `e00` | silence | `<d>r<seq>004`, no space |
+| KC120277 | the value | `e00` | `e00` | `e00` | the same letter back, with `00` | `<d>r<seq> 00` |
+
+- **Both act on exactly four types:** `g`, `i`, `s` and `t`.
+- **`0t`, the type the devices use for their own announcements, is a fourth way in,** never tried before.
+- **Its names are the same table:** known names answer `e00`, unknown ones `n01`, with or without an `sa` in front.
+  So it adds no names, but it may give existing ones another action, as `0i` did.
+
+**The DIM1-Z's last two unknown names:**
+- **`bp` presses the paddle remotely.**
+  - **Arguments:** `0i c4.dm.bp <button> <event>`, where the button is `00` top, `01` bottom or `ff` both (`02`:
+    `v01`), and the event is `00`, `01` or `02` (`03` and up: `v01`).
+  - **Event `01`** turned the load on through the dimmer's own logic, as a tap does. **`02`** took it from 29 % to full
+    in half a second. **`00`** did nothing visible, likely a release.
+  - **It announces nothing:** no `b0c` / `cc` appears for these presses.
+  - **No readable setting changed** (`lt`, `ll`, `ba`, `is`, `lm`, `tv 07`).
+- **`bl` takes 4 to 6 arguments, and is no bootloader entry.** With 1-3 arguments it answers `e00`. `bl ff ff ff ff ff
+  ff` answered `000`, the dimmer kept running, nothing readable changed, and its radio didn't change. The probe
+  `c4.dm.blink` answers as `bl` (the prefix rule). So it's most likely an LED blink, to be read with someone watching
+  the switch.
+
+**The network-profile cluster (`0xC25D`, cluster 1, endpoint 2), through `c4_raw`:**
+- **Writable:** `0x0001` (10), `0x0002` (300) and `0x0003`, tested by writing each its own value. **Refused
+  (`0x86`):** `0x0000`, `0x0005`, `0x0006`, `0x000b`, `0x0012` and `0x0015`. The controller's identity (`0x0008`-`0x000a`)
+  was left alone.
+- **`0x0003` is a count since the last boot:** it was 4 on Garage Inside Lights and 0 on two others, and reads 0
+  again after a reboot. Control4 reads it in the 90 s status report.
+- **Setting `0x0003` 4 → 0 changed nothing on the radio,** before or after a reboot.
+- **No discovery:** Discover Commands and Discover Attributes answer `0x82` (unsupported). Every other cluster ID on
+  endpoint 2 answers attribute 0 with `0x86`.
+
+**Name sweeps on the DIM1-Z** (read-only, about 3,300 Gets, all `n01` but the known names):
+- every uppercase 2-character name (A-Z then A-Z / 0-9) under `c4.sy.` and `c4.dm.`, 1,872 in all;
+- the 520 `c4.sy.` 3-letter names skipped in 2026-11 (starting `rb rs rt fr fa fl fw bt bo bl er up dl ot wd wr ee wi cl pg`);
+- 134 radio, power, network and diagnostic words of 4 or more letters, under both families;
+- the radio-sounding 3-character shapes with a digit (`zp0`-`zp9`, `tx0`-`tx9`, …);
+- 15 radio-sounding families (`c4.zb.`, `c4.rf.`, `c4.em.`, …), each with 8 names.
+
+**What this means for the DIM1-Z's radio power.** No over-the-air path sets it:
+- **Names:** every command name its firmware has is now tried as a Get, Set, interrupt and announcement. The newer
+  models' `zpw` doesn't exist on it in any form.
+- **Network profile:** its settings hold two timers and a boot count.
+- **Hardware:** its output dips about 11 dB for half of every mains cycle, which no setting would fix.
+
+Still unswept, and costly: every 4-letter name (about 457,000 per family, about 33 hours at the sweep's pace) and
+3-character names with digits under `c4.sy.` (about 29,000, about 2 hours). Given that Control4 never set this
+generation's power and used `zpw` where it could, the odds are low.
+
+What does work for a weak DIM1-Z is on the other end of its links:
+- **A router within easy reach,** so even its weak half-cycle frames make the hop.
+- **The KC120277, APD120 and SW120277 can now run at +2 dBm** (`tx_power`). That strengthens what they send a
+  DIM1-Z, though not what it sends back.
+
 ## Order
 
 1. The `c4_send` change (any type letter, `"ack": false`). Small, and needed by Steps 2 and 3.

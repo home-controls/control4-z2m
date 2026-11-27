@@ -278,7 +278,7 @@ describe("C4-APD120", () => {
         expect(rig.cmds(from)).toEqual(["c4.dmx.led 00 03 ffffff"]);
     });
 
-    it("sends c4_send as an interrupt with type i, a Set by default, and refuses other types", async () => {
+    it("sends c4_send as a Set by default, any frame type letter on request, without an ack on request", async () => {
         let from = rig.transport.sent.length;
         let p = set(APD, "c4_send", {cmd: "c4.dm.rtl 00 32 000003e8", dst_ep: 1, type: "i"});
         await tick(100);
@@ -296,9 +296,39 @@ describe("C4-APD120", () => {
             expect(rig.texts(from)).toEqual([expect.stringMatching(/^0s[0-9a-f]{4} c4\.dm\.rb$/)]);
         }
         from = rig.transport.sent.length;
-        await expect(set(APD, "c4_send", {cmd: "c4.dm.rb", type: "x"})).rejects.toThrow(/unknown type 'x'/);
+        await expect(set(APD, "c4_send", {cmd: "c4.dm.rb", type: "xy"})).rejects.toThrow(/unknown type 'xy'/);
+        await expect(set(APD, "c4_send", {cmd: "c4.dm.rb", type: "S"})).rejects.toThrow(/unknown type 'S'/);
         await tick(100);
         expect(rig.texts(from)).toEqual([]);
+        // Any frame type letter, a digit in place of the leading 0, and no APS ack on request.
+        for (const [type, head] of [["x", "0x"], ["1g", "1g"]]) {
+            from = rig.transport.sent.length;
+            p = set(APD, "c4_send", {cmd: "c4.sy.fwv", type});
+            await tick(100);
+            await p;
+            expect(rig.texts(from)).toEqual([expect.stringMatching(new RegExp(`^${head}[0-9a-f]{4} c4\.sy\.fwv$`))]);
+        }
+        from = rig.transport.sent.length;
+        p = set(APD, "c4_send", {cmd: "c4.sy.rb", type: "i", ack: false});
+        await tick(100);
+        await p;
+        expect(rig.transport.sent.slice(from).map((x) => x.ack)).toEqual([false]);
+        // A reply of a frame type the extension doesn't know is logged while the probe waits.
+        rig.ascii(APD, "0e0123 v01");
+        expect(rig.log.lines).toContainEqual(expect.stringMatching(/^warning: Control4 FRAME .*0e0123 v01/));
+    });
+
+    it("sends c4_raw bytes on a Control4 profile, and logs what the device sends back while it waits", async () => {
+        const from = rig.transport.sent.length;
+        const p = set(APD, "c4_raw", {profile: "0xc25d", cluster: 1, src_ep: 2, dst_ep: 2, data: "00 01 00 15 00", ack: false});
+        await tick(100);
+        await p;
+        const sent = rig.transport.sent.slice(from);
+        expect(sent.map((x) => [x.frame.profile, x.frame.cluster, x.frame.srcEp, x.frame.dstEp, x.frame.data.toString("hex"), x.ack])).toEqual([[0xc25d, 1, 2, 2, "0001001500", false]]);
+        rig.inject(APD, 0xc25d, Buffer.from("18010115000028ff", "hex"), true, 2);
+        expect(rig.log.lines).toContainEqual(expect.stringMatching(/^warning: Control4 RAW .*profile 0xc25d cluster 1 ep 2->1: 18010115000028ff/));
+        await expect(set(APD, "c4_raw", {profile: 260, data: "00"})).rejects.toThrow(/only the Control4 profiles/);
+        await expect(set(APD, "c4_raw", {data: "0g"})).rejects.toThrow(/hex bytes/);
     });
 
     it("writes dm.tv parameters, verifies, and shows what the device really holds", async () => {

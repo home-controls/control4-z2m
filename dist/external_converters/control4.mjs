@@ -349,7 +349,7 @@ function converter(keys, endpoints) {
     }
   };
 }
-var COMMON_KEYS = ["c4_send", "c4_get", "c4_identify", "c4_model", "send_raw", "send_get"];
+var COMMON_KEYS = ["c4_send", "c4_get", "c4_raw", "c4_identify", "c4_model", "send_raw", "send_get"];
 var LED_CLUSTER_KEYS = ["set_led_color", "set_led_mode", "set_led_all_same_color", "set_all_led_modes", "set_led_single_on"];
 var RAMP_KEYS = ["set_ramp_rate", "set_on_ramp", "set_off_ramp", "set_on_off_ramps"];
 var LIGHT_KEYS = ["state", "brightness", "transition"];
