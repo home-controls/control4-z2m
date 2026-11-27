@@ -290,8 +290,14 @@ export class Remote extends C4Device {
 
     // -- menus -------------------------------------------------------------------
 
+    /**
+     * Never 0x0001: an SR260 draws list 1 as a centred heading (its first item)
+     * with no title or count, not as a menu. 2 and up give the normal menu (the
+     * Director's own lists start higher).
+     */
     private nextListId(): number {
-        this.listId = (this.listId + 1) & 0xffff || 1;
+        const next = this.listId + 1;
+        this.listId = next > 0xffff ? 2 : Math.max(next, 2);
         return this.listId;
     }
 

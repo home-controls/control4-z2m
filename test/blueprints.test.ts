@@ -645,12 +645,12 @@ describe("blueprints", () => {
                 // A key while the menu is up does not end the wait.
                 rig.ascii(ieee, "0t0002 sa c4.zr.bb 0d 0000 0000 00000000");
                 expect(heard(waitOf(a), ieee)).toBeNull();
-                rig.ascii(ieee, "0t0003 sa c4.ln.is 0001 0002");
+                rig.ascii(ieee, "0t0003 sa c4.ln.is 0002 0002");
                 const wait = {trigger: heard(waitOf(a), ieee)};
                 expect(wait.trigger?.id).toBe("select");
                 const pick = find(a.action, (o) => o.conditions === "{{ wait.trigger.id == 'select' }}")?.sequence[0].variables;
                 expect(renderValue(env, pick.picked_index, {...vars, wait}, "variable", "picked_index")).toBe(2);
-                rig.ascii(ieee, "0t0004 sa c4.ln.cn 0001 0000");
+                rig.ascii(ieee, "0t0004 sa c4.ln.cn 0002 0000");
                 expect(heard(waitOf(a), ieee)?.id).toBe("cancel");
             });
 
@@ -659,7 +659,7 @@ describe("blueprints", () => {
                 const shown = rig.runtime.set(R260, "show_list", {title: "Scenes", items: ["Movie", "Dinner"]}, {message: {}});
                 await tick(100);
                 await shown;
-                rig.ascii(R260, "0t0001 sa c4.ln.is 0001 0001");
+                rig.ascii(R260, "0t0001 sa c4.ln.is 0002 0001");
                 const wait = {trigger: heard(waitOf(a), R260)};
                 expect(wait.trigger?.id).toBe("select");
                 const step = find(a.action, (o) => o.variables?.selected_item !== undefined) as Record<string, Any>;
