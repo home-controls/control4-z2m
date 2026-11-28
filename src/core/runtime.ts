@@ -643,6 +643,7 @@ export class Runtime {
     rejoined(ieee: string): void {
         const dev = this.get(ieee);
         if (!dev) return;
+        dev.noteRejoined();
         const token = (this.rejoins.get(dev.ieee) ?? 0) + 1;
         this.rejoins.set(dev.ieee, token);
         const current = () => dev.alive && this.rejoins.get(dev.ieee) === token;

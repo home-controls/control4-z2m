@@ -65,6 +65,12 @@ const STATE_READ_REUSE = 2_000;
 const STATE_READ_RAMP_WAITS = 10;
 /** A read this recent answers a queued one (Z2M's own read on reconnect may just have run). */
 const STATE_READ_FRESH = 10_000;
+/**
+ * A c4.dm.t0c numbered before the newest one applied this recently is a stale step of
+ * a ramp (Dim1z.staleLevelReport). Past this the counter is not trusted: the dimmer
+ * restarts it when it reboots or loses power.
+ */
+export const LEVEL_SEQ_WINDOW = 30_000;
 /** Store flag: when the dimmer parameters were read from the device; cleared when it may have been reset. */
 export const SETTINGS_READ_KEY = "settings_read";
 /** The settings read waits this long after a start, so the dimmers' load reads go first. */
@@ -127,6 +133,10 @@ export class Dim1z extends DmDevice {
     private levelEpoch = 0;
     private lastStateRead = 0;
     private stateRead: Promise<StateReadResult> | undefined;
+    /** The frame number of the announcement being handled (handleAscii); undefined otherwise. */
+    private announceSeq: number | undefined;
+    /** The newest c4.dm.t0c applied: its frame number, and when. */
+    private levelSeq: {seq: number; at: number} | undefined;
     readonly tv = new TvParams(this, DIM1Z_TV_PARAMS);
     readonly led: LedKeys;
 
@@ -202,6 +212,8 @@ export class Dim1z extends DmDevice {
      * acknowledgement and goes once (sendReboot).
      */
     reboot(): Promise<void> {
+        // Its frame counter starts again after the reboot: a report numbered lower is new, not stale.
+        this.forgetLevelSeq();
         return sendReboot(this, "c4.dm.rb");
     }
 
@@ -227,10 +239,51 @@ export class Dim1z extends DmDevice {
         return [hex(`led_${pos}_on_color`), hex(`led_${pos}_off_color`)];
     }
 
+    override handleAscii(frame: ParsedFrame): void {
+        const seq = frame.kind === "reply" ? Number.NaN : Number.parseInt(frame.seq, 16);
+        this.announceSeq = Number.isFinite(seq) ? seq : undefined;
+        try {
+            super.handleAscii(frame);
+        } finally {
+            this.announceSeq = undefined;
+        }
+    }
+
+    /** A reboot or a re-join restarts the dimmer's frame counter: an older number is no longer stale. */
+    forgetLevelSeq(): void {
+        this.levelSeq = undefined;
+    }
+
+    override noteRejoined(): void {
+        this.forgetLevelSeq();
+    }
+
+    /**
+     * A c4.dm.t0c numbered before the newest one applied in the last LEVEL_SEQ_WINDOW.
+     * On a slow mesh a step of a ramp can arrive after the report that ended it, and with
+     * our fade already landed it would be published as the state: another site
+     * 2026-11-14, a late "14 %" after the final "0 %" showed ON 36 for a light that was
+     * off. The dimmer numbers its frames with a 16-bit counter. The same number again is
+     * the same report, and is applied again.
+     */
+    private staleLevelReport(): boolean {
+        const seq = this.announceSeq;
+        if (seq === undefined) return false;
+        const now = Date.now();
+        const last = this.levelSeq;
+        if (last && now - last.at < LEVEL_SEQ_WINDOW && ((seq - last.seq) & 0xffff) >= 0x8000) {
+            this.log.debug(`Control4 ${this.name}: level report ${hex4(seq)} is older than ${hex4(last.seq)} - dropped`);
+            return true;
+        }
+        this.levelSeq = {seq, at: now};
+        return false;
+    }
+
     protected override onAnnounce(ns: string, data: string[]): void {
         if (ns === "c4.dm.t0c") {
             const pct = parseHex(data[0]);
             if (pct === undefined) return;
+            if (this.staleLevelReport()) return;
             this.noteRamp(LED_REPAINT_SETTLE);
             const level = this.hold.report(pctToBrightness(pct));
             if (level !== undefined) this.applyLoad(level > 0, level);

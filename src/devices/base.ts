@@ -425,6 +425,9 @@ export abstract class C4Device implements LinkDevice {
         return undefined;
     }
 
+    /** The device announced itself (it re-joined or powered up, so its frame counter may have restarted). Default: nothing. */
+    noteRejoined(): void {}
+
     /** State to publish once at startup (persisted settings). */
     initialState(): Payload {
         return {};
