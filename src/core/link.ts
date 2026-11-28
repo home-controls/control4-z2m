@@ -309,6 +309,12 @@ export class Link {
         this.host.reachabilityChanged?.();
     }
 
+    /** How long ago the device last sent us a unicast; undefined when it has sent none since the start. */
+    sinceUnicast(ieee: string, now = this.host.now()): number | undefined {
+        const at = this.lastUnicast.get(ieee);
+        return at === undefined ? undefined : now - at;
+    }
+
     /** The device was just rebooted (its Reboot button, or autoReboot): the time its re-join count and reboot_min start from. */
     noteRebooted(ieee: string, at = this.host.now()): void {
         this.lastReboot.set(ieee, at);

@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {PROFILE_NETWORK} from "../src/core/constants";
+import {REDISCOVER_DEVICE_GAP, REDISCOVER_FRESH_RX, REDISCOVER_INSTANCE_GAP} from "../src/core/runtime";
 import {DeliveryError, Rig, tick} from "./rig";
 
 let rig: Rig;
@@ -170,6 +171,53 @@ describe("runtime: re-joins", () => {
         expect(rig.log.lines.filter((l) => l.includes("still not delivered"))).toEqual([
             "info: Control4: dev0's controller identity is still not delivered after 2 retries - it may count its controller as lost and re-join",
         ]);
+    });
+
+    it("asks a device for its address at most once in REDISCOVER_DEVICE_GAP, and still retries the identity", async () => {
+        rig.add(KP, "KPZ-3B1");
+        rig.start(true);
+        failNetwork(100);
+        rig.checkin(KP, "c4:control4_keypad:KPZ-3B1");
+        await tick(20_000);
+        rig.checkin(KP, "c4:control4_keypad:KPZ-3B1");
+        await tick(20_000);
+        expect(rig.rediscovered).toEqual([KP]);
+        expect(rig.runtime.rediscoverSkips).toBe(1);
+        // Both check-ins still got the two identity retries.
+        expect(rig.log.lines.filter((l) => l.includes("still not delivered"))).toHaveLength(2);
+        await tick(REDISCOVER_DEVICE_GAP);
+        rig.checkin(KP, "c4:control4_keypad:KPZ-3B1");
+        await tick(1_000);
+        expect(rig.rediscovered).toEqual([KP, KP]);
+    });
+
+    it("does not ask a device that sent us a unicast in the last REDISCOVER_FRESH_RX for its address", async () => {
+        rig.add(KP, "KPZ-3B1");
+        rig.start(true);
+        failNetwork(100);
+        rig.ascii(KP, "0t0041 sa c4.dm.cc 00 02"); // a direct (unicast) frame: the coordinator has its route record
+        await tick(REDISCOVER_FRESH_RX - 5_000);
+        rig.checkin(KP, "c4:control4_keypad:KPZ-3B1");
+        await tick(20_000);
+        expect(rig.rediscovered).toEqual([]);
+        expect(rig.transport.mtorrs).toHaveLength(1); // the route refresh is still asked for
+        expect(rig.log.lines.filter((l) => l.includes("still not delivered"))).toHaveLength(1);
+    });
+
+    it("asks at most one device for its address in REDISCOVER_INSTANCE_GAP", async () => {
+        const KP2 = "0x000fff0000000005";
+        rig.add(KP, "KPZ-3B1");
+        rig.add(KP2, "KPZ-3B1");
+        rig.start(true);
+        failNetwork(100);
+        rig.checkin(KP, "c4:control4_keypad:KPZ-3B1");
+        rig.checkin(KP2, "c4:control4_keypad:KPZ-3B1");
+        await tick(1_000);
+        expect(rig.rediscovered).toEqual([KP]);
+        await tick(REDISCOVER_INSTANCE_GAP + 20_000);
+        rig.checkin(KP2, "c4:control4_keypad:KPZ-3B1");
+        await tick(1_000);
+        expect(rig.rediscovered).toEqual([KP, KP2]);
     });
 
     it("answers a check-in from an address Zigbee2MQTT does not know yet, by that address", async () => {

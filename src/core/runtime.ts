@@ -98,6 +98,17 @@ const LED_DEFAULTS_RETRY = 5_000;
  */
 /** After an undelivered check-in reply (routes refreshed, the device asked for its address): the waits before each retry. */
 export const IDENTITY_RETRIES = [3_000, 10_000];
+/**
+ * Asking a device for its address is a ZDO NWK_addr_req broadcast, which every router
+ * repeats. On a congested mesh one per undelivered check-in reply became the main load
+ * (another site, 2026-11-14: ~1,250 an hour on one floor), and more load meant more
+ * undelivered replies. So: at most one per device in REDISCOVER_DEVICE_GAP, one per
+ * instance in REDISCOVER_INSTANCE_GAP, and none for a device that sent us a unicast in the
+ * last REDISCOVER_FRESH_RX - its route record already gave the coordinator a fresh route.
+ */
+export const REDISCOVER_DEVICE_GAP = 30 * 60_000;
+export const REDISCOVER_INSTANCE_GAP = 15_000;
+export const REDISCOVER_FRESH_RX = 60_000;
 /** After a re-join: the controller identity this many times, IDENTITY_REJOIN_GAP apart, the first 2-7 s in. */
 export const IDENTITY_REJOIN_SENDS = 3;
 const IDENTITY_REJOIN_GAP = 4_000;
@@ -183,6 +194,11 @@ export class Runtime {
     private bare = new Map<string, LinkDevice & {tsn: number}>();
     /** Devices whose undelivered check-in reply is being retried. */
     private recovering = new Set<string>();
+    /** When each device was last asked for its address, and when any device was (REDISCOVER_*). */
+    private rediscovered = new Map<string, number>();
+    private lastRediscover = Number.NEGATIVE_INFINITY;
+    /** Address requests skipped by the REDISCOVER_* limits, for stats. */
+    private rediscoversSkipped = 0;
     /** Each device's latest re-join: a newer one supersedes the checks of an older one. */
     private rejoins = new Map<string, number>();
     /** When each device re-joined, within REJOIN_STUCK_WINDOW and since its last automatic reboot. */
@@ -530,7 +546,9 @@ export class Runtime {
         const name = () => this.host.friendlyName(ieee);
         try {
             this.link.requestRouteRefresh(`controller identity to ${ieee} not delivered`);
-            await Promise.resolve(this.host.rediscover?.(ieee)).catch((error: unknown) => this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`));
+            if (this.mayRediscover(ieee)) {
+                await Promise.resolve(this.host.rediscover?.(ieee)).catch((error: unknown) => this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`));
+            }
             for (let i = 0; i < IDENTITY_RETRIES.length; i++) {
                 await sleep(IDENTITY_RETRIES[i]);
                 if (!this.started || !this.host.deviceInfo(ieee)) return;
@@ -547,6 +565,28 @@ export class Runtime {
         } finally {
             this.recovering.delete(ieee);
         }
+    }
+
+    /** Whether an undelivered check-in reply may ask the device for its address now (REDISCOVER_*); records it when it may. */
+    private mayRediscover(ieee: string): boolean {
+        const now = this.now();
+        const heard = this.link.sinceUnicast(ieee, now);
+        const skip =
+            (heard !== undefined && heard < REDISCOVER_FRESH_RX) ||
+            now - (this.rediscovered.get(ieee) ?? Number.NEGATIVE_INFINITY) < REDISCOVER_DEVICE_GAP ||
+            now - this.lastRediscover < REDISCOVER_INSTANCE_GAP;
+        if (skip) {
+            this.rediscoversSkipped++;
+            return false;
+        }
+        this.rediscovered.set(ieee, now);
+        this.lastRediscover = now;
+        return true;
+    }
+
+    /** Address requests (NWK_addr_req broadcasts) the REDISCOVER_* limits have skipped since the start. */
+    get rediscoverSkips(): number {
+        return this.rediscoversSkipped;
     }
 
     /**
