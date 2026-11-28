@@ -19,7 +19,9 @@ import {nextVersion} from "./release-check.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function run(cmd, args, {quiet = false, allowFail = false} = {}) {
-    const r = spawnSync(cmd, args, {cwd: ROOT, encoding: "utf8", stdio: quiet ? "pipe" : "inherit", shell: process.platform === "win32"});
+    // npm is a .cmd script on Windows, which needs a shell; nothing else goes through one, so arguments keep their spaces.
+    const shell = cmd === "npm" && process.platform === "win32";
+    const r = spawnSync(cmd, args, {cwd: ROOT, encoding: "utf8", stdio: quiet ? "pipe" : "inherit", shell});
     if (r.status !== 0 && !allowFail) {
         if (quiet) process.stderr.write(r.stderr ?? "");
         console.error(`release: ${cmd} ${args.join(" ")} failed`);
