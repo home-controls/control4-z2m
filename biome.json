@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "test/**", "tools/**", "*.json", "!dist", "!test/fixtures", "!**/package-lock.json"]
+    "includes": ["src/**", "test/**", "tools/**", "*.json", "!dist", "!test/fixtures", "!tools/zha-blueprints", "!**/package-lock.json"]
   },
   "formatter": {
     "enabled": true,

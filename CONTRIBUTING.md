@@ -52,8 +52,9 @@ npm run canary -- dev   # our checks against the herdsman that Zigbee2MQTT dev p
   templates (`test/blueprints.test.ts`). The README's Development section lists the tools.
 - **Generated files:** don't edit them by hand.
   - `blueprints/c4_device.yaml` comes from `tools/gen-c4-device.mjs` (a test checks they match).
-  - The SR250 / SR260 / keypad-LED blueprints are ported from the ZHA ones by
-    `tools/port-zha-blueprints.mjs`; a fix to one of them goes into that tool.
+  - The SR250 / SR260 / keypad-LED blueprints are ported from the ZHA originals in `tools/zha-blueprints/` by
+    `tools/port-zha-blueprints.mjs`; a fix to one of them goes into that tool, then
+    `node tools/port-zha-blueprints.mjs` regenerates them (a test checks they match).
   - `blueprints/c4_sr260_screen.yaml` is written here, not ported.
 - **Code style:** [docs/CODE_STYLE.md](docs/CODE_STYLE.md): formatting and lint rules (Biome, `biome.json`),
   TypeScript, where code goes, comments, tests, commits. CI fails on anything `npm run lint` reports.
