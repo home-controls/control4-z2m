@@ -29,7 +29,8 @@
     "lint": "biome ci .",
     "format": "biome check --write .",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm run build && npm test",
+    "release": "node tools/release.mjs",
     "test:z2m": "node tools/z2m-harness.mjs",
     "canary": "node tools/herdsman-canary.mjs"
   },

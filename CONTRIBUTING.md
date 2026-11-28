@@ -42,11 +42,12 @@ npm run test:z2m     # the built files inside a real Zigbee2MQTT (clones it to t
 npm run canary -- dev   # our checks against the herdsman that Zigbee2MQTT dev pins (or `release`)
 ```
 
-- **`dist/` is committed.** It is what Zigbee2MQTT loads and what a release ships. Run `npm run build`
-  and commit `dist/` with your change; CI fails when `dist/` doesn't match a fresh build of `src/`.
-- **A `dist/` change raises the version** in `package.json` (and `npm install --package-lock-only`):
-  patch for a fix, minor for a feature, major for a breaking change to the `/set` keys, topics or
-  blueprints. CI checks it (`tools/release-check.mjs`); the merge to `main` then publishes that version.
+- **Pull requests are source-only.** `dist/` is committed, but it is the last release's build: a change
+  to `src/` leaves `dist/` and the version alone. `npm run check` rebuilds `dist/` (the tests load the
+  bundles), so drop it before committing: `git checkout origin/main -- dist`. CI builds and tests the
+  bundle fresh, and fails a pull request that changes `dist/` without being a release.
+- **Releases are pull requests of their own** (Releases, below), so several changes ship together and a
+  release candidate is tested before the release (ADR 0008).
 - **Tests:** vitest, in `test/`. `test/rig.ts` drives a whole runtime with a fake radio; the c4_device
   blueprint is rendered as Home Assistant would (`test/c4-device.ts`), and so are the other blueprints'
   templates (`test/blueprints.test.ts`). The README's Development section lists the tools.
@@ -64,14 +65,33 @@ npm run canary -- dev   # our checks against the herdsman that Zigbee2MQTT dev p
   something up in `docs/guides/`. File names name the subject, not a date.
 
 A pull request says what changed and why, names the issue it closes, and says how it was checked
-(tests, and on hardware if it touches a device). CI must pass: `check` (lint, typecheck, tests, build, `dist/`,
-the version raise) and `privacy`. Pushes to this repo run on the project's self-hosted runner; a fork's
+(tests, and on hardware if it touches a device). CI must pass: `check` (lint, typecheck, build, tests, and
+`dist/` left alone or released as a fresh build) and `privacy`. Pushes to this repo run on the project's self-hosted runner; a fork's
 pull request runs on GitHub's hosted runners, so its code never runs on project hardware; so do
 Dependabot's dependency updates (`.github/dependabot.yml`), which leave zigbee-herdsman and its converters
 pinned. Releases run on
 the self-hosted runner too.
 
 ## Releases
+
+Source-only pull requests gather on `main`; a release is a pull request of its own that raises
+`package.json`'s version and commits `dist/` as a fresh build, nothing else. `tools/release.mjs` cuts one:
+
+```
+npm run release -- rc          # 0.4.1 -> 0.4.2-rc.1, or rc.1 -> rc.2 (add minor / major for those releases)
+npm run release -- final       # promote the tested candidate: 0.4.2-rc.2 -> 0.4.2
+```
+
+It branches `release/<version>` from `origin/main`, raises the version, builds, runs `npm run check`,
+commits, and prints the push and `gh pr create` commands. Patch for fixes, minor for features, major for a
+breaking change to the `/set` keys, topics or blueprints.
+
+1. **Release candidate.** Its merge publishes a GitHub pre-release, which the latest-release link below
+   skips. Install it on real Zigbee2MQTT instances and test it. A fix found there is a source-only pull
+   request, then the next candidate.
+2. **Release.** Only from its own candidate, and only while `src/` is unchanged since that candidate was
+   published, so a release ships exactly the code that was tested; CI refuses anything else
+   (`tools/release-check.mjs`). Its notes list every change since the last full release, as the candidate's do.
 
 A merge to `main` that raises the version publishes it: tag `v<version>`, titled "control4-z2m <version>",
 with `control4-z2m.zip`, both `.mjs` files and `SHA256SUMS`. The notes give the build id, a hash of the two

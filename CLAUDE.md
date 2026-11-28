@@ -7,8 +7,10 @@ before posting; CI runs it on every push and pull request. A fork's pull request
 there CI skips it: before merging one, run `node tools/privacy-check.mjs --range <base>..<head>`.
 Install the pre-push hook once per clone: `git config core.hooksPath tools/hooks`.
 
-A change to `dist/` raises `package.json`'s version (`tools/release-check.mjs`); the merge publishes
-it as release `v<version>`. See CONTRIBUTING.md.
+Pull requests are source-only: they don't commit `dist/` (`git checkout origin/main -- dist` after a
+build). Only a release pull request raises `package.json`'s version and commits `dist/` as a fresh build
+(`tools/release-check.mjs`, ADR 0008); its merge publishes `v<version>`, a candidate such as `0.4.2-rc.1`
+as a pre-release first. See CONTRIBUTING.md.
 
 Issue numbers up to #118 in older docs and commits refer to the archived tracker, not this repo's.
 
