@@ -7,7 +7,8 @@
  *
  * What the three share lives here: the settings read from the device (multi-click
  * times, LED modes, radio power, versions), the health read at each start and
- * re-join (reset reason, fault), and the paddle models' button behaviours and LEDs.
+ * re-join (reset reason, fault), the remote reboot, and the paddle models' button
+ * behaviours and LEDs.
  */
 
 import {
@@ -25,6 +26,8 @@ import {
     PALETTE_HEX,
     type PaddleHalf,
     type PaletteName,
+    REBOOT_KEY,
+    REBOOT_UNTESTED,
     TX_POWER_MAX,
     TX_POWER_MIN,
 } from "../core/constants";
@@ -34,10 +37,16 @@ import {buildZclCommand, CLUSTER_ON_OFF, hex2, lastValue, parseHex, pctToBrightn
 import {AnimationKeys} from "./animkeys";
 import {type C4Device, type Payload, type SetMeta, toBool, toNumber} from "./base";
 import {FadeHold, LoadControl, OFF_TRANSITION_KEY, ON_TRANSITION_KEY, TvParams} from "./dimming";
-import {SETTINGS_READ_DELAY, SETTINGS_READ_KEY} from "./dm";
+import {autoRebootOptionOn, SETTINGS_READ_DELAY, SETTINGS_READ_KEY, sendReboot} from "./dm";
 import {DmxDevice} from "./dmx";
 import {LedKeys} from "./ledkeys";
 import {AmbientSensor, PowerSensor} from "./sensors";
+
+/**
+ * How long after a remote reboot its health read (the reset reason) is due. Its boot
+ * check-in came 4 s after the reply in the frame-type survey (2026-11-15).
+ */
+export const REBOOT_HEALTH_DELAY = 10_000;
 
 export const RESET_REASON_KEY = "reset_reason";
 /** Saved setting: the reset code last read, so a change (a new crash, a reboot) is logged once. */
@@ -204,6 +213,12 @@ export interface SettingRead {
 export abstract class Gen3Device extends DmxDevice {
     /** The APD120 and SW120277 report a fault status (Composer's Fault Detection); the keypad has no load. */
     protected readonly hasFault: boolean = false;
+    /**
+     * `0i c4.sy.rb` reboots it (frame-type survey, 2026-11-15): the KC120277 and APD120.
+     * The SW120277 and the keypad dimmer are untested, so they get neither a Reboot
+     * button nor automatic reboots.
+     */
+    protected readonly remoteReboot: boolean = false;
     protected anim?: AnimationKeys;
     declare protected led: LedKeys;
 
@@ -360,6 +375,26 @@ export abstract class Gen3Device extends DmxDevice {
         else super.onWarning(data);
     }
 
+    // -- remote reboot ----------------------------------------------------------
+
+    /**
+     * Reboot it: `0i c4.sy.rb`. Unlike the DIM1-Z, it answers 000 before it restarts,
+     * so its APS acknowledgement goes out and no retry reboots it again; sendReboot
+     * asks for none anyway. It sends no device announce afterwards, so the health
+     * read an announce would queue (why it restarted, its fault, its TX power) is
+     * queued here, once it is back.
+     */
+    async reboot(): Promise<void> {
+        if (!this.remoteReboot) throw new Error(`Control4 ${this.name}: this model isn't rebooted remotely (untested)`);
+        await sendReboot(this, "c4.sy.rb");
+        this.ctx.link.queueStateRead(this.ieee, () => this.readHealth(), REBOOT_HEALTH_DELAY);
+    }
+
+    /** Whether the link may reboot it on its own: a model that can be, with its auto_reboot option not off. */
+    autoReboot(): boolean {
+        return this.remoteReboot && autoRebootOptionOn(this);
+    }
+
     // -- TX power -------------------------------------------------------------
 
     private async setTxPower(value: unknown): Promise<Payload> {
@@ -428,6 +463,12 @@ export abstract class Gen3Device extends DmxDevice {
             return {[key]: ms};
         }
         if (key === TX_POWER_KEY) return this.setTxPower(value);
+        if (key === REBOOT_KEY && this.remoteReboot) {
+            this.log.info(`Control4 ${this.name}: rebooting it from its Reboot button (c4.sy.rb) - back in a few seconds`);
+            await this.reboot();
+            this.ctx.link.noteRebooted(this.ieee);
+            return undefined;
+        }
         const modeSlot = this.led.modes.get(key);
         if (modeSlot !== undefined) {
             // The user picked a mode: a slot borrowed for a status colour is theirs again.
@@ -727,6 +768,8 @@ export class DimmerLoad {
 // ---------------------------------------------------------------------------
 
 export class Apd120 extends PaddleDevice {
+    /** The FPD120 runs on this class, its reboot untested. */
+    protected override readonly remoteReboot = !REBOOT_UNTESTED.has(this.model);
     readonly dimmer = new DimmerLoad(this);
 
     get load(): LoadControl {

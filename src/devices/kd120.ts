@@ -29,6 +29,8 @@ const POSITION_BEHAVIOUR = /^button_position_([1-7])_behaviour$/;
 
 export class Kd120 extends Kc120277 {
     protected override readonly hasFault = true;
+    /** Untested on a real one: no remote reboot until someone has watched one. */
+    protected override readonly remoteReboot = false;
     readonly dimmer: DimmerLoad;
 
     constructor(...args: ConstructorParameters<typeof C4Device>) {

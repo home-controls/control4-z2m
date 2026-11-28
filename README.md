@@ -143,7 +143,7 @@ that isn't listed, follow `docs/TESTING.md`: it says what to do and what to send
 
 | Model (also matches) | Kind | Highlights |
 |---|---|---|
-| C4-APD120 (-B, -W) | Adaptive phase dimmer | light, on/off fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, settings read from the dimmer, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power |
+| C4-APD120 (-B, -W) | Adaptive phase dimmer | light, on/off fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, settings read from the dimmer, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power, Reboot button and automatic reboots |
 | C4-DIM1-Z (-B, -W, -AL), DIMZ-1B1 | Dimmer | light, fades, hardware fades for a `transition`, ramp table, dm.tv limits, cold start, paddle local control, 4 LED colours, LED engine, settings read from the dimmer, Reboot button and automatic reboots |
 | C4-SW120277 (-B, -W) | Switch | on/off, button behaviour per paddle half, multi-click times, top and bottom LEDs (colours, mode, LED engine), ambient light, power, voltage, current, energy, fault, reset reason, TX power. **Untested**: built from the ZHA-era notes, no unit available to verify on (issue [#14](https://github.com/home-controls/control4-z2m/issues/14)) |
 | C4-FS1-Z | Switch | on/off |
@@ -151,7 +151,7 @@ that isn't listed, follow `docs/TESTING.md`: it says what to do and what to send
 | LOZ-5S1-W | Dual outlet | `state_l1` / `state_l2`, outlet buttons (`outlet_1` / `outlet_2`) |
 | LOZ-5D1-W | Dual dimmable outlet | a light per outlet (`state_l1` / `brightness_l1`, `state_l2` / `brightness_l2`), hardware fades for a `transition`, outlet buttons (`outlet_1` / `outlet_2`). **Untested**: built from other projects' notes |
 | C4-V-ROSW120 | Receptacle outlet switch | on/off (read back after each command: it never reports), its button (`button_1`). **Untested** |
-| C4-KC120277 (-B, -W), KPZ-6B1-C | Configurable keypad | the fitted buttons only (learned, or the `button_layout` option), per-button idle/pressed colours and LED mode, LED engine, backlight colour and brightness, multi-click times, ambient light, reset reason, TX power |
+| C4-KC120277 (-B, -W), KPZ-6B1-C | Configurable keypad | the fitted buttons only (learned, or the `button_layout` option), per-button idle/pressed colours and LED mode, LED engine, backlight colour and brightness, multi-click times, ambient light, reset reason, TX power, Reboot button and automatic reboots |
 | C4-KD120, C4-KD277, C4-KD240 | Keypad dimmer | the APD120's light and settings plus the KC120277's keypad, each button's behaviour toward the load (`button_position_N_behaviour`; every button toggles from the factory), a wired auxiliary keypad as `aux_top` / `aux_bottom`, hardware fades for a `transition`, settings read from the device, ambient light, power, voltage, current, energy, dimming phase, fault, reset reason, TX power. **Untested**: built from other projects' notes, no unit to verify on |
 | C4-FPD120 | Forward phase dimmer | as the APD120 (another project runs it on the same definition). **Untested** |
 | KPZ-3B1 / C4-KP3-Z (-B, -W, -AL, -BL, -x), KPZ-6B1 / C4-KP6-Z (-B, -W, -AL, -BL, -x) | Keypads | per-button idle/pressed colours, LED engine |
@@ -216,6 +216,15 @@ while more than 3 devices are unreachable at once: then every dimmer looks
 unreachable, and the fault is not theirs. Each one is logged at warning. The
 device option `auto_reboot: false` stops them for that dimmer; its Reboot
 button still works.
+
+**A KC120277 or APD120 can be rebooted remotely too**, with `0i c4.sy.rb`
+(the frame-type survey rebooted one of each). Unlike the DIM1-Z, it answers
+before it restarts. It sends no device announce, so the extension reads its
+reset reason again about 10 s after the reboot. An APD120's energy counter
+falls to its last save; the energy total carries on from where it was. The
+Reboot button, the automatic reboots, their limits and `auto_reboot` work as
+for the DIM1-Z. The SW120277, the KD120 and the FPD120 are untested, so they get
+neither.
 
 **The KC120277, APD120 and SW120277 (one board).** The untested FPD120 runs
 as an APD120. The untested KD120 takes the APD120's dimmer side (its `tv`
@@ -459,7 +468,7 @@ when it starts and every minute:
   | `converter_api` | the two files come from checkouts whose extension and converter can't work together: copy both from one |
   | `no_frames` | no Control4 frame has come through Zigbee2MQTT for 30 minutes, so Control4 buttons go unheard. Zigbee2MQTT has stopped handing the frames to the extension (a herdsman, coordinator firmware or adapter change?). It clears on the next frame. Watched only while the instance has a router that answers Gets (a DIM1-Z, APD120, SW120277 or KC120277, or any other router that has answered a Get since Zigbee2MQTT started, such as a KD120 or FPD120 once its settings are read): keepalive makes those answer within ~22 minutes, while keypads and remotes alone can be quiet for hours. |
   | `sends_failing` | the last 5 sends got no delivery confirmation (no `messageSent` from herdsman), so commands to Control4 devices aren't getting through, or aren't being confirmed. It clears at the next confirmation. A dead device doesn't trip it: its sends come back confirmed as undelivered. |
-  | `devices_unreachable` | a router that answers Gets (as for `no_frames`: a DIM1-Z, APD120, SW120277, KC120277, or another that has answered one) has answered none of its last 3 keepalives, so commands to it are lost; `unreachable` names it. It may still have power, work from its own paddles, check in every hour and acknowledge what is sent to it at the radio level, while its Control4 firmware answers nothing. A paddle press does not bring it back; a reboot does. A DIM1-Z is normally rebooted remotely as it is listed (at most 3 times a day, an hour or more apart; see "A DIM1-Z can be rebooted remotely"); otherwise, or if it stays listed, press its Reboot button, tap the top paddle 15 times, or cut its power. It clears on the first frame it sends directly. It shows about 40 minutes after the device goes silent (keepalive starts at 20 minutes quiet and pokes every 10), or about 4 minutes after it re-joins without answering (Re-joins, below). |
+  | `devices_unreachable` | a router that answers Gets (as for `no_frames`: a DIM1-Z, APD120, SW120277, KC120277, or another that has answered one) has answered none of its last 3 keepalives, so commands to it are lost; `unreachable` names it. It may still have power, work from its own paddles, check in every hour and acknowledge what is sent to it at the radio level, while its Control4 firmware answers nothing. A paddle press does not bring it back; a reboot does. A DIM1-Z, KC120277 or APD120 is normally rebooted remotely as it is listed (at most 3 times a day, an hour or more apart; see "A DIM1-Z can be rebooted remotely"); otherwise, or if it stays listed, press its Reboot button, tap the top paddle 15 times, or cut its power. It clears on the first frame it sends directly. It shows about 40 minutes after the device goes silent (keepalive starts at 20 minutes quiet and pokes every 10), or about 4 minutes after it re-joins without answering (Re-joins, below). |
 
   Each one logs an error when it starts and an info line when it clears.
 
@@ -528,7 +537,7 @@ with `{"<key>": <value>}`):
 | `led_effect`, `led_status`, `led_stop`, `led_refresh` | keypads, KC120277, KD120, DIM1-Z, APD120, FPD120, SW120277 | as the bridge requests below, for this device. On an APD120 / SW120277, LED 1 (or `top`, `button_1`) is the top LED and LED 2 (`bottom`, `button_2`) the bottom |
 | `relay_N_pulse` | Z2IO | any value (the Home Assistant entity sends `"pulse"`): energise relay N, then release it after `pulse_duration` ms; `{"pulse_ms": n}` sets this pulse's length. Both are clamped to 100-5000 ms (default 500) |
 | `poll` | Z2IO | any value: read the contacts, relays, temperatures and humidity now |
-| `reboot` | DIM1-Z | `"reboot"`: restart it remotely (`0i c4.dm.rb`), the **Reboot** button |
+| `reboot` | DIM1-Z, KC120277, APD120 | `"reboot"`: restart it remotely (`0i c4.dm.rb` on a DIM1-Z, `0i c4.sy.rb` on the others), the **Reboot** button |
 | `paddle_local_control` | SW120277 | `ON` / `OFF`: both halves' button behaviour at once (on = top `load_on`, bottom `load_off`; off = both `event_only`) |
 | `led_N_bound` | KC120277, KD120 | `true` / `false`: LED N's mode, `push_release` / `programmed` |
 | `room_name`, `active_source`, `set_room_info` | remotes | the LCD's two rows (`set_room_info`: `{"room"?, "source"?}`), kept and pushed again at each wake |
@@ -815,9 +824,10 @@ every re-join:
   gets a Get 2 minutes after its announce and another at 4 minutes. If it
   answers neither, it's listed under `devices_unreachable` straight away, with
   the reboot advice, instead of after about 40 minutes of missed keepalives.
-  Its next direct frame clears it. A DIM1-Z is rebooted remotely then.
-- **A DIM1-Z that keeps re-joining is rebooted.** At its third announce within
-  3.5 hours, it gets `0i c4.dm.rb` 30-60 s later (after its identity sends),
+  Its next direct frame clears it. A DIM1-Z, KC120277 or APD120 is rebooted
+  remotely then.
+- **A DIM1-Z, KC120277 or APD120 that keeps re-joining is rebooted.** At its
+  third announce within 3.5 hours, it gets its reboot frame 30-60 s later (after its identity sends),
   within the limits above. The count starts again after any reboot, its
   Reboot button's included. `auto_reboot: false` stops it.
 
@@ -894,7 +904,7 @@ the entries of the devices it has.
   - every Control4 device's availability comes from its answering;
   - unreachable devices are listed in the instance status, with an HA notice;
   - a DIM1-Z's settings are read from it;
-  - a DIM1-Z has a Reboot button and is rebooted when stuck;
+  - a DIM1-Z, KC120277 or APD120 has a Reboot button and is rebooted when stuck;
   - `c4_send` can send interrupt (`0i`) frames.
 
 ## Development

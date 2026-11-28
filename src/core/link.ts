@@ -58,7 +58,7 @@ export const AUTO_REBOOT_INSTANCE_GAP = 60_000;
  */
 export const AUTO_REBOOT_MAX_UNREACHABLE = 3;
 /** The same, for a device the extension reboots itself. */
-const AUTO_REBOOT_ADVICE = `commands to it are lost. It may still have power, work from its own paddles and check in every hour, but a paddle press does not bring it back. The extension reboots it remotely (up to ${AUTO_REBOOT_MAX} times a day, an hour or more apart); if it stays unreachable, press its Reboot button or reboot it by hand (tap the top paddle 15 times), or cut its power.`;
+const AUTO_REBOOT_ADVICE = `commands to it are lost. It may still have power, work from its own buttons and check in every hour, but a press does not bring it back. The extension reboots it remotely (up to ${AUTO_REBOOT_MAX} times a day, an hour or more apart); if it stays unreachable, press its Reboot button or reboot it by hand (on a DIM1-Z, tap the top paddle 15 times), or cut its power.`;
 export const RETRY_DELAY = 2_000;
 export const MTORR_MIN_GAP = 60_000;
 export const MTORR_RADIUS = 5;
@@ -87,7 +87,7 @@ export interface LinkDevice {
     nextSeq(): number;
     /** Send raw text (no pacing beyond waitTurn, which the device applies). */
     sendText(text: string): Promise<void>;
-    /** Reboot the device remotely, on a model that can be (the DIM1-Z). */
+    /** Reboot the device remotely, on a model that can be (the DIM1-Z, KC120277, APD120). */
     reboot?(): Promise<void>;
     /** Whether the link may reboot it on its own (its auto_reboot option); absent = yes. */
     autoReboot?(): boolean;
@@ -340,7 +340,7 @@ export class Link {
     }
 
     /**
-     * Reboot a device that can be rebooted remotely (a DIM1-Z). True when one went out.
+     * Reboot a device that can be rebooted remotely (a DIM1-Z, KC120277, APD120). True when one went out.
      * Not when its auto_reboot option is off, it had one less than AUTO_REBOOT_GAP ago or
      * AUTO_REBOOT_MAX within AUTO_REBOOT_WINDOW, the host holds reboots (a traffic alarm),
      * more than AUTO_REBOOT_MAX_UNREACHABLE devices are unreachable at once, or another

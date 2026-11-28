@@ -164,6 +164,7 @@ export function parseLayout(raw: unknown): number[] | undefined {
  * actions and only their LEDs get entities.
  */
 export class Kc120277 extends Gen3Device {
+    protected override readonly remoteReboot: boolean = true;
     protected readonly buttons: Record<number, string> = {};
 
     constructor(...args: ConstructorParameters<typeof C4Device>) {

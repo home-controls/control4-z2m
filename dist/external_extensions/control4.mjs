@@ -1,4 +1,4 @@
-// control4-z2m 0.3.1 - Zigbee2MQTT external extension
+// control4-z2m 0.4.0 - Zigbee2MQTT external extension
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -350,6 +350,7 @@ var COLD_START_LEVEL_KEY = "cold_start_level";
 var COLD_START_TIME_KEY = "cold_start_time";
 var REBOOT_KEY = "reboot";
 var AUTO_REBOOT_OPTION = "auto_reboot";
+var REBOOT_UNTESTED = /* @__PURE__ */ new Set(["C4-FPD120"]);
 var DIM1Z_FACTORY = { min_brightness: 0, hold_ramp_up: 5e3, hold_ramp_down: 5e3 };
 var COLD_START_PARAMS = [
   {
@@ -2626,7 +2627,7 @@ var AUTO_REBOOT_MAX = 3;
 var AUTO_REBOOT_WINDOW = 24 * 60 * 6e4;
 var AUTO_REBOOT_INSTANCE_GAP = 6e4;
 var AUTO_REBOOT_MAX_UNREACHABLE = 3;
-var AUTO_REBOOT_ADVICE = `commands to it are lost. It may still have power, work from its own paddles and check in every hour, but a paddle press does not bring it back. The extension reboots it remotely (up to ${AUTO_REBOOT_MAX} times a day, an hour or more apart); if it stays unreachable, press its Reboot button or reboot it by hand (tap the top paddle 15 times), or cut its power.`;
+var AUTO_REBOOT_ADVICE = `commands to it are lost. It may still have power, work from its own buttons and check in every hour, but a press does not bring it back. The extension reboots it remotely (up to ${AUTO_REBOOT_MAX} times a day, an hour or more apart); if it stays unreachable, press its Reboot button or reboot it by hand (on a DIM1-Z, tap the top paddle 15 times), or cut its power.`;
 var RETRY_DELAY = 2e3;
 var MTORR_MIN_GAP = 6e4;
 var MTORR_RADIUS = 5;
@@ -2835,7 +2836,7 @@ var Link = class {
     return this.canAutoReboot(dev) ? AUTO_REBOOT_ADVICE : REBOOT_ADVICE;
   }
   /**
-   * Reboot a device that can be rebooted remotely (a DIM1-Z). True when one went out.
+   * Reboot a device that can be rebooted remotely (a DIM1-Z, KC120277, APD120). True when one went out.
    * Not when its auto_reboot option is off, it had one less than AUTO_REBOOT_GAP ago or
    * AUTO_REBOOT_MAX within AUTO_REBOOT_WINDOW, the host holds reboots (a traffic alarm),
    * more than AUTO_REBOOT_MAX_UNREACHABLE devices are unreachable at once, or another
@@ -3972,6 +3973,19 @@ var STATE_READ_RAMP_WAITS = 10;
 var STATE_READ_FRESH = 1e4;
 var SETTINGS_READ_KEY = "settings_read";
 var SETTINGS_READ_DELAY = 3e4;
+async function sendReboot(dev, verb) {
+  try {
+    await dev.sendText(`0i${hex4(dev.nextSeq())} ${verb}`, 1, 1, { ack: false });
+  } catch (error) {
+    const reason = error.reason;
+    if (!isDeliveryFailure(error) || reason === "unqueued" || reason === "stopped") throw error;
+    dev.log.debug(`Control4 ${dev.name}: the reboot's delivery was not confirmed (it may restart on receipt): ${error}`);
+  }
+}
+function autoRebootOptionOn(dev) {
+  const v = dev.option(AUTO_REBOOT_OPTION);
+  return v === void 0 || v === null || v === "" || toBool(v);
+}
 var Dim1z = class extends DmDevice {
   // A hold reports b<idx>b / b<idx>e with no paddle-down before it, so a
   // paddle-down is a tap the moment it arrives.
@@ -4067,21 +4081,14 @@ var Dim1z = class extends DmDevice {
    * in about 2 s with its load at the same level and every setting kept. It restarts on
    * receipt, often before its APS acknowledgement, and each APS retry then reboots it
    * again (three reboots in 3.5 s, seen by the sniffer): so the frame asks for no
-   * acknowledgement and goes once. A delivery failure is no error.
+   * acknowledgement and goes once (sendReboot).
    */
-  async reboot() {
-    try {
-      await this.sendText(`0i${hex4(this.nextSeq())} c4.dm.rb`, 1, 1, { ack: false });
-    } catch (error) {
-      const reason = error.reason;
-      if (!isDeliveryFailure(error) || reason === "unqueued" || reason === "stopped") throw error;
-      this.log.debug(`Control4 ${this.name}: the reboot's delivery was not confirmed (it restarts on receipt): ${error}`);
-    }
+  reboot() {
+    return sendReboot(this, "c4.dm.rb");
   }
   /** Whether the link may reboot it on its own: its auto_reboot option, on unless set off. */
   autoReboot() {
-    const v = this.option(AUTO_REBOOT_OPTION);
-    return v === void 0 || v === null || v === "" || toBool(v);
+    return autoRebootOptionOn(this);
   }
   /** A turn-on from off holds the cold start level this long before its own fade. */
   coldStartMs(level) {
@@ -4382,6 +4389,7 @@ var Outlet = class extends DmxDevice {
 };
 
 // src/devices/gen3.ts
+var REBOOT_HEALTH_DELAY = 1e4;
 var RESET_REASON_KEY = "reset_reason";
 var RESET_CODE_KEY = "reset_reason_code";
 var TX_POWER_KEY = "tx_power";
@@ -4495,6 +4503,12 @@ function paletteNameOf(hex) {
 var Gen3Device = class extends DmxDevice {
   /** The APD120 and SW120277 report a fault status (Composer's Fault Detection); the keypad has no load. */
   hasFault = false;
+  /**
+   * `0i c4.sy.rb` reboots it (frame-type survey, 2026-11-15): the KC120277 and APD120.
+   * The SW120277 and the keypad dimmer are untested, so they get neither a Reboot
+   * button nor automatic reboots.
+   */
+  remoteReboot = false;
   anim;
   get ledKeys() {
     return this.led;
@@ -4631,6 +4645,23 @@ var Gen3Device = class extends DmxDevice {
     else if (data.length === 1) this.noteFault(data[0]);
     else super.onWarning(data);
   }
+  // -- remote reboot ----------------------------------------------------------
+  /**
+   * Reboot it: `0i c4.sy.rb`. Unlike the DIM1-Z, it answers 000 before it restarts,
+   * so its APS acknowledgement goes out and no retry reboots it again; sendReboot
+   * asks for none anyway. It sends no device announce afterwards, so the health
+   * read an announce would queue (why it restarted, its fault, its TX power) is
+   * queued here, once it is back.
+   */
+  async reboot() {
+    if (!this.remoteReboot) throw new Error(`Control4 ${this.name}: this model isn't rebooted remotely (untested)`);
+    await sendReboot(this, "c4.sy.rb");
+    this.ctx.link.queueStateRead(this.ieee, () => this.readHealth(), REBOOT_HEALTH_DELAY);
+  }
+  /** Whether the link may reboot it on its own: a model that can be, with its auto_reboot option not off. */
+  autoReboot() {
+    return this.remoteReboot && autoRebootOptionOn(this);
+  }
   // -- TX power -------------------------------------------------------------
   async setTxPower(value) {
     const dbm = Math.round(toNumber(value, TX_POWER_MIN, TX_POWER_MAX));
@@ -4692,6 +4723,12 @@ var Gen3Device = class extends DmxDevice {
       return { [key]: ms };
     }
     if (key === TX_POWER_KEY) return this.setTxPower(value);
+    if (key === REBOOT_KEY && this.remoteReboot) {
+      this.log.info(`Control4 ${this.name}: rebooting it from its Reboot button (c4.sy.rb) - back in a few seconds`);
+      await this.reboot();
+      this.ctx.link.noteRebooted(this.ieee);
+      return void 0;
+    }
     const modeSlot = this.led.modes.get(key);
     if (modeSlot !== void 0) {
       this.anim?.animator.forgetBorrowed(modeSlot);
@@ -4933,6 +4970,8 @@ var DimmerLoad = class {
   }
 };
 var Apd120 = class extends PaddleDevice {
+  /** The FPD120 runs on this class, its reboot untested. */
+  remoteReboot = !REBOOT_UNTESTED.has(this.model);
   dimmer = new DimmerLoad(this);
   get load() {
     return this.dimmer.load;
@@ -5115,6 +5154,7 @@ function parseLayout(raw) {
   return [...new Set(positions.map((n) => n - 1))].sort((a, b) => a - b);
 }
 var Kc120277 = class extends Gen3Device {
+  remoteReboot = true;
   buttons = {};
   constructor(...args) {
     super(...args);
@@ -5288,6 +5328,8 @@ var positionBehaviourKey = (wire) => `button_position_${wire + 1}_behaviour`;
 var POSITION_BEHAVIOUR = /^button_position_([1-7])_behaviour$/;
 var Kd120 = class extends Kc120277 {
   hasFault = true;
+  /** Untested on a real one: no remote reboot until someone has watched one. */
+  remoteReboot = false;
   dimmer;
   constructor(...args) {
     super(...args);
@@ -7300,7 +7342,7 @@ var Store = class {
 };
 
 // src/core/version.ts
-var VERSION = true ? "0.3.1" : "dev";
+var VERSION = true ? "0.4.0" : "dev";
 
 // src/z2m/global.ts
 var RUNTIME_KEY = "__control4_z2m_runtime__";

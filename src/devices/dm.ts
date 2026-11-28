@@ -70,6 +70,29 @@ export const SETTINGS_READ_KEY = "settings_read";
 /** The settings read waits this long after a start, so the dimmers' load reads go first. */
 export const SETTINGS_READ_DELAY = 30_000;
 
+/**
+ * A remote reboot: `0i<seq> <verb>`, an interrupt frame sent once, with no APS
+ * acknowledgement asked. A device that restarts on receipt (the DIM1-Z) can do so
+ * before it acknowledges, and each APS retry then reboots it again. An unconfirmed
+ * delivery is no error; a frame that never went out (not queued, the transport
+ * stopped) is. The Gen3 board's reboot (gen3.ts) shares it.
+ */
+export async function sendReboot(dev: C4Device, verb: string): Promise<void> {
+    try {
+        await dev.sendText(`0i${hex4(dev.nextSeq())} ${verb}`, 1, 1, {ack: false});
+    } catch (error) {
+        const reason = (error as {reason?: string}).reason;
+        if (!isDeliveryFailure(error) || reason === "unqueued" || reason === "stopped") throw error;
+        dev.log.debug(`Control4 ${dev.name}: the reboot's delivery was not confirmed (it may restart on receipt): ${error}`);
+    }
+}
+
+/** The device's auto_reboot option: on unless set off. */
+export function autoRebootOptionOn(dev: C4Device): boolean {
+    const v = dev.option(AUTO_REBOOT_OPTION);
+    return v === undefined || v === null || v === "" || toBool(v);
+}
+
 export class Dim1z extends DmDevice {
     // A hold reports b<idx>b / b<idx>e with no paddle-down before it, so a
     // paddle-down is a tap the moment it arrives.
@@ -176,23 +199,15 @@ export class Dim1z extends DmDevice {
      * in about 2 s with its load at the same level and every setting kept. It restarts on
      * receipt, often before its APS acknowledgement, and each APS retry then reboots it
      * again (three reboots in 3.5 s, seen by the sniffer): so the frame asks for no
-     * acknowledgement and goes once. A delivery failure is no error.
+     * acknowledgement and goes once (sendReboot).
      */
-    async reboot(): Promise<void> {
-        try {
-            await this.sendText(`0i${hex4(this.nextSeq())} c4.dm.rb`, 1, 1, {ack: false});
-        } catch (error) {
-            // A frame that never went out (not queued, the transport stopped) is a real failure.
-            const reason = (error as {reason?: string}).reason;
-            if (!isDeliveryFailure(error) || reason === "unqueued" || reason === "stopped") throw error;
-            this.log.debug(`Control4 ${this.name}: the reboot's delivery was not confirmed (it restarts on receipt): ${error}`);
-        }
+    reboot(): Promise<void> {
+        return sendReboot(this, "c4.dm.rb");
     }
 
     /** Whether the link may reboot it on its own: its auto_reboot option, on unless set off. */
     autoReboot(): boolean {
-        const v = this.option(AUTO_REBOOT_OPTION);
-        return v === undefined || v === null || v === "" || toBool(v);
+        return autoRebootOptionOn(this);
     }
 
     /** A turn-on from off holds the cold start level this long before its own fade. */

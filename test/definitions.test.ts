@@ -249,6 +249,22 @@ describe("definitions", () => {
         expect(def.options.find((o: Any) => o.property === "button_layout")).toMatchObject({type: "text"});
     });
 
+    // #12: the KC120277 and APD120 reboot on 0i c4.sy.rb; the other Gen3 models are untested.
+    it("give a Reboot button and an auto_reboot option to the models rebooted remotely, and to no other", () => {
+        const exposesOf = (def: Any): Any[] => (typeof def.exposes === "function" ? def.exposes({}, {}) : def.exposes);
+        for (const def of defs) {
+            const rebooted = ["C4-DIM1-Z", "C4-KC120277", "C4-APD120"].includes(def.model);
+            expect(
+                exposesOf(def).some((x: Any) => x.name === "reboot"),
+                def.model,
+            ).toBe(rebooted);
+            expect(
+                (def.options ?? []).some((o: Any) => o.name === "auto_reboot"),
+                def.model,
+            ).toBe(rebooted);
+        }
+    });
+
     it("map the outlet's two endpoints", () => {
         const def = defs.find((d: Any) => d.model === "LOZ-5S1-W");
         expect(def.endpoint()).toEqual({l1: 1, l2: 11});
