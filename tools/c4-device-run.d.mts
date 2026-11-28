@@ -36,5 +36,23 @@ export interface LedCall {
 }
 export type LedLook = Omit<LedCall, "buttons">;
 
+/** A run as Home Assistant traced it: the decision, plus what the run did and how it ended. */
+export interface TracedRun extends Run {
+    /** The led_status calls it sent; [] when none. */
+    leds: LedCall[];
+    /** Boot / reload only: whether the device has a Control4 events entity, so the automation hears its buttons. */
+    hears?: boolean;
+    /** The error the run stopped on, if it did. */
+    error?: string;
+    /** Still running when the trace was read (an early commit waiting for its count, a hold ramp). */
+    running: boolean;
+}
+
+/**
+ * A `trace/get` result (or a saved trace's extended_dict) read as a run. Throws when the trace has no trigger step,
+ * or when a passing run's variables say two things at once (as readRun does).
+ */
+export function readTrace(trace: unknown): TracedRun;
+
 /** The look one LED gets from a run's calls, by its name ("button_3") or number ("5"); undefined when no call names it. */
 export function ledLook(calls: LedCall[], name: string): LedLook | undefined;
