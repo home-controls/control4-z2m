@@ -1,4 +1,4 @@
-// control4-z2m 0.3.1 - Zigbee2MQTT external converter
+// control4-z2m 0.4.0 - Zigbee2MQTT external converter
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -250,6 +250,7 @@ var COLD_START_LEVEL_KEY = "cold_start_level";
 var COLD_START_TIME_KEY = "cold_start_time";
 var REBOOT_KEY = "reboot";
 var AUTO_REBOOT_OPTION = "auto_reboot";
+var REBOOT_UNTESTED = /* @__PURE__ */ new Set(["C4-FPD120"]);
 var DIM1Z_FACTORY = { min_brightness: 0, hold_ramp_up: 5e3, hold_ramp_down: 5e3 };
 var COLD_START_PARAMS = [
   {
@@ -425,14 +426,15 @@ function tvParams(params) {
     return e.numeric(p.key, ea.STATE_SET).withValueMin(0).withValueMax(p.kind === "percent" ? 100 : 1e4).withValueStep(p.kind === "percent" ? 1 : 100).withUnit(p.kind === "percent" ? "%" : "ms").withLabel(p.label).withDescription(p.description ? `${p.description} (${slot})` : `Dimmer parameter ${slot}`).withCategory("config");
   });
 }
-function rebootButton() {
-  return e.enum(REBOOT_KEY, ea.SET, ["reboot"]).withLabel("Reboot").withDescription(
-    "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)"
-  ).withCategory("config");
+var DIM1Z_REBOOT = "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)";
+var KC120277_REBOOT = "Restart the keypad remotely (c4.sy.rb): back in a few seconds. Its reset reason is read again once it is back";
+var APD120_REBOOT = "Restart the dimmer remotely (c4.sy.rb): back in a few seconds. Its energy counter falls to its last save, and the energy total carries on from where it was";
+function rebootButton(description) {
+  return e.enum(REBOOT_KEY, ea.SET, ["reboot"]).withLabel("Reboot").withDescription(description).withCategory("config");
 }
-function autoRebootOption() {
+function autoRebootOption(what) {
   return e.binary(AUTO_REBOOT_OPTION, ea.SET, true, false).withDescription(
-    "Reboot this dimmer remotely when it stops answering or keeps re-joining (3 times within 3.5 h): up to 3 times a day, an hour or more apart. Default true"
+    `Reboot this ${what} remotely when it stops answering or keeps re-joining (3 times within 3.5 h): up to 3 times a day, an hour or more apart. Default true`
   );
 }
 function paddleLocalControl() {
@@ -557,7 +559,8 @@ var FAMILIES = {
       ambient(),
       ...powerSensors(),
       dimmingPhase(),
-      ...gen3Health(true)
+      ...gen3Health(true),
+      rebootButton(APD120_REBOOT)
     ],
     keys: [
       ...LIGHT_KEYS,
@@ -573,10 +576,11 @@ var FAMILIES = {
       ...LED_ENGINE_KEYS,
       "ambient_light",
       ...POWER_KEYS,
-      ...GEN3_KEYS
+      ...GEN3_KEYS,
+      REBOOT_KEY
     ],
     grouped: [LIGHT_KEYS],
-    options: [...pollOptions(true), tapWindowOption()]
+    options: [...pollOptions(true), tapWindowOption(), autoRebootOption("dimmer")]
   },
   dim1z: {
     exposes: [
@@ -595,7 +599,7 @@ var FAMILIES = {
       ledColor("led_bottom_off_color", "Bottom LED off colour"),
       ledBrightness(),
       ledNotification(),
-      rebootButton()
+      rebootButton(DIM1Z_REBOOT)
     ],
     keys: [
       ...LIGHT_KEYS,
@@ -614,7 +618,7 @@ var FAMILIES = {
       REBOOT_KEY
     ],
     grouped: [LIGHT_KEYS],
-    options: [tapWindowOption(), autoRebootOption()]
+    options: [tapWindowOption(), autoRebootOption("dimmer")]
   },
   sw120277: {
     exposes: [
@@ -687,8 +691,8 @@ var FAMILIES = {
   },
   kc120277: {
     exposes: (device) => kcExposes(kcLayoutOf(device)),
-    keys: KC_KEYS,
-    options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption()]
+    keys: [...KC_KEYS, REBOOT_KEY],
+    options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption(), autoRebootOption("keypad")]
   },
   kd120: {
     exposes: (device) => kdExposes(kcLayoutOf(device)),
@@ -735,7 +739,7 @@ function kcLayoutOf(device) {
   return layout ?? { wires: void 0, numbering: "pairs" };
 }
 function kcExposes(layout) {
-  return [...kcKeypadExposes(layout), ...gen3Health(false)];
+  return [...kcKeypadExposes(layout), ...gen3Health(false), rebootButton(KC120277_REBOOT)];
 }
 function kdExposes(layout) {
   const wires = layout.wires ?? Array.from({ length: KC_POSITIONS }, (_, i) => i);
@@ -819,7 +823,17 @@ function remoteFamily(buttons, sr260) {
     options: [e.text("lcd_default_room", ea.SET).withDescription("Room shown on the LCD until room_name is set (default: Home)")]
   };
 }
-function definition(model, zigbeeModel, description, fam) {
+function withoutReboot(fam) {
+  const named = (x) => x.name;
+  return {
+    ...fam,
+    exposes: Array.isArray(fam.exposes) ? fam.exposes.filter((x) => named(x) !== REBOOT_KEY) : fam.exposes,
+    keys: fam.keys.filter((k) => k !== REBOOT_KEY),
+    options: fam.options?.filter((x) => named(x) !== AUTO_REBOOT_OPTION)
+  };
+}
+function definition(model, zigbeeModel, description, family) {
+  const fam = family && REBOOT_UNTESTED.has(model) ? withoutReboot(family) : family;
   const keys = [...fam?.keys ?? [], ...COMMON_KEYS];
   const exposes = fam?.exposes ?? [
     e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in"),

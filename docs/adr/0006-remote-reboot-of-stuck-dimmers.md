@@ -37,7 +37,8 @@ The limits are part of the decision, not tuning:
 - An automatic reboot flashes the dimmer's LEDs (green, then white), and a paddle press in its ~2 s is lost.
 - The counts live in memory, so a Zigbee2MQTT restart starts them again: a dimmer that stays deaf can get 3 more
   reboots after each restart.
-- Only the DIM1-Z is rebooted. On the KC120277 and APD120, `0i c4.sy.rb` reboots them too (frame-type survey,
-  `docs/research/kc-apd-sw-capability-map.md`): they answer before restarting, so its APS acknowledgement goes out and
-  no retry reboots them again. Extending the Reboot button and these automatic reboots to them is #12; the SW120277
-  is untested.
+- The KC120277 and APD120 are rebooted the same way, with the same limits and `auto_reboot` option (#12), by
+  `0i c4.sy.rb` (frame-type survey, `docs/research/kc-apd-sw-capability-map.md`). They answer before restarting, so
+  its APS acknowledgement goes out and no retry reboots them again; the frame still asks for none. They send no device
+  announce afterwards, so the extension queues their health read (the reset reason) itself. The SW120277 and the
+  KD120 are untested and aren't rebooted.

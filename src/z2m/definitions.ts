@@ -36,6 +36,7 @@ import {
     PALETTE_NAMES,
     POWER_KEYS,
     REBOOT_KEY,
+    REBOOT_UNTESTED,
     REMOTE_GESTURES,
     SR250_BUTTONS,
     SR260_BUTTONS,
@@ -302,26 +303,30 @@ function tvParams(params: TvParam[]): Expose[] {
     });
 }
 
+const DIM1Z_REBOOT = "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)";
+// The KC120277 and APD120 (c4.sy.rb): what the frame-type survey saw on one of each (2026-11-15).
+const KC120277_REBOOT = "Restart the keypad remotely (c4.sy.rb): back in a few seconds. Its reset reason is read again once it is back";
+const APD120_REBOOT =
+    "Restart the dimmer remotely (c4.sy.rb): back in a few seconds. Its energy counter falls to its last save, and the energy total carries on from where it was";
+
 /** A write-only enum with one value: Home Assistant shows it as a button. */
-function rebootButton(): Expose {
+function rebootButton(description: string): Expose {
     return (
         e
             .enum(REBOOT_KEY, ea.SET, ["reboot"])
             .withLabel("Reboot")
-            .withDescription(
-                "Restart the dimmer remotely: back in about 2 s, its light staying as it is and its settings kept (its LEDs flash green, then white)",
-            )
+            .withDescription(description)
             // A settable expose can't be "diagnostic" in Zigbee2MQTT.
             .withCategory("config")
     );
 }
 
-/** DIM1-Z device option: whether the extension reboots the dimmer when it stops answering or keeps re-joining. */
-function autoRebootOption(): Expose {
+/** Device option of a model the extension reboots: whether it does when the device stops answering or keeps re-joining. */
+function autoRebootOption(what: "dimmer" | "keypad"): Expose {
     return e
         .binary(AUTO_REBOOT_OPTION, ea.SET, true, false)
         .withDescription(
-            "Reboot this dimmer remotely when it stops answering or keeps re-joining (3 times within 3.5 h): up to 3 times a day, an hour or more apart. Default true",
+            `Reboot this ${what} remotely when it stops answering or keeps re-joining (3 times within 3.5 h): up to 3 times a day, an hour or more apart. Default true`,
         );
 }
 
@@ -537,6 +542,7 @@ const FAMILIES: Record<Family, FamilyDef> = {
             ...powerSensors(),
             dimmingPhase(),
             ...gen3Health(true),
+            rebootButton(APD120_REBOOT),
         ],
         keys: [
             ...LIGHT_KEYS,
@@ -553,9 +559,10 @@ const FAMILIES: Record<Family, FamilyDef> = {
             "ambient_light",
             ...POWER_KEYS,
             ...GEN3_KEYS,
+            REBOOT_KEY,
         ],
         grouped: [LIGHT_KEYS],
-        options: [...pollOptions(true), tapWindowOption()],
+        options: [...pollOptions(true), tapWindowOption(), autoRebootOption("dimmer")],
     },
     dim1z: {
         exposes: [
@@ -574,7 +581,7 @@ const FAMILIES: Record<Family, FamilyDef> = {
             ledColor("led_bottom_off_color", "Bottom LED off colour"),
             ledBrightness(),
             ledNotification(),
-            rebootButton(),
+            rebootButton(DIM1Z_REBOOT),
         ],
         keys: [
             ...LIGHT_KEYS,
@@ -593,7 +600,7 @@ const FAMILIES: Record<Family, FamilyDef> = {
             REBOOT_KEY,
         ],
         grouped: [LIGHT_KEYS],
-        options: [tapWindowOption(), autoRebootOption()],
+        options: [tapWindowOption(), autoRebootOption("dimmer")],
     },
     sw120277: {
         exposes: [
@@ -666,8 +673,8 @@ const FAMILIES: Record<Family, FamilyDef> = {
     },
     kc120277: {
         exposes: (device: unknown) => kcExposes(kcLayoutOf(device)),
-        keys: KC_KEYS,
-        options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption()],
+        keys: [...KC_KEYS, REBOOT_KEY],
+        options: [...pollOptions(false), tapWindowOption(), kcNumberingOption(), kcLayoutOption(), autoRebootOption("keypad")],
     },
     kd120: {
         exposes: (device: unknown) => kdExposes(kcLayoutOf(device)),
@@ -718,7 +725,7 @@ function kcLayoutOf(device: unknown): KcLayout {
 
 /** A KC120277's exposes: its keypad, and what the Gen3 board tells about itself. */
 export function kcExposes(layout: KcLayout): Expose[] {
-    return [...kcKeypadExposes(layout), ...gen3Health(false)];
+    return [...kcKeypadExposes(layout), ...gen3Health(false), rebootButton(KC120277_REBOOT)];
 }
 
 /**
@@ -841,7 +848,19 @@ function remoteFamily(buttons: Record<number, string>, sr260: boolean): FamilyDe
 // Definitions
 // ---------------------------------------------------------------------------
 
-function definition(model: string, zigbeeModel: string[], description: string, fam: FamilyDef | undefined) {
+/** A family's definition without its Reboot button and auto_reboot option, for a model whose reboot is untested. */
+function withoutReboot(fam: FamilyDef): FamilyDef {
+    const named = (x: Expose) => (x as {name?: string}).name;
+    return {
+        ...fam,
+        exposes: Array.isArray(fam.exposes) ? fam.exposes.filter((x) => named(x) !== REBOOT_KEY) : fam.exposes,
+        keys: fam.keys.filter((k) => k !== REBOOT_KEY),
+        options: fam.options?.filter((x) => named(x) !== AUTO_REBOOT_OPTION),
+    };
+}
+
+function definition(model: string, zigbeeModel: string[], description: string, family: FamilyDef | undefined) {
+    const fam = family && REBOOT_UNTESTED.has(model) ? withoutReboot(family) : family;
     const keys = [...(fam?.keys ?? []), ...COMMON_KEYS];
     const exposes = fam?.exposes ?? [
         e.text("c4_model", ea.STATE_SET).withDescription("Model not known yet: set it (e.g. C4-DIM1-Z) or wait for the device's check-in"),

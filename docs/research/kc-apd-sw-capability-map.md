@@ -546,8 +546,8 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
 - **Unlike the DIM1-Z, it answers before it restarts.** So its APS acknowledgement goes out, and no retry reboots it
   again. Sending without an ack is still the safe default.
 - **It sends no device announce.** The extension's re-join handling (its health read, the LED repaint) doesn't run
-  after this reboot. A Reboot button for these models should read the reset reason again itself. Building it, and the automatic
-  reboots, is #12 (the SW120277 is untested).
+  after this reboot, so the Reboot button and the automatic reboots, built for these two models in #12, queue the
+  health read (the reset reason) themselves. The SW120277 is untested and isn't rebooted.
 - **`c4.dm.rb` exists too** (`e00` to a Get on both), and was left untried. So were `c4.dmx.bl` and `c4.dmx.rbp`,
   for the reason above.
 - **Names that don't exist** (`n01`): `c4.dmx.rb` and `c4.kp.rb` on the keypad. The DIM1-Z's other `0i` verbs (`op`,

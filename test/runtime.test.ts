@@ -417,7 +417,8 @@ describe("link health", () => {
         expect(rig.runtime.link.unreachable()).toEqual([]);
         expect(rig.statusChanges).toBe(0);
         expect(await poke()).toBe(false);
-        expect(rig.runtime.link.unreachable()).toEqual([{ieee: APD, model: "C4-APD120", quietMin: 0}]);
+        // Listed, an APD120 is rebooted remotely at once (#12): rebootMin counts from then.
+        expect(rig.runtime.link.unreachable()).toEqual([{ieee: APD, model: "C4-APD120", quietMin: 0, rebootMin: 0}]);
         expect(rig.statusChanges).toBe(1);
         // Still unreachable: no news.
         await poke();
@@ -428,14 +429,14 @@ describe("link health", () => {
         rig.ascii(APD, "0t0002 sa c4.dmx.ls 00 00 00", true);
         expect(rig.runtime.link.unreachable()).toEqual([]);
         expect(rig.statusChanges).toBe(2);
-        expect(rig.log.lines).toContain(`warning: Control4: ${APD} is reachable again`);
+        expect(rig.log.lines).toContain(`warning: Control4: ${APD} is reachable again (0 min after a remote reboot)`);
     });
 
     describe("remote reboots", () => {
         const DIMS = ["0x000fff0000000005", "0x000fff0000000006", "0x000fff0000000007", "0x000fff0000000008"];
         const [DIMX, DIMY] = DIMS;
         const reboots = (ieee?: string) =>
-            rig.transport.sent.filter((s) => /^0i[0-9a-f]{4} c4\.dm\.rb$/.test(s.text) && (!ieee || s.nwk === rig.nwk(ieee))).length;
+            rig.transport.sent.filter((s) => /^0i[0-9a-f]{4} c4\.(dm|sy)\.rb$/.test(s.text) && (!ieee || s.nwk === rig.nwk(ieee))).length;
         const pokeOf = (ieee: string) => async () => {
             const answered = rig.runtime.link.poke(rig.runtime.get(ieee) as NonNullable<ReturnType<typeof rig.runtime.get>>);
             await tick(7_000);
@@ -500,17 +501,18 @@ describe("link health", () => {
         });
 
         it("leaves a DIM1-Z whose auto_reboot option is off, and a model that can't be rebooted, to be rebooted by hand", async () => {
+            const SW = "0x000fff0000000009"; // the SW120277's remote reboot is untested
             addDim(DIMX, {auto_reboot: false});
-            rig.add(APD, "C4-APD120");
+            rig.add(SW, "C4-SW120277");
             rig.start();
             await listed(DIMX);
-            await listed(APD);
+            await listed(SW);
             expect(
                 rig.runtime.link
                     .unreachable()
                     .map((u) => u.ieee)
                     .sort(),
-            ).toEqual([APD, DIMX].sort());
+            ).toEqual([SW, DIMX].sort());
             expect(reboots()).toBe(0);
             expect(rig.runtime.link.unreachable().every((u) => u.rebootMin === undefined)).toBe(true);
             expect(

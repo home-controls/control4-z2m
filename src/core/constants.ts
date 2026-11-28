@@ -531,12 +531,18 @@ export const COLD_START_LEVEL_KEY = "cold_start_level";
 export const COLD_START_TIME_KEY = "cold_start_time";
 
 /**
- * /set key that reboots a DIM1-Z (`0i c4.dm.rb`, tested 2026-11-07): it is back in
- * about 2 s, its load at the same level and its settings kept.
+ * /set key that reboots a device remotely: a DIM1-Z (`0i c4.dm.rb`, tested 2026-11-07:
+ * back in about 2 s, its load at the same level and its settings kept), a KC120277 or
+ * an APD120 (`0i c4.sy.rb`, tested 2026-11-15).
  */
 export const REBOOT_KEY = "reboot";
-/** DIM1-Z device option: false stops the automatic reboot of an unreachable or re-joining dimmer. */
+/** Device option of those models: false stops the automatic reboot of an unreachable or re-joining device. */
 export const AUTO_REBOOT_OPTION = "auto_reboot";
+/**
+ * Models of a family that is rebooted remotely whose own reboot is untested: no Reboot
+ * button and no automatic reboots. The FPD120 runs on the APD120's family.
+ */
+export const REBOOT_UNTESTED: ReadonlySet<string> = new Set(["C4-FPD120"]);
 
 /** A DIM1-Z's own factory values where they differ from the defaults above (read from four units, fw 03.22.41). */
 const DIM1Z_FACTORY: Record<string, number> = {min_brightness: 0, hold_ramp_up: 5000, hold_ramp_down: 5000};
