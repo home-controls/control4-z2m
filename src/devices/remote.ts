@@ -275,13 +275,13 @@ export class Remote extends C4Device {
     }
 
     /**
-     * An SR260 reads the controller identity as it wakes, and after a re-join (which it does
+     * An SR260 reads attributes from its controller (0x000C and 0x0001) as it wakes, and after a re-join (which it does
      * on a wake after a few minutes asleep, with no announce): then its screen says
      * "rejoining network" until the clock and rows come again, and it has dropped any open
      * menu. So the read refreshes the screen, inside the wake debounce, unless a refresh is
      * already under way.
      */
-    override onIdentityRead(): void {
+    override onControllerRead(): void {
         if (this.refreshing) return;
         // Usually a second after the motion wake: that wake is when the screen was last lost.
         const now = this.ctx.now();

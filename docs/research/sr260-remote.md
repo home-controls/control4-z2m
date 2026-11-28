@@ -42,14 +42,23 @@ coord   0s.. c4.zr.tc e0                 remote  0r.. 000
 
 Today the wake refresh doesn't show an open menu again; pull request #4 adds that.
 
-### The identity read after each wake
+### The controller read after each wake
 
-About a second to half a minute after each wake the remote reads the coordinator's identity on 0xC25D (a
-Read Attributes, answered with the controller attributes 8, 9 and 0x0a). Over six wakes it came 34, 10, 8.4,
-0.1, 3.8 and 25.5 s after `c4.zr.mot`, and once more after pairing with no wake before it. It is the remote
-checking who its controller is, not a sign that it re-joined or lost its screen: anything that treats it as
-"the remote needs its screen again" refreshes the screen a second time on most wakes. That is what review of
-pull request #4 found; a fix treats an identity read within about a minute of a wake as part of that wake.
+About a second to half a minute after each wake the remote reads two attributes from the coordinator on 0xC25D
+(cluster 1, endpoint 2): `0x000C` and `0x0001`. On the DIM1-Z those are the Zigbee channel and a writable timer,
+and the SR260's own status report carries them too (`0x000C` = 25, `0x0001` = 600). Over six wakes the read came
+34, 10, 8.4, 0.1, 3.8 and 25.5 s after `c4.zr.mot`, and once more after pairing with no wake before it. It is not a
+sign that the remote re-joined or lost its screen: anything that treats it as "the remote needs its screen again"
+refreshes the screen a second time on most wakes. That is what review of pull request #4 found; a fix treats such
+a read within about a minute of a wake as part of that wake.
+
+The identity itself (attributes 8, 9 and 0x0a) the remote reads from routers around it (keypads, even Hue bulbs),
+never from the coordinator, in two days of captures (2026-11-27 and 28).
+
+Up to 0.4.1 the extension answered the coordinator read with the identity, whatever was asked. Zigbee2MQTT's own
+SR260 support says that makes it re-join over and over, and on 2026-11-28 this remote re-announced itself a few
+minutes after three such reads, with 55 % of the frames sent to it lost. The extension now answers attributes 8-10
+with the identity and anything else as unsupported (`0x86`), as Zigbee2MQTT does.
 
 ## The rows
 
@@ -113,4 +122,5 @@ and closes it again after `seconds`.
   following the backlight setting (14 at full, 0 at lowest; the first byte is unknown); `c4.zr.bt` = `00`
   (unknown); `c4.zr.loc` = `"en_US"`. Unknown `c4.zr` names answer `e00`, unknown `c4.sy` names `n01`. The
   3-letter names were not swept.
-- What the remote does with the identity read's answer, and whether a wrong answer makes it ask again.
+- Whether answering `0x000C` and `0x0001` as unsupported stops the re-joins (a day of captures with no re-join
+  after a read), and what the remote does when they are answered with the channel and a timer instead.

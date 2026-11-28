@@ -339,8 +339,8 @@ export abstract class C4Device implements LinkDevice {
 
     protected onReply(_frame: ParsedFrame): void {}
 
-    /** The device read the controller identity (0xC25D attributes 8/9/A), which it does after a re-join. */
-    onIdentityRead(): void {}
+    /** The device read attributes from its controller (0xC25D), which an SR260 does as it wakes and after a re-join. */
+    onControllerRead(): void {}
 
     protected onOther(frame: ParsedFrame): void {
         this.log.debug(`Control4 ${this.name}: frame ${frame.text}`);

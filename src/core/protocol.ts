@@ -202,18 +202,37 @@ export function ieeeToBytesLE(ieee: string): Buffer {
     return Buffer.from(hex, "hex").reverse();
 }
 
+/** Attribute ids asked for by a Read Attributes (0x00) payload. */
+export function parseReadAttributes(payload: Buffer): number[] {
+    const ids: number[] = [];
+    for (let i = 0; i + 2 <= payload.length; i += 2) ids.push(payload.readUInt16LE(i));
+    return ids;
+}
+
+/** The controller identity's attributes: 0x0008, 0x0009 (coordinator EUI64) and 0x000A. */
+export const IDENTITY_ATTRS: readonly number[] = [0x0008, 0x0009, 0x000a];
+
 /**
  * The controller-identity frame: attrs 0x0008 (uint16 0), 0x0009 (coordinator
- * EUI64) and 0x000A (uint8 2), as a Report Attributes (default) or as a Read
- * Attributes Response to the device's own read (with its TSN).
+ * EUI64) and 0x000A (uint8 2), as a Report Attributes (default), or as the Read
+ * Attributes Response to a device's own read of `readAttrs` (with its TSN). A read
+ * answers each attribute it asked for, in its order: one of the three with its value,
+ * any other as unsupported (0x86). An SR260 reads 0x000C and 0x0001 from its
+ * controller, and answering those with the identity makes it re-join over and over.
  */
-export function buildIdentityFrame(coordinatorIeee: string, tsn: number, asReadResponse = false): Buffer {
-    const eui = ieeeToBytesLE(coordinatorIeee);
-    const parts: Buffer[] = [Buffer.from([0x08, tsn & 0xff, asReadResponse ? 0x01 : 0x0a])];
-    const status = asReadResponse ? [0x00] : [];
-    parts.push(Buffer.from([0x08, 0x00, ...status, 0x21, 0x00, 0x00]));
-    parts.push(Buffer.from([0x09, 0x00, ...status, 0xf0]), eui);
-    parts.push(Buffer.from([0x0a, 0x00, ...status, 0x20, 0x02]));
+export function buildIdentityFrame(coordinatorIeee: string, tsn: number, readAttrs?: readonly number[]): Buffer {
+    const values = new Map<number, Buffer>([
+        [0x0008, Buffer.from([0x21, 0x00, 0x00])],
+        [0x0009, Buffer.concat([Buffer.from([0xf0]), ieeeToBytesLE(coordinatorIeee)])],
+        [0x000a, Buffer.from([0x20, 0x02])],
+    ]);
+    const parts: Buffer[] = [Buffer.from([0x08, tsn & 0xff, readAttrs ? 0x01 : 0x0a])];
+    for (const id of readAttrs ?? IDENTITY_ATTRS) {
+        const value = values.get(id);
+        const status = readAttrs ? [value ? 0x00 : 0x86] : [];
+        parts.push(Buffer.from([id & 0xff, (id >> 8) & 0xff, ...status]));
+        if (value) parts.push(value);
+    }
     return Buffer.concat(parts);
 }
 

@@ -8,6 +8,7 @@ import {
     hueRgb,
     moveToLevelWithOnOff,
     parseFrame,
+    parseReadAttributes,
     parseReadAttributesResponse,
     parseReportAttributes,
     parseZclHeader,
@@ -78,8 +79,17 @@ describe("ZCL", () => {
         const frame = buildIdentityFrame("0x00124b0024c0dc0d", 0x33);
         expect(frame.toString("hex")).toBe("08330a0800210000" + "0900f0" + "0ddcc024004b1200" + "0a002002");
         // Read Attributes Response carries a status byte per record.
-        const rsp = buildIdentityFrame("0x00124b0024c0dc0d", 0x07, true);
+        const rsp = buildIdentityFrame("0x00124b0024c0dc0d", 0x07, [0x0008, 0x0009, 0x000a]);
         expect(rsp.toString("hex")).toBe("080701080000210000" + "09000" + "0f0" + "0ddcc024004b1200" + "0a00002002");
+    });
+
+    it("answers a read of other attributes as unsupported, record by record", () => {
+        // The SR260 reads 0x000C and 0x0001 from its controller; answering them with the identity makes it re-join.
+        expect(buildIdentityFrame("0x00124b0024c0dc0d", 0x2a, [0x000c, 0x0001]).toString("hex")).toBe("082a01" + "0c0086" + "010086");
+        // A mixed read keeps the order it was asked in.
+        expect(buildIdentityFrame("0x00124b0024c0dc0d", 0x2b, [0x000a, 0x000c]).toString("hex")).toBe("082b01" + "0a00002002" + "0c0086");
+        expect(parseReadAttributes(Buffer.from([0x0c, 0x00, 0x01, 0x00]))).toEqual([0x000c, 0x0001]);
+        expect(parseReadAttributes(Buffer.from([0x08, 0x00, 0x09]))).toEqual([0x0008]);
     });
 
     it("parses a check-in report", () => {

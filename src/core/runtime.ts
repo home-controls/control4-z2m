@@ -40,7 +40,16 @@ import {FastTaps} from "./fasttap";
 import {LED_DEFAULT_COLOUR, LED_DEFAULTS_KEY, LED_DEFAULTS_MIGRATION} from "./leds";
 import {isDeliveryFailure, Link, type LinkDevice, PING_PROPERTY} from "./link";
 import type {Logger} from "./log";
-import {buildIdentityFrame, parseFrame, parseReadAttributesResponse, parseReportAttributes, parseZclHeader, type ZclValue} from "./protocol";
+import {
+    buildIdentityFrame,
+    IDENTITY_ATTRS,
+    parseFrame,
+    parseReadAttributes,
+    parseReadAttributesResponse,
+    parseReportAttributes,
+    parseZclHeader,
+    type ZclValue,
+} from "./protocol";
 import type {Store} from "./store";
 import {TrafficWatch} from "./traffic";
 import {DeliveryError, type InFrame, type OutFrame, type Transport} from "./transport";
@@ -127,6 +136,15 @@ export const REJOIN_REBOOT_JITTER = 30_000;
 
 /** A check-in, or the device polling for its controller: the identity it gets back is what keeps it ours. */
 const isCheckinSource = (source: string) => source === "read_attributes" || source.startsWith("model_report");
+
+/** A device's Read Attributes on the network profile: its TSN and the attributes it asked for. */
+interface ReadRequest {
+    tsn: number;
+    attrs: readonly number[];
+}
+
+/** The send source for a reply to a read: a read of the identity counts as a check-in, a read of anything else doesn't. */
+const readSource = (attrs: readonly number[]) => (attrs.some((id) => IDENTITY_ATTRS.includes(id)) ? "read_attributes" : "read_other_attributes");
 
 const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -497,10 +515,11 @@ export class Runtime {
      * The controller identity (coordinator IEEE in attrs 8/9/A on EP2). Sent as
      * Report Attributes on every model check-in - never throttle it: a device
      * whose check-in goes unanswered treats the controller as lost and rejoins.
-     * A check-in reply that isn't delivered is retried (retryIdentity).
+     * A check-in reply that isn't delivered is retried (retryIdentity). With `read`, it is the
+     * Read Attributes Response to the device's own read (buildIdentityFrame).
      */
-    async sendIdentity(ieee: string, source: string, readResponseTsn?: number, urgent = true): Promise<void> {
-        const sent = await this.transmitIdentity(ieee, source, readResponseTsn, urgent);
+    async sendIdentity(ieee: string, source: string, read?: ReadRequest, urgent = true): Promise<void> {
+        const sent = await this.transmitIdentity(ieee, source, read, urgent);
         if (!(sent instanceof Error)) return;
         // Evidence for a device that stops answering (#60), and the reply must still arrive.
         const checkin = isCheckinSource(source);
@@ -519,11 +538,10 @@ export class Runtime {
     }
 
     /** One identity frame: true when delivered, the error when not delivered, false when not sent for another reason. */
-    private async transmitIdentity(ieee: string, source: string, readResponseTsn?: number, urgent = true): Promise<boolean | Error> {
+    private async transmitIdentity(ieee: string, source: string, read?: ReadRequest, urgent = true): Promise<boolean | Error> {
         const coordinator = this.coordinator(source);
         if (!coordinator) return false;
-        const tsn = readResponseTsn ?? this.linkDevice(ieee).tsn;
-        const data = buildIdentityFrame(coordinator, tsn, readResponseTsn !== undefined);
+        const data = buildIdentityFrame(coordinator, read?.tsn ?? this.linkDevice(ieee).tsn, read?.attrs);
         try {
             await this.link.transmit(ieee, () => this.sendRaw(ieee, {profile: PROFILE_NETWORK, cluster: C4_CLUSTER, srcEp: 2, dstEp: 2, data}), urgent);
             this.log.debug(`Control4 identity (${source}) sent to ${ieee}`);
@@ -601,24 +619,26 @@ export class Runtime {
         if (frame.profile !== PROFILE_NETWORK) return;
         const hdr = parseZclHeader(frame.data);
         if (!hdr) return;
-        let readResponseTsn: number | undefined;
+        let read: ReadRequest | undefined;
         if (hdr.commandId === 0x00) {
-            readResponseTsn = hdr.tsn;
+            read = {tsn: hdr.tsn, attrs: parseReadAttributes(frame.data.subarray(hdr.offset))};
         } else if (hdr.commandId === 0x0a) {
             const model = parseReportAttributes(frame.data.subarray(hdr.offset))?.get(ATTR_MODEL);
             if (typeof model !== "string" || !isValidModel(canonicalModel(modelFromCheckin(model)))) return;
         } else {
             return;
         }
-        void this.sendIdentityTo(frame.nwk, readResponseTsn);
+        void this.sendIdentityTo(frame.nwk, read);
     }
 
-    private async sendIdentityTo(nwk: number, readResponseTsn?: number): Promise<void> {
+    private async sendIdentityTo(nwk: number, read?: ReadRequest): Promise<void> {
         const transport = this.host.transport;
         const coordinator = this.coordinator(`check-in from ${nwk}`);
         if (!transport || !coordinator) return;
         this.unknownTsn = (this.unknownTsn + 1) & 0xff;
-        const data = buildIdentityFrame(coordinator, readResponseTsn ?? this.unknownTsn, readResponseTsn !== undefined);
+        const data = buildIdentityFrame(coordinator, read?.tsn ?? this.unknownTsn, read?.attrs);
+        const what = read && readSource(read.attrs) !== "read_attributes" ? "a read" : "a check-in";
+        const answer = what === "a read" ? "" : ", with the controller identity";
         try {
             // Not known yet: most likely a remote that just re-joined, so sent the way a sleeping end device needs.
             await this.link.transmit(
@@ -627,7 +647,7 @@ export class Runtime {
                 true,
             );
             this.traffic.sent(true);
-            this.log.info(`Control4: answered a check-in from network address ${nwk}, which Zigbee2MQTT does not know yet, with the controller identity`);
+            this.log.info(`Control4: answered ${what} from network address ${nwk}, which Zigbee2MQTT does not know yet${answer}`);
         } catch (error) {
             this.traffic.sent(messageSentOf(error));
             this.log.info(
@@ -734,9 +754,10 @@ export class Runtime {
         if (!hdr) return;
         const payload = frame.data.subarray(hdr.offset);
         if (hdr.commandId === 0x00) {
-            // The device polling for its controller: answer with the identity.
-            void this.sendIdentity(ieee, "read_attributes", hdr.tsn);
-            this.devices.get(ieee)?.onIdentityRead();
+            // The device reading from its controller: the identity for attributes 8-10, anything else unsupported.
+            const attrs = parseReadAttributes(payload);
+            void this.sendIdentity(ieee, readSource(attrs), {tsn: hdr.tsn, attrs});
+            this.devices.get(ieee)?.onControllerRead();
             return;
         }
         let attrs: Map<number, ZclValue> | undefined;
