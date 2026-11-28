@@ -8,6 +8,7 @@ let rig: Rig;
 const KP = "0x000fff0000000001";
 const APD = "0x000fff0000000002";
 const OTHER = "0x00124b0000000009";
+const SR260 = "0x000fff0000000003";
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -54,6 +55,35 @@ describe("runtime: check-ins and identity", () => {
         const rsp = rig.transport.sent.find((s) => s.frame.profile === PROFILE_NETWORK);
         expect(rsp?.frame.data[1]).toBe(0x5a);
         expect(rsp?.frame.data[2]).toBe(0x01);
+    });
+
+    it("answers only attributes 8-10 with the identity, and others as unsupported", async () => {
+        // What an SR260 reads from its controller (sniffed 2026-11-28): 0x000C and 0x0001, never 8-10.
+        rig.add(SR260, "C4-SR260");
+        rig.start();
+        await tick(60_000);
+        const from = rig.transport.sent.length;
+        rig.inject(SR260, PROFILE_NETWORK, Buffer.from([0x00, 0x5b, 0x00, 0x0c, 0x00, 0x01, 0x00]));
+        await tick(10);
+        const rsp = rig.transport.sent.slice(from).filter((s) => s.frame.profile === PROFILE_NETWORK);
+        expect(rsp.map((s) => s.frame.data.toString("hex"))).toEqual(["085b01" + "0c0086" + "010086"]);
+    });
+
+    it("does not retry a reply to a read that did not ask for the identity", async () => {
+        rig.add(SR260, "C4-SR260");
+        rig.start();
+        await tick(60_000);
+        const from = rig.transport.sent.length;
+        let fail = true;
+        rig.transport.failWith = (frame) => (frame.profile === PROFILE_NETWORK && fail ? new DeliveryError("delivery failed", "failed") : undefined);
+        rig.inject(SR260, PROFILE_NETWORK, Buffer.from([0x00, 0x5c, 0x00, 0x0c, 0x00, 0x01, 0x00]));
+        await tick(100);
+        fail = false;
+        await tick(30_000);
+        // One failed try (the rig keeps only delivered sends), and no identity report sent after it in its place.
+        expect(rig.log.lines.filter((l) => l.includes("(read_other_attributes) was not delivered"))).toHaveLength(1);
+        expect(rig.transport.sent.slice(from).filter((s) => s.frame.profile === PROFILE_NETWORK)).toEqual([]);
+        expect(rig.log.lines.filter((l) => l.includes("treats its controller as lost"))).toEqual([]);
     });
 
     it("records the firmware from the check-in", async () => {
@@ -254,6 +284,15 @@ describe("runtime: re-joins", () => {
         expect([reply.frame.data[1], reply.frame.data[2]]).toEqual([0x2a, 0x01]); // the poll's TSN, Read Attributes Response
         expect(identitiesTo(0x7779)).toEqual([]);
         expect(identitiesTo(0x777a)).toEqual([]);
+    });
+
+    it("answers a read of other attributes from an unknown address as unsupported", async () => {
+        rig.start(true);
+        const read = Buffer.from([0x00, 0x2c, 0x00, 0x0c, 0x00, 0x01, 0x00]);
+        rig.transport.onFrame?.({nwk: 0x777b, profile: PROFILE_NETWORK, cluster: 1, srcEp: 2, dstEp: 2, data: read, lqi: 200, unicast: true});
+        await tick(100);
+        expect(identitiesTo(0x777b).map((s) => s.frame.data.toString("hex"))).toEqual(["082c01" + "0c0086" + "010086"]);
+        expect(rig.log.lines).toContain("info: Control4: answered a read from network address 30587, which Zigbee2MQTT does not know yet");
     });
 
     it("tells a re-joined device who its controller is, three times a few seconds apart", async () => {

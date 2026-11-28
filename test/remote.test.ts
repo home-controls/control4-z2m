@@ -368,7 +368,8 @@ describe("list ids", () => {
 });
 
 describe("screen after a wake or re-join", () => {
-    const identityRead = () => rig.inject(R260, PROFILE_NETWORK, Buffer.from([0x00, 0x5a, 0x00, 0x08, 0x00, 0x09, 0x00, 0x0a, 0x00]));
+    // What the remote reads from its controller after a wake (sniffed 2026-11-28): attributes 0x000C and 0x0001.
+    const controllerRead = () => rig.inject(R260, PROFILE_NETWORK, Buffer.from([0x00, 0x5a, 0x00, 0x0c, 0x00, 0x01, 0x00]));
     /** R260's sends after `from`, without the sequence and the battery poll. */
     const sent260 = (from: number) =>
         rig.transport.sent
@@ -419,24 +420,24 @@ describe("screen after a wake or re-join", () => {
         expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
     });
 
-    it("sends one refresh when the wake and the identity read come together", async () => {
+    it("sends one refresh when the wake and the controller read come together", async () => {
         await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
         await tick(10_000);
         const from = rig.transport.sent.length;
         rig.ascii(R260, "0t0001 sa c4.zr.mot");
-        identityRead();
+        controllerRead();
         await tick(20_000);
         expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri", "c4.ln.sl"]);
     });
 
-    it("retries a wake refresh while the remote re-joins, and refreshes on a later identity read inside the debounce", async () => {
+    it("retries a wake refresh while the remote re-joins, and refreshes on a later controller read inside the debounce", async () => {
         await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"});
         await tick(10_000);
         // The wake: the remote is mid re-join, so everything fails at once (tries at 0 and 1.5 s).
         rig.transport.failWith = (f) => (f.profile === PROFILE_BUTTON ? fails() : undefined);
         rig.ascii(R260, "0t0001 sa c4.zr.mot");
         await tick(1_000);
-        identityRead(); // re-joined; the refresh under way covers it
+        controllerRead(); // re-joined; the refresh under way covers it
         await tick(1_000);
         rig.transport.failWith = undefined;
         let from = rig.transport.sent.length;
@@ -445,12 +446,12 @@ describe("screen after a wake or re-join", () => {
         from = rig.transport.sent.length;
         await tick(20_000);
         expect(sent260(from)).toEqual([]);
-        // An identity read with nothing under way refreshes even inside the wake debounce; the
+        // A controller read with nothing under way refreshes even inside the wake debounce; the
         // menu that wake's refresh re-showed is on the screen already, so it is not sent again.
         rig.ascii(R260, "0t0002 sa c4.zr.mot");
         await tick(1_000);
         from = rig.transport.sent.length;
-        identityRead();
+        controllerRead();
         await tick(1_000);
         expect(sent260(from).map((c) => c.split(" ")[0])).toEqual(["c4.zr.tm", "c4.ln.ri"]);
     });
@@ -466,13 +467,13 @@ describe("screen after a wake or re-join", () => {
         expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
     });
 
-    it("does not re-show a menu shown after the wake when the identity read comes", async () => {
+    it("does not re-show a menu shown after the wake when the controller read comes", async () => {
         rig.ascii(R260, "0t0001 sa c4.zr.mot");
         await tick(500); // that wake's refresh is done
         const from = rig.transport.sent.length;
         await set(R260, "show_list", {title: "Watch", items: "YouTube|Netflix"}); // out by 600 ms
         await tick(300);
-        identityRead(); // about a second after the wake
+        controllerRead(); // about a second after the wake
         await tick(20_000);
         expect(sent260(from).filter((c) => c.startsWith("c4.ln.sl"))).toHaveLength(1);
     });
