@@ -547,7 +547,9 @@ export class Runtime {
         try {
             this.link.requestRouteRefresh(`controller identity to ${ieee} not delivered`);
             if (this.mayRediscover(ieee)) {
-                await Promise.resolve(this.host.rediscover?.(ieee)).catch((error: unknown) => this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`));
+                await Promise.resolve(this.host.rediscover?.(ieee)).catch((error: unknown) =>
+                    this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`),
+                );
             }
             for (let i = 0; i < IDENTITY_RETRIES.length; i++) {
                 await sleep(IDENTITY_RETRIES[i]);
