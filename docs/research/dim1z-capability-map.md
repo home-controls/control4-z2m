@@ -450,7 +450,9 @@ Detail in `docs/plans/frame-type-survey.md`, "Round two".
   switch, tapping and holding with it at 0.
 - **Zigbee groups**: the DIM1-Z takes a group-add command, but whether it then follows a command sent to the
   group is untested. Testing it needs a Z2M group (coordinators hold only a few) and one network-wide broadcast.
-- **`onLevel` = 255** (ZCL "use the previous level"): writable or not, untested.
+- **`onLevel` = 255** (ZCL "use the previous level"): **writable** (2026-11-28, #10). A ZCL read gave 255 (uint8),
+  and a ZCL write of 255, its own value, answered SUCCESS. Whether another value is stored and used at the next
+  turn-on is untested: that changes how the dimmer turns on, so it needs someone at the switch.
 - **`0i` frames:**
   - ~~`0i c4.dm.rtl`~~: works, and its time is a full-sweep rate (tested 2026-11-07, above). **A fade from off
     skips the cold start** (dimmer C, 2026-11-08). With `tv 09` at 60 % for 1 s, `rtl 00 1e 00002710` from

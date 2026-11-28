@@ -295,7 +295,7 @@ Each item needs a device write, a person at the device, or hardware the test sit
 - `0i c4.dm.bl`: takes 4 to 6 arguments and is no bootloader entry (2026-11-15); most likely an LED blink, to be read
   with someone watching the switch.
 - Zigbee groups: does a DIM1-Z follow a group command? This needs one network-wide broadcast.
-- `onLevel` = 255: writable or not.
+- `onLevel` = 255: writable (it accepts a write, 2026-11-28); whether another value is used at a turn-on is untested.
 - The 5-5-5 and 13-4-13 taps: try them on one that must be re-paired anyway.
 - Does `0i c4.dm.rb` cure a dimmer that is actually stuck (#11)? Watch the first automatic reboot, and keep the ZDO
   leave-and-rejoin as the fallback for a dimmer whose Control4 side won't act on it.
