@@ -18,8 +18,15 @@ devices are named by label: keypad A and keypad B (two KC120277s) and an APD120 
 | Keypad B | `0x000fff0000000002` | C4-KC120277 | 4.4.16 | `AT25DF041A-4.0.10.0` |
 | APD120 | `0x000fff0000000003` | C4-APD120 | 5.1.1 | `AT25DF041A-4.0.10.0` |
 
-There is no SW120277 at the test site. Its rows below come from the ZHA-era notes
-(`control4-zha-quirks/.../control4-sw120277-protocol.md`, fw 5.1.1) and are marked as such.
+No SW120277 is installed at the test site now. One (fw 5.1.1) ran there, under the ZHA quirks and then this
+extension, until 2026-11-01, and is kept as a spare. Its rows below come from the ZHA-era notes
+(`control4-zha-quirks/.../control4-sw120277-protocol.md`), probed on that unit, and are marked as such.
+
+**Under this extension it showed one thing the notes don't say (2026-10-29/30):** attribute `0x0000` in its
+periodic check-in (about every 2 minutes) is a constant `2`, not the relay state. Read as the state, it turned
+every off back to "on" within 17-114 s, with no command and 0 W drawn. Since archived PR 52 the SW120277 is in
+`PADDLE_STREAM` (`src/core/runtime.ts`), whose models' `0x0000` is ignored; the switch then stayed off. The
+DIM1-Z sends the same constant.
 
 It builds on the ZHA-era notes for these models (`control4-kc120277-protocol.md`, `control4-apd120-dimmer-protocol.md`,
 `control4-sw120277-protocol.md`), and corrects them where they disagree. Community sources:
@@ -145,7 +152,7 @@ range. `v01` is what bounds each indexed table below.
 | `c4.dmx.dim` | `n01` | | `02` | Phase in use, most likely: 01 forward, 02 reverse, 00 relay (see What Control4 documents) |
 | `c4.dmx.plm` | `n01` | | `00` | Phase load mode setting, most likely 00 = autodetect |
 | `c4.dmx.off` | `n01` | | `0000` | |
-| `c4.dmx.pmti` | `n01` | | `0064 0064` | Power-monitor intervals (100, 100). Control4 writes `0002 0002` at provisioning |
+| `c4.dmx.pmti` | `n01` | | `0064 0064` | Power-monitor intervals (100, 100). Control4 writes `0002 0002` at provisioning, then `00000004 00000004` (32-bit arguments) after a button press; `0000000a 0000000a` on the SF120 fan (ZHA-era captures; meaning untested) |
 | `c4.dmx.pwr` | `n01` | | `007d 0000 0000 0000 0000 07f5 0000` (load off) | V, mA, W, VA, PF × 1000, energy counter, 0 (see below) |
 | `c4.dmx.warn <n>` | `n01` | | `00 0000`, then any index answers | `00` is the fault status the device also announces (Composer's Fault Detection). Higher indexes read past the table |
 | `c4.dmx.bmc <0-2>` | `01a1 03e8 0683` | | `01a1 03e8 0683` | Multi-click thresholds, ms (417 / 1000 / 1667) |
@@ -400,6 +407,18 @@ V × A = VA and W / VA = PF on every reading, so the layout holds on fw 5.1.1. T
 both come to 4.4-4.6 kJ. That is ~1.27 Wh per tick, not 1 Wh. Field 2 is a whole number of watts, so a day's
 reading against the counter would pin the factor down better. The fixture draws 35-36 W at full.
 
+**Measured over two weeks (2026-11-13 to 11-27, #13): 1.25 Wh per tick.** Home Assistant's daily statistics for
+the same APD120 give field 2 integrated (the daily mean × 24 h) against the energy total's rise. Every day with
+real use comes to 1.248-1.256 Wh per tick, and the two weeks together to 1.250, while the light ran at different
+levels from day to day. That steady ratio is another sign the counter follows energy, not time on. Days of a few
+watt-hours scatter more (1.22-1.28), from rounding. The unit sat at its default `c4.dmx.pmti` of `0064 0064`
+(100) throughout, which the extension never changes. Whether a Control4 controller's `0002` changes the scale is
+untested.
+
+`ENERGY_WH_PER_COUNT` is still 1.27, so the energy entity reads about 1.6 % high. Lowering it would step every
+published total down once, which Home Assistant's Energy dashboard can take for a meter reset: a change needs the
+published total kept continuous.
+
 There is no temperature in `pwr` at all.
 
 ### Last reset reason: `c4.sy.ri`
@@ -587,7 +606,7 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
 
 Still open. Each needs a write (restored after), the light switched, or someone at the device:
 
-- **The energy counter's exact scale**: field 5 against field 2 integrated over a day (now ~1.27 Wh per tick).
+- ~~**The energy counter's exact scale**~~: 1.25 Wh per tick at the default `pmti`, measured over two weeks (above).
 - **The rest of the `blc` table**: what `ch 00 i 01` accepts, what i 00 / i 02 / i 04 do, and ch 01 (status LED
   brightness?), in a dark and a lit room.
 - **Aux keypad (C4-KA) presses**: what wire id they report, if any.

@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {GET_TIMEOUT, STATE_READ_DELAY, STATE_READ_GAP, STATE_READ_RETRIES} from "../src/core/link";
-import {SETTINGS_READ_DELAY, SETTINGS_READ_KEY} from "../src/devices/dm";
+import {LEVEL_SEQ_WINDOW, SETTINGS_READ_DELAY, SETTINGS_READ_KEY} from "../src/devices/dm";
 import {DeliveryError, Rig, tick} from "./rig";
 
 let rig: Rig;
@@ -29,6 +29,49 @@ afterEach(() => {
 
 const set = (ieee: string, key: string, value: unknown, message: Record<string, unknown> = {[key]: value}, endpoint?: string) =>
     rig.runtime.set(ieee, key, value, {message, endpoint});
+
+// MM 2026-11-14: a late step of an off-ramp, after the report that ended it, showed ON 36 for a light that was off.
+describe("C4-DIM1-Z: a level report numbered before the last one applied is dropped", () => {
+    const stateOf = () => rig.last(DIM).state;
+
+    it("drops a mid-ramp step that arrives after the final report, and applies the next new one", async () => {
+        rig.ascii(DIM, "0t0010 sa c4.dm.t0c 64");
+        rig.ascii(DIM, "0t0012 sa c4.dm.t0c 00");
+        await tick(100);
+        expect(stateOf()).toBe("OFF");
+        rig.ascii(DIM, "0t0011 sa c4.dm.t0c 0e"); // the late 14 %
+        await tick(100);
+        expect(stateOf()).toBe("OFF");
+        rig.ascii(DIM, "0t0013 sa c4.dm.t0c 32");
+        await tick(100);
+        expect(stateOf()).toBe("ON");
+    });
+
+    it("compares across the 16-bit wrap", async () => {
+        rig.ascii(DIM, "0tfffe sa c4.dm.t0c 64");
+        rig.ascii(DIM, "0t0001 sa c4.dm.t0c 00");
+        await tick(100);
+        rig.ascii(DIM, "0tffff sa c4.dm.t0c 0e");
+        await tick(100);
+        expect(stateOf()).toBe("OFF");
+    });
+
+    it("trusts a restarted counter after a re-join, or once the window has passed", async () => {
+        rig.ascii(DIM, "0t0500 sa c4.dm.t0c 00");
+        await tick(100);
+        rig.runtime.rejoined(DIM);
+        rig.ascii(DIM, "0t0001 sa c4.dm.t0c 32");
+        await tick(100);
+        expect(stateOf()).toBe("ON");
+        rig.ascii(DIM, "0t0600 sa c4.dm.t0c 00");
+        await tick(100);
+        expect(stateOf()).toBe("OFF");
+        await tick(LEVEL_SEQ_WINDOW + 1_000);
+        rig.ascii(DIM, "0t0002 sa c4.dm.t0c 32");
+        await tick(100);
+        expect(stateOf()).toBe("ON");
+    });
+});
 
 describe("C4-DIM1-Z", () => {
     it("turns on from off with its level command when a cold start is set, which a hardware fade would skip", async () => {

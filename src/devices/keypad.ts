@@ -49,6 +49,12 @@ export function kpLedSelects(ids: number[]): LedSelect[] {
     return out;
 }
 
+/**
+ * After a tap's `c4.kp.cc` or a hold's end, the keypad has changed that button's LED by
+ * itself; its status colour is painted back this long after (Animator.repaintPressed).
+ */
+export const KP_PRESS_REPAINT_DELAY = 150;
+
 export class Keypad extends DmxDevice {
     protected readonly buttons: Record<number, string>;
     readonly anim: AnimationKeys;
@@ -93,7 +99,10 @@ export class Keypad extends DmxDevice {
     protected override onAnnounce(ns: string, data: string[]): void {
         switch (ns) {
             case "c4.kp.cc":
-                if (data.length >= 2) super.onAnnounce("c4.dmx.cc", data);
+                if (data.length >= 2) {
+                    super.onAnnounce("c4.dmx.cc", data);
+                    this.repaintAfterPress(data[0]);
+                }
                 return;
             case "c4.kp.bb": // button down: the instant press
                 super.onAnnounce("c4.dmx.bp", data);
@@ -108,9 +117,17 @@ export class Keypad extends DmxDevice {
             case "c4.kp.be":
             case "c4.kp.he":
                 super.onAnnounce("c4.dmx.he", data);
+                this.repaintAfterPress(data[0]);
                 return;
         }
         super.onAnnounce(ns, data);
+    }
+
+    /** A tap or a hold on this button just ended, and the keypad changed its LED by itself: paint its status back. */
+    private repaintAfterPress(hex: string | undefined): void {
+        const id = parseHex(hex);
+        if (id === undefined) return;
+        this.after(KP_PRESS_REPAINT_DELAY, () => this.anim.repaintPressed(id));
     }
 
     override async setValue(key: string, value: unknown, meta: SetMeta): Promise<Payload | undefined> {

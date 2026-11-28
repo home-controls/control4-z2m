@@ -896,7 +896,7 @@ export default class Control4Extension {
             case "stats":
                 return {
                     tx: rt.tx.stats(),
-                    link: rt.link.summary(),
+                    link: {...rt.link.summary(), rediscovers_skipped: rt.rediscoverSkips},
                     devices: [...rt.devices.values()].map((d) => ({ieee: d.ieee, name: d.name, model: d.model, family: d.family, ...rt.link.health(d.ieee)})),
                     animators: rt.anim.all().map((a) => a.state()),
                 };

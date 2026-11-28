@@ -368,7 +368,8 @@ refused `rtl` in `0g` and `0s` frames; `0i` was never tried.
     same afterwards: `is`, `tv` 01 / 04-0a, `lm`, `ba` (dimmer D's paddle stayed decoupled), `lt` and
     the LED colours.
 
-  The same-generation KP6-Z reboots on `c4.kp.rb 00` (wmariz). The DIM1-Z answers `n01` to every `c4.kp.*`
+  The same-generation KP6-Z reboots on `0i c4.kp.rb 00` and answers `000` before it restarts (Koenkk/zigbee2mqtt
+  issue 15361, a C4-KP6-Z at fw 03.22.41; untested here). The DIM1-Z answers `n01` to every `c4.kp.*`
   name. Still never write `frs`.
 - **Sending a `0i` frame:** `{"c4_send": {"cmd": "...", "type": "i"}}` (archived PR 66). Before that, `c4_send` could frame
   only `0s`. Since 2026-11-15 it takes any frame type letter (`"type": "t"`, or a digit then a letter) and
@@ -450,7 +451,9 @@ Detail in `docs/plans/frame-type-survey.md`, "Round two".
   switch, tapping and holding with it at 0.
 - **Zigbee groups**: the DIM1-Z takes a group-add command, but whether it then follows a command sent to the
   group is untested. Testing it needs a Z2M group (coordinators hold only a few) and one network-wide broadcast.
-- **`onLevel` = 255** (ZCL "use the previous level"): writable or not, untested.
+- **`onLevel` = 255** (ZCL "use the previous level"): **writable** (2026-11-28, #10). A ZCL read gave 255 (uint8),
+  and a ZCL write of 255, its own value, answered SUCCESS. Whether another value is stored and used at the next
+  turn-on is untested: that changes how the dimmer turns on, so it needs someone at the switch.
 - **`0i` frames:**
   - ~~`0i c4.dm.rtl`~~: works, and its time is a full-sweep rate (tested 2026-11-07, above). **A fade from off
     skips the cold start** (dimmer C, 2026-11-08). With `tv 09` at 60 % for 1 s, `rtl 00 1e 00002710` from

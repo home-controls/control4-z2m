@@ -295,7 +295,7 @@ Each item needs a device write, a person at the device, or hardware the test sit
 - `0i c4.dm.bl`: takes 4 to 6 arguments and is no bootloader entry (2026-11-15); most likely an LED blink, to be read
   with someone watching the switch.
 - Zigbee groups: does a DIM1-Z follow a group command? This needs one network-wide broadcast.
-- `onLevel` = 255: writable or not.
+- `onLevel` = 255: writable (it accepts a write, 2026-11-28); whether another value is used at a turn-on is untested.
 - The 5-5-5 and 13-4-13 taps: try them on one that must be re-paired anyway.
 - Does `0i c4.dm.rb` cure a dimmer that is actually stuck (#11)? Watch the first automatic reboot, and keep the ZDO
   leave-and-rejoin as the fallback for a dimmer whose Control4 side won't act on it.
@@ -405,10 +405,13 @@ None of these is at the test site, so each item needs a unit on some instance to
   - the fan's LED colours (only the raw LED-cluster keys today);
   - its ambient light, reset reason and reboot.
 
-**KP3-Z / KP6-Z / KPZ keypads.** Nothing open in the README. Leads from the wmariz notes, untested here (#16):
-- `c4.kp.rb 00` reboots a KP6-Z;
+**KP3-Z / KP6-Z / KPZ keypads.** Nothing open in the README. Leads, untested here (#16):
+- `0i c4.kp.rb 00` reboots a KP6-Z, which answers `000` first (Koenkk/zigbee2mqtt issue 15361);
 - `c4.kp.llm <btn> 00|01` sets keypad-managed push / release;
-- `c4.kp.bhp` is the hold threshold (`01f4` = 500 ms).
+- `c4.kp.bhp` is the hold threshold (`01f4` = 500 ms) (the wmariz notes);
+- about 1.3 s after a press, at `c4.kp.cc`, the keypad's own firmware repaints the pressed button's LED,
+  over a status colour (seen on a KP keypad at another site running the extension, 2026-11-14). A fix that
+  repaints that button 150 ms after `cc` was built and confirmed there, but is on an archive branch only.
 
 The "a delivered ping counts as seen" availability path for these models has never run at the test site.
 

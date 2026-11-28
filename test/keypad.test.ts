@@ -96,6 +96,47 @@ describe("KP3-Z / KP6-Z c4.kp.* frames", () => {
         expect(lv.at(-1)).toBe("c4.kp.lv 00 0000ff");
     });
 
+    // MM 2026-11-14: the keypad darkens the pressed button as the tap ends (c4.kp.cc), after
+    // the status paint landed; "send only on change" then never painted it again.
+    describe("paints the pressed button's status back after the keypad's own LED change", () => {
+        const lvOf = (from: number, btn: string) => rig.cmds(from).filter((c) => c.startsWith(`c4.kp.lv ${btn} `));
+        const paintStatus = async () => {
+            await set(KP3, "led_status", {buttons: "1,2,3", color: "red", brightness: 15});
+            await tick(500);
+        };
+
+        it("after a tap's cc: that button alone, its unchanged status colour, once", async () => {
+            await paintStatus();
+            const painted = lvOf(0, "02").at(-1);
+            expect(painted).toMatch(/^c4\.kp\.lv 02 [0-9a-f]{6}$/);
+            const from = rig.transport.sent.length;
+            for (const f of ["c4.kp.bb 02", "c4.kp.bc 02"]) rig.ascii(KP3, `0t0001 sa ${f}`);
+            await tick(500);
+            expect(lvOf(from, "02")).toEqual([]); // nothing before the keypad's own change
+            rig.ascii(KP3, "0t0002 sa c4.kp.cc 02 01");
+            await tick(500);
+            expect(lvOf(from, "02")).toEqual([painted]);
+            expect(lvOf(from, "00")).toEqual([]);
+            expect(lvOf(from, "01")).toEqual([]);
+        });
+
+        it("after a hold ends", async () => {
+            await paintStatus();
+            const painted = lvOf(0, "01").at(-1);
+            const from = rig.transport.sent.length;
+            for (const f of ["c4.kp.bb 01", "c4.kp.bh 01", "c4.kp.be 01"]) rig.ascii(KP3, `0t0001 sa ${f}`);
+            await tick(500);
+            expect(lvOf(from, "01")).toEqual([painted]);
+        });
+
+        it("leaves a button no status has named alone (it shows the keypad's own colours)", async () => {
+            const from = rig.transport.sent.length;
+            for (const f of ["c4.kp.bb 00", "c4.kp.bc 00", "c4.kp.cc 00 01"]) rig.ascii(KP3, `0t0001 sa ${f}`);
+            await tick(500);
+            expect(lvOf(from, "00")).toEqual([]);
+        });
+    });
+
     it("sends the controller identity proactively after start", async () => {
         // 12-32 s jittered start, then three sends 4 s apart.
         await tick(45_000);

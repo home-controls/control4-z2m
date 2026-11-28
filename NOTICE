@@ -21,8 +21,10 @@ controller, the SR260 remote, the switched outlet) originate there.
 Protocol knowledge was also drawn from the following projects, credited in the
 documents and source where used. No code was copied from them:
 - wmariz/zha-device-handlers (branch "control4"): the DIM1-Z paddle LED colour
-  writer (c4.dm.l<btn><o|f>), LED write throttling, the KP6-Z reboot, and the
+  writer (c4.dm.l<btn><o|f>), LED write throttling, and the
   LOZ-5D1-W outlet dimmer.
+- Koenkk/zigbee2mqtt issue 15361 (ArcadeMachinist): the C4-KP6-Z's `c4.kp.*`
+  commands, the KP6-Z reboot (`0i c4.kp.rb 00`) included.
 - bharat/homeassistant-control4-zigbee (formerly
   homeassistant-control4-dimmers, MIT) and his zigbee-herdsman-converters fork:
   the dimmer ramp map in its RESEARCH.md, the link-health failure modes in its
