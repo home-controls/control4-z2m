@@ -1,7 +1,7 @@
 # Code style
 
 How code, tests, commits and docs are written here. CI enforces what a tool can check
-(`npm run lint`, `npm run typecheck`, the tests, `dist/` matching the build, the version raise and the
+(`npm run lint`, `npm run typecheck`, the tests, `dist/` left alone or released as a fresh build, and the
 privacy check); the rest is for review. `npm run format` fixes formatting and import order.
 
 ## Formatting and lint (Biome)
@@ -72,8 +72,8 @@ privacy check); the rest is for review. `npm run format` fixes formatting and im
 - One logical change per commit. The subject is one line saying what changed, optionally after an area or a
   type: `SR260: text colour (c4.zr.tc)` or `fix(blueprints): SR260 mutes only a target that can mute`.
 - The body says why, and what was checked (tests, hardware, model and firmware).
-- A pull request closes its issue (`Closes #n`), passes CI, and raises the version if `dist/` changed
-  (CONTRIBUTING.md).
+- A pull request closes its issue (`Closes #n`), passes CI, and leaves `dist/` and the version alone;
+  only a release pull request changes them (CONTRIBUTING.md).
 - Nothing personal anywhere: no names of people, household rooms or houses, no hostnames, IP addresses or
   email addresses, in code, tests, fixtures, commit messages or PR text.
 

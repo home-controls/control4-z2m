@@ -916,12 +916,12 @@ names, room names, hostnames and addresses out of files, commits, issues and PRs
 The repo is public, history included. Issue [#19](https://github.com/home-controls/control4-z2m/issues/19) is about how to contribute.
 
 Building and testing needs Node.js 20 or later (CI uses 22). `dist/` is
-committed, so a change to `src/` commits its rebuilt `dist/` too, and raises the
-version; CI fails when they differ. Code style: [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
+committed, but only by a release: it is the last release's build, and a change to
+`src/` leaves it out (ADR 0008). Code style: [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
 
 ```
 npm install
-npm run check        # lint + typecheck + unit tests + build
+npm run check        # lint + typecheck + build + unit tests
 npm run lint         # the code convention (Biome; docs/CODE_STYLE.md)
 npm run format       # fix formatting and import order
 npm run build        # bundle src/ into dist/
@@ -943,6 +943,7 @@ same expected output.
 | Tool | |
 |---|---|
 | `tools/build.mjs` | esbuild bundles into `dist/` (zigbee-herdsman stays external) |
+| `tools/release.mjs rc [patch|minor|major] | final` | cut a release pull request: the next release candidate, or promote the tested one (`npm run release -- …`, CONTRIBUTING.md) |
 | `tools/build-id.mjs [<dir>]` | the build an instance running `dist/`'s two files (or `<dir>`'s) reports in its status |
 | `tools/deploy.mjs [--dry-run]` | push `dist/` to every instance on a site without a restart, **by hand only**, through its Home Assistant (`HA_URL=… HA_TOKEN_FILE=…`): finds the instances from their retained `bridge/info` and file lists, first checks that Home Assistant carries both files unchanged, then saves the converter and the extension on each one in turn, proves the push by the build in its status, sends `republish`, and rolls back and stops when a push isn't proven (Install, above) |
 | `tools/z2m-harness.mjs [ref]` | runs `test/z2m-harness/control4.test.ts` inside a Zigbee2MQTT checkout with its own mocks: loading, HA discovery for every family, `/set`, model learning, events, bridge requests |
