@@ -382,18 +382,21 @@ describe("Control4 bundles inside Zigbee2MQTT", () => {
             `${entry}\nfor (const d of converter_entry_default) if (d.model === "C4-DIM1-Z") d.exposes = [...d.exposes, e.numeric("republish_probe", ea.STATE)];`,
         );
 
-        await save(edited);
-        // Zigbee2MQTT re-resolved the definition, but published none of it.
-        expect((controller.zigbee.resolveEntity(DIM) as Any).exposes().map((x: Any) => x.name)).toContain("republish_probe");
-        expect(published(probe)).toEqual([]);
-        expect(bridgeExposes()).not.toContain("republish_probe");
+        try {
+            await save(edited);
+            // Zigbee2MQTT re-resolved the definition, but sent no Home Assistant discovery for it. Since
+            // its PR 33389 (on dev, 2026-11-27) it does republish bridge/devices; releases before don't.
+            expect((controller.zigbee.resolveEntity(DIM) as Any).exposes().map((x: Any) => x.name)).toContain("republish_probe");
+            expect(published(probe)).toEqual([]);
 
-        expect(await republish(11)).toMatchObject({status: "ok", data: {devices: 3 + ALL.length}, transaction: 11});
-        expect(published(probe)).toHaveLength(1);
-        expect(bridgeExposes()).toContain("republish_probe");
-
-        // Back to the build under test: the next republish takes the sensor away again.
-        await save(original);
+            expect(await republish(11)).toMatchObject({status: "ok", data: {devices: 3 + ALL.length}, transaction: 11});
+            expect(published(probe)).toHaveLength(1);
+            expect(bridgeExposes()).toContain("republish_probe");
+        } finally {
+            // Back to the build under test, even after a failure: the deploy tests below read the saved code.
+            await save(original);
+        }
+        // The next republish takes the sensor away again.
         await republish(12);
         expect(published(probe).at(-1)).toBe("");
         expect(bridgeExposes()).not.toContain("republish_probe");

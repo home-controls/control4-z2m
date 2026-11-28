@@ -567,7 +567,7 @@ colour written whatever it was last sent.
 | `led_refresh` | `{"devices"?}` — re-send the status colours, changed or not |
 | `set_model` | `{"device", "model"}` |
 | `stats` | `{}` — per device: messages `sent` / `failed`, `last_failure_s`, `last_rx_s` (seconds since its last unicast), `keepalive_failures`; link-wide: `route_refreshes` the extension asked for, frames awaiting delivery (`tx_in_flight`, at most 4 apart from load commands) and frames waiting to go (`tx_waiting`); LED transmit queue |
-| `republish` | `{}` — tells Zigbee2MQTT that every Control4 device's exposes changed, so Home Assistant discovery and `bridge/devices` follow a converter saved through `bridge/request/converter/save` (the save re-resolves the definitions but republishes none of them). Answers `{"devices": n}`, the number of devices. |
+| `republish` | `{}` — tells Zigbee2MQTT that every Control4 device's exposes changed, so Home Assistant discovery and `bridge/devices` follow a converter saved through `bridge/request/converter/save` (the save re-resolves the definitions but sends no discovery for them; Zigbee2MQTT's dev branch republishes `bridge/devices` after it since PR 33389, but still no discovery). Answers `{"devices": n}`, the number of devices. |
 
 `devices` takes IEEEs or friendly names. **No `devices` key means every
 Control4 device with an LED engine** (the keypads, KC120277, KD120, DIM1-Z,
