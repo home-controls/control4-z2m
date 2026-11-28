@@ -10,6 +10,7 @@ import {readRun} from "../tools/c4-device-run.mjs";
 import {sequences} from "../tools/c4-scenarios.mjs";
 import {
     anyAction,
+    BACKLIGHT,
     type ButtonNumber,
     boot,
     C4TemplateError,
@@ -22,6 +23,7 @@ import {
     type Happening,
     hold,
     knownTap,
+    ledRefresh,
     press,
     release,
     reload,
@@ -406,6 +408,83 @@ describe("the LEDs", () => {
         ).toEqual({color: "Blue", brightness: 10});
         const dark = {...night, inputs: {night_enabled: true}, time: "22:30:00"};
         expect(c4Device(dark).on(change("light.hall", 200)).led("button_1")).toEqual({color: "Green", brightness: 75});
+    });
+
+    describe("a room's own Night Mode switch", () => {
+        const SWITCH = "input_boolean.room_a_night_mode";
+        const room = (on: string, {area = "room_a", labels = ["room_night"], switchArea = "room_a", night_enabled = true} = {}) => ({
+            buttons: {1: {...hall, night_on: "Blue"}},
+            inputs: {night_enabled, night_needs_dark: false},
+            states: {"light.hall": 200, [SWITCH]: on},
+            area,
+            registry: {[SWITCH]: {area_id: switchArea, labels}},
+            time: "12:00:00",
+        });
+
+        it("brings the night look by day while it is on, in the device's area", () => {
+            expect(c4Device(room("on")).on(reload()).led("button_1")).toEqual({color: "Blue", brightness: 10});
+            expect(c4Device(room("off")).on(reload()).led("button_1")).toEqual({color: "Green", brightness: 75});
+        });
+
+        it("counts only an input_boolean labelled room_night in the device's own area, and only with Night on", () => {
+            expect(
+                c4Device(room("on", {switchArea: "room_b"}))
+                    .on(reload())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+            expect(
+                c4Device(room("on", {labels: ["other"]}))
+                    .on(reload())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+            expect(
+                c4Device({...room("on"), area: undefined})
+                    .on(reload())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+            expect(
+                c4Device(room("on", {night_enabled: false}))
+                    .on(reload())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+            const notBoolean = {...room("on"), registry: {"switch.room_a_night": {area_id: "room_a", labels: ["room_night"]}}};
+            expect(
+                c4Device({...notBoolean, states: {...notBoolean.states, "switch.room_a_night": "on"}})
+                    .on(reload())
+                    .led("button_1")?.color,
+            ).toBe("Green");
+        });
+
+        it("repaints at once on the event c4_led_refresh", () => {
+            const r = c4Device(room("on")).on(ledRefresh());
+            expect(r.does).toBe("leds");
+            expect(r.led("button_1")).toEqual({color: "Blue", brightness: 10});
+        });
+    });
+
+    describe("a keypad's backlight", () => {
+        const kc = (backlight: number | string | undefined, inputs: Record<string, unknown> = {}, time = "22:30:00") => ({
+            model: "C4-KC120277",
+            buttons: {1: hall},
+            inputs: {night_enabled: true, night_needs_dark: false, night_backlight: true, ...inputs},
+            states: {"light.hall": 200},
+            ...(backlight === undefined ? {} : {backlight}),
+            time,
+        });
+
+        it("goes to the night level with the night look and back to the day level by day", () => {
+            expect(c4Device(kc(100)).on(reload()).numbers).toEqual([{entity_id: BACKLIGHT, value: 5}]);
+            expect(c4Device(kc(5, {}, "12:00:00")).on(reload()).numbers).toEqual([{entity_id: BACKLIGHT, value: 100}]);
+            expect(c4Device(kc(100, {night_backlight_level: 20, day_backlight_level: 60})).on(reload()).numbers).toEqual([{entity_id: BACKLIGHT, value: 20}]);
+        });
+
+        it("is written only when it changes, and left alone when off, missing or unavailable", () => {
+            expect(c4Device(kc(5)).on(reload()).numbers).toEqual([]);
+            expect(c4Device(kc("5.0")).on(reload()).numbers).toEqual([]);
+            expect(c4Device(kc(100, {night_backlight: false})).on(reload()).numbers).toEqual([]);
+            expect(c4Device(kc(undefined)).on(reload()).numbers).toEqual([]);
+            expect(c4Device(kc("unavailable")).on(reload()).numbers).toEqual([]);
+        });
     });
 
     it("the night starts at Night start and ends at Night end, past midnight or not", () => {

@@ -260,7 +260,11 @@ const DESC = `  name: Control4 Device (buttons + LEDs + day/night) - Zigbee2MQTT
     NIGHT. Optional: inside the night window (and, if chosen, once the room
     lights are off) per-button night colours apply at the night brightness. A
     night colour overrides the fault colour too, so a fixed night look stays
-    fixed.
+    fixed. The night look also applies outside the window while the device's
+    room has its own Night Mode switch on (an input_boolean with the label
+    room_night in the device's area); fire the event c4_led_refresh when one
+    changes, so the LEDs repaint at once. Optional: a keypad's backlight
+    (KC120277) dims with the night look and comes back by day.
 
 
     NIGHT DIM. Optional: while a chosen entity is on (e.g. a house Night
@@ -484,6 +488,32 @@ ${colourInput("fault_colour", "Fault colour", "Red", "Shown when a watched entit
               min: 1
               max: 100
               unit_of_measurement: "%"
+        night_backlight:
+          name: Dim the backlight at night
+          description: >-
+            Keypads with a backlight (KC120277): while the night look applies,
+            the backlight behind the button labels goes to the night backlight
+            level, and back to the day level otherwise. Off - the backlight is
+            left alone.
+          default: false
+          selector:
+            boolean: {}
+        night_backlight_level:
+          name: Night backlight (%)
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 100
+              unit_of_measurement: "%"
+        day_backlight_level:
+          name: Day backlight (%)
+          default: 100
+          selector:
+            number:
+              min: 0
+              max: 100
+              unit_of_measurement: "%"
 
     night_dim_section:
       name: Night dim
@@ -584,6 +614,11 @@ TRIGGERS += `  - platform: time
   - platform: event
     event_type: automation_reloaded
     id: reload
+  # A room's Night Mode switch changed (fired by the house's Night Mode
+  # automation) - repaint now.
+  - platform: event
+    event_type: c4_led_refresh
+    id: led
   # The LED re-check: "0" (on the hour, the default) or "/30" (every 30 minutes).
   - platform: time_pattern
     minutes: !input led_resync
@@ -1068,7 +1103,12 @@ ${noEventsCheck(14)}          - variables:
                 {% set c = namespace(n=0) %}
                 {% for e in rl %}{% if is_state(e, 'on') %}{% set c.n = c.n + 1 %}{% endif %}{% endfor %}
                 {{ c.n > 0 }}
-              is_night: "{{ night_on_cfg and in_window and not (needs_dark and rl_on) }}"
+              # The device's room in its own Night Mode (label room_night, same area).
+              room_night: >-
+                {% set a = device_attr(dev, 'area_id') %}
+                {{ a is not none and label_entities('room_night') | select('match', 'input_boolean\\.')
+                   | select('is_state', 'on') | map('area_id') | select('eq', a) | list | count > 0 }}
+              is_night: "{{ night_on_cfg and (in_window or room_night) and not (needs_dark and rl_on) }}"
               fault_c: !input fault_colour
               match: !input led_match
               on_states: >-
@@ -1179,6 +1219,24 @@ ${noEventsCheck(14)}          - variables:
                     topic: "{{ set_topic }}"
                     payload: "{{ {'led_status': repeat.item} | to_json }}"
                   continue_on_error: true
+          # The backlight follows the night look too, when chosen (only writes a change).
+          - variables:
+              bl_on: !input night_backlight
+              bl_night: !input night_backlight_level
+              bl_day: !input day_backlight_level
+              bl_entity: >-
+                {{ device_entities(dev) | select('search', '^number\\..*_backlight_brightness$') | first | default('') }}
+              bl_want: "{{ (bl_night if is_night else bl_day) | int }}"
+          - if: >-
+              {{ bl_on and bl_entity != '' and has_value(bl_entity)
+                 and states(bl_entity) | float(-1) | round(0) != bl_want | float }}
+            then:
+              - action: number.set_value
+                continue_on_error: true
+                target:
+                  entity_id: "{{ bl_entity }}"
+                data:
+                  value: "{{ bl_want }}"
 
       # An FS1-Z, fan or outlet gets no LED feedback (it has no LEDs this
       # automation drives), but the same check that this automation hears it.

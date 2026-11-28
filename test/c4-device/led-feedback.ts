@@ -4,7 +4,8 @@
  * the device is heard.
  *
  * Only the step shapes the LED feedback has are modelled: delay, if, variables,
- * a for_each repeat, the led_status publish, and the hears notifications. Any
+ * a for_each repeat, the led_status publish, the backlight's number.set_value,
+ * and the hears notifications. Any
  * other step could end the run or reach the LEDs some other way, and is refused
  * by name, so an edit this does not model fails instead of passing unseen.
  */
@@ -21,6 +22,14 @@ export interface LedFeedback {
     leds: LedCall[];
     /** The hears check, when the steps make it. */
     hears?: boolean;
+    /** The number.set_value writes the steps make (a keypad's backlight), when they make any. */
+    numbers?: NumberWrite[];
+}
+
+/** One number.set_value: the entity and the value it is set to. */
+export interface NumberWrite {
+    entity_id: string;
+    value: number;
 }
 
 /**
@@ -28,7 +37,13 @@ export interface LedFeedback {
  * COMMON: an action's metadata (the automation editor writes it) and its
  * continue_on_error (on no other step: it would reach the steps inside).
  */
-const KINDS: Record<string, string[]> = {delay: [], if: ["then", "else"], variables: [], repeat: [], action: ["data", "metadata", "continue_on_error"]};
+const KINDS: Record<string, string[]> = {
+    delay: [],
+    if: ["then", "else"],
+    variables: [],
+    repeat: [],
+    action: ["data", "target", "metadata", "continue_on_error"],
+};
 /** Keys any step may have. */
 const COMMON = ["alias", "enabled"];
 /** The actions the hears check runs, which cannot reach the LEDs, with the data keys each service takes, the first required. */
@@ -126,6 +141,7 @@ export function ledFeedback(
  */
 export function ledSteps(env: Environment, steps: unknown, vars: Record<string, unknown>, setTopic: string, onDelay: OnDelay = () => {}): LedFeedback {
     const leds: LedCall[] = [];
+    const numbers: NumberWrite[] = [];
     const heard: {hears?: boolean} = {};
     let waited = 0;
 
@@ -175,6 +191,20 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
             v !== null && v !== undefined && (!(Array.isArray(v) || isMapping(v)) || (isMapping(raw) && isTemplate(raw[k])));
         const ok = isMapping(data) && takes[0] in data && Object.entries(data).every(([k, v]) => takes.includes(k) && isText(k, v));
         if (!ok) runEnds(`${action} with data ${JSON.stringify(data)}`);
+    };
+
+    /** A number.set_value on one number entity: target {entity_id}, data {value}, as the backlight step writes it. */
+    const setNumber = (step: Step, now: Record<string, unknown>) => {
+        if (!hasKeys(step.target, "entity_id") || !hasKeys(step.data, "value"))
+            unmodelled(`number.set_value with ${JSON.stringify({target: step.target, data: step.data})}`);
+        const [target, data] = renderData(step, () => [
+            renderValue(env, step.target, now, "led step", "target"),
+            renderValue(env, step.data, now, "led step", "data"),
+        ]) as [Record<string, unknown>, Record<string, unknown>];
+        const value = typeof data.value === "number" ? data.value : Number.NaN;
+        if (typeof target.entity_id !== "string" || !target.entity_id.startsWith("number.") || !Number.isFinite(value))
+            runEnds(`number.set_value with ${JSON.stringify({target, data})}`);
+        numbers.push({entity_id: target.entity_id, value});
     };
 
     // Home Assistant's script_variables: a variables step sets a name where it is defined, else at the
@@ -227,7 +257,9 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
                 // cv.boolean takes yes, on and 1 as well; the yaml package reads them otherwise than Home Assistant's loader.
                 if ("continue_on_error" in step && typeof step.continue_on_error !== "boolean")
                     unmodelled(`continue_on_error: ${JSON.stringify(step.continue_on_error)}`);
+                if ("target" in step && action !== "number.set_value") unmodelled(`${action} with a target`);
                 if (action === "mqtt.publish") publish(step, now);
+                else if (action === "number.set_value") setNumber(step, now);
                 else if (Object.hasOwn(NOTIFICATIONS, action)) notify(action, step, now);
                 else unmodelled(`action ${JSON.stringify(step.action)}`);
             } else {
@@ -237,5 +269,5 @@ export function ledSteps(env: Environment, steps: unknown, vars: Record<string, 
         return now;
     };
     walk(steps, vars);
-    return {leds, ...heard};
+    return {leds, ...heard, ...(numbers.length ? {numbers} : {})};
 }

@@ -18,12 +18,22 @@ export interface HaDevice {
     model_id: string;
     name: string;
     entities: string[];
+    /** The device's area; none unless given. */
+    area_id?: string | null;
 }
 
-/** What device_attr / device_entities / states / is_state / state_attr / now() read. */
+/** An entity's entity registry entry, as far as area_id and label_entities read it. */
+export interface HaEntityEntry {
+    area_id?: string | null;
+    labels?: string[];
+}
+
+/** What device_attr / device_entities / states / is_state / state_attr / has_value / area_id / label_entities / now() read. */
 export interface HaWorld {
     devices: Record<string, HaDevice>;
     states: Record<string, HaState>;
+    /** The entity registry entries that have an area or labels; none unless given. */
+    registry?: Record<string, HaEntityEntry>;
     /** Local time, "HH:MM:SS". */
     time: string;
 }
@@ -133,6 +143,24 @@ export function haEnvironment(world: HaWorld = EMPTY): Environment {
     const state = (e: unknown) => world.states[String(e)];
     const states = (e: unknown) => state(e)?.state ?? "unknown";
     const isState = (e: unknown, want: unknown) => state(e)?.state === want;
+    // HA's has_value: the entity exists and is neither unknown nor unavailable.
+    const hasValue = (e: unknown) => {
+        const s = state(e)?.state;
+        return s !== undefined && s !== "unknown" && s !== "unavailable";
+    };
+    // HA's area_id of an entity: its own area, else its device's; of a device id, that device's area.
+    const areaId = (lookup: unknown) => {
+        const key = String(lookup);
+        const own = world.registry?.[key]?.area_id;
+        if (own) return own;
+        const device = world.devices[key] ?? Object.values(world.devices).find((d) => d.entities.includes(key));
+        return device?.area_id ?? null;
+    };
+    // HA's label_entities: the entities that carry the label.
+    const labelEntities = (label: unknown) =>
+        Object.entries(world.registry ?? {})
+            .filter(([, entry]) => entry.labels?.includes(String(label)))
+            .map(([entity]) => entity);
     const fns: Record<string, (...args: never[]) => unknown> = {
         device_attr: (dev: unknown, attr: unknown) => (world.devices[String(dev)] as unknown as Record<string, unknown> | undefined)?.[String(attr)] ?? null,
         device_entities: (dev: unknown) => [...(world.devices[String(dev)]?.entities ?? [])],
@@ -145,10 +173,14 @@ export function haEnvironment(world: HaWorld = EMPTY): Environment {
         int: toInt,
         float: toFloat,
         is_number: isNumber,
+        has_value: hasValue,
+        area_id: areaId,
+        label_entities: labelEntities,
     };
-    for (const name of ["device_attr", "device_entities", "states", "is_state", "state_attr", "now", "int", "float", "is_number"])
-        env.addFunction(name, fns[name]);
+    for (const name of Object.keys(fns)) env.addFunction(name, fns[name]);
     env.addFilter("states", states);
+    env.addFilter("has_value", hasValue);
+    env.addFilter("area_id", areaId);
     env.addFilter("int", toInt);
     env.addFilter("float", toFloat);
     env.addFilter("round", haRound);
@@ -163,6 +195,7 @@ export function haEnvironment(world: HaWorld = EMPTY): Environment {
         }),
     );
     env.addTest("is_state", isState);
+    env.addTest("has_value", hasValue);
     env.addTest("search", (value: unknown, find = "") => new RegExp(find).test(String(value)));
     env.addTest("match", (value: unknown, find = "") => new RegExp(`^(?:${find})`).test(String(value)));
     return env;
