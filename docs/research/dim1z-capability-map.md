@@ -368,7 +368,8 @@ refused `rtl` in `0g` and `0s` frames; `0i` was never tried.
     same afterwards: `is`, `tv` 01 / 04-0a, `lm`, `ba` (dimmer D's paddle stayed decoupled), `lt` and
     the LED colours.
 
-  The same-generation KP6-Z reboots on `c4.kp.rb 00` (wmariz). The DIM1-Z answers `n01` to every `c4.kp.*`
+  The same-generation KP6-Z reboots on `0i c4.kp.rb 00` and answers `000` before it restarts (Koenkk/zigbee2mqtt
+  issue 15361, a C4-KP6-Z at fw 03.22.41; untested here). The DIM1-Z answers `n01` to every `c4.kp.*`
   name. Still never write `frs`.
 - **Sending a `0i` frame:** `{"c4_send": {"cmd": "...", "type": "i"}}` (archived PR 66). Before that, `c4_send` could frame
   only `0s`. Since 2026-11-15 it takes any frame type letter (`"type": "t"`, or a digit then a letter) and

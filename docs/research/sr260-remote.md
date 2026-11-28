@@ -56,7 +56,9 @@ pull request #4 found; a fix treats an identity read within about a minute of a 
 `c4.ln.ri "<room>" "<source>"` sets both rows at once: row 1 the room (`room_name`), row 2 the source
 (`active_source`). The extension caches both and sends them on commissioning, on every wake and on a `/set`.
 It cuts the room to 24 characters, and each text to what fits in one frame (`fitLcd`). On an SR250 the room
-row shows 19 characters, and a 26-character one leaves it blank; the SR260's widths haven't been measured.
+row shows 19 characters. At 20 the 20th letter is cut off, and a 26-character row goes blank (read on an SR250,
+2026-10-03). 21-25 were never tried, so where it goes blank is not known, and `ROOM_MAX` (24) is in that range.
+The SR260's widths haven't been measured.
 
 ## Menus
 
@@ -70,7 +72,8 @@ coord   0i.. c4.ln.le                                       (closes the list)
 remote  0t.. sa c4.ln.cn <list> <index>                     (cancelled instead)
 ```
 
-The extension answers `c4.ln.gi` with as many labels as fit one frame. A pick is published as `menu_select`
+The extension answers `c4.ln.gi` with as many labels as fit one frame. The SR250's answer also carries the
+item count, `0r<seq> 000 <n> <items>` (`SR250_GI_TEMPLATE`); the SR260 takes the items alone. A pick is published as `menu_select`
 (with the list, index, item and title); the picked item becomes row 2 (`active_source`), and the rows are
 sent again before the list closes. A cancel is `menu_cancel`.
 
@@ -104,5 +107,10 @@ and closes it again after `seconds`.
 
 ## Open
 
-- The SR260's row and menu widths, measured as the SR250's were.
+- The SR260's row and menu widths, measured as the SR250's were, and the SR250's own 21-25 range.
+- Whether an SR250 wakes on pick-up under this extension: in the ZHA era, picking one up sent no `c4.zr.mot`.
+- SR250 `c4.zr` names (every 2-letter one swept, ZHA era, 2026-10): `c4.zr.st` = `0f 0e`, its second byte
+  following the backlight setting (14 at full, 0 at lowest; the first byte is unknown); `c4.zr.bt` = `00`
+  (unknown); `c4.zr.loc` = `"en_US"`. Unknown `c4.zr` names answer `e00`, unknown `c4.sy` names `n01`. The
+  3-letter names were not swept.
 - What the remote does with the identity read's answer, and whether a wrong answer makes it ask again.
