@@ -1,0 +1,235 @@
+blueprint:
+  name: Control4 SR250 Remote → Media Player
+  description: >
+    Maps Control4 C4-SR250B button presses to media-player / remote entities so
+    the remote works as a universal AV remote. Everything is reconfigurable, so
+    the same blueprint can drive any room — move the remote, point it at
+    different entities, done.
+
+    Layout of the mapping:
+      Volume +/-, Mute                      -> Volume player (media_player)
+      D-pad, Select, Menu, Cancel, Control4 -> Navigation remote (remote.send_command)
+      Rewind / Fast-Forward                 -> Navigation remote (skip commands)
+      Play, Pause, Stop, Skip +/-           -> Transport player (media_player)
+      Room Off                              -> turns the listed players off
+      Watch / Listen / List / Guide / Info /
+        DVR / Record / colours / digits /
+        channel +/- / page +/-              -> optional per-button Actions
+
+    Command strings for the navigation remote are inputs (spellings differ by
+    integration): Apple TV / pyatv uses up/down/left/right/select/menu/home and
+    skip_forward/skip_backward (the defaults); Android TV uses DPAD_UP etc.;
+    Roku uses Up/Play/Rev/Fwd. Blank a command to disable that key.
+
+    Hold-to-repeat: the SR250 re-sends held buttons as remote_button_long_press,
+    so Volume and D-pad auto-repeat while held; one-shot keys fire on press only.
+
+    Requires the C4-SR250B ZHA quirk (control4_sr250.py). Button names come from
+    SR250_BUTTON_MAP; triggers fire on remote_button_short_press /
+    remote_button_long_press.
+  domain: automation
+  input:
+    remote:
+      name: SR250 remote
+      description: The Control4 C4-SR250B remote device.
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: Control4
+              model: C4-SR250B
+
+    nav_remote:
+      name: Navigation remote entity
+      description: >
+        A `remote` entity to receive D-pad / Select / Menu / Home and
+        Rewind / Fast-Forward. Typically the Apple TV / Android TV / Roku
+        remote for the room.
+      selector:
+        entity:
+          domain: remote
+
+    transport_player:
+      name: Transport media player
+      description: Play / Pause / Stop / Skip go here (e.g. the Apple TV media_player).
+      selector:
+        entity:
+          domain: media_player
+
+    volume_player:
+      name: Volume media player
+      description: >
+        Volume + / - / Mute go here. Often a different device than transport —
+        e.g. the TV / AVR that actually controls the speakers.
+      selector:
+        entity:
+          domain: media_player
+
+    room_off_targets:
+      name: Room Off targets
+      description: Media players to turn off when Room Off is pressed.
+      default: []
+      selector:
+        target:
+          entity:
+            domain: media_player
+
+    # ---- Navigation command strings (integration-specific) ----
+    up_command:      {name: Up command,      default: up,             selector: {text: {}}}
+    down_command:    {name: Down command,    default: down,           selector: {text: {}}}
+    left_command:    {name: Left command,    default: left,           selector: {text: {}}}
+    right_command:   {name: Right command,   default: right,          selector: {text: {}}}
+    select_command:  {name: Select command,  default: select,         selector: {text: {}}}
+    menu_command:    {name: Menu/Back command, default: menu,         selector: {text: {}}}
+    home_command:    {name: Home command,    default: home,           selector: {text: {}}}
+    rewind_command:  {name: Rewind command,  default: skip_backward,  selector: {text: {}}}
+    ff_command:      {name: Fast-Forward command, default: skip_forward, selector: {text: {}}}
+
+    # ---- Optional per-button actions (advanced) ----
+    on_watch:   {name: "Watch action",   default: [], selector: {action: {}}}
+    on_listen:  {name: "Listen action",  default: [], selector: {action: {}}}
+    on_list:    {name: "List action",    default: [], selector: {action: {}}}
+    on_guide:   {name: "Guide action",   default: [], selector: {action: {}}}
+    on_info:    {name: "Info action",    default: [], selector: {action: {}}}
+    on_dvr:     {name: "DVR action",     default: [], selector: {action: {}}}
+    on_record:  {name: "Record action",  default: [], selector: {action: {}}}
+    on_red:     {name: "Red action",     default: [], selector: {action: {}}}
+    on_green:   {name: "Green action",   default: [], selector: {action: {}}}
+    on_yellow:  {name: "Yellow action",  default: [], selector: {action: {}}}
+    on_blue:    {name: "Blue action",    default: [], selector: {action: {}}}
+    on_channel_up:   {name: "Channel Up action",   default: [], selector: {action: {}}}
+    on_channel_down: {name: "Channel Down action", default: [], selector: {action: {}}}
+
+mode: parallel
+max: 12
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote
+      command: remote_button_short_press
+    id: press
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote
+      command: remote_button_long_press
+    id: hold
+
+variables:
+  nav_remote: !input nav_remote
+  transport_player: !input transport_player
+  volume_player: !input volume_player
+  up_command:     !input up_command
+  down_command:   !input down_command
+  left_command:   !input left_command
+  right_command:  !input right_command
+  select_command: !input select_command
+  menu_command:   !input menu_command
+  home_command:   !input home_command
+  rewind_command: !input rewind_command
+  ff_command:     !input ff_command
+  is_hold: "{{ trigger.id == 'hold' }}"
+  button: >-
+    {% set d = trigger.event.data if trigger.event is defined else {} %}
+    {%- if d.args is mapping and 'button' in d.args -%}{{ d.args.button }}
+    {%- elif d.params is mapping and 'button' in d.params -%}{{ d.params.button }}
+    {%- endif -%}
+
+action:
+  - choose:
+      # ===== Volume -> volume_player (repeats on hold) =====
+      - conditions: "{{ button == 'volume_up' }}"
+        sequence:
+          - {action: media_player.volume_up, target: {entity_id: "{{ volume_player }}"}}
+      - conditions: "{{ button == 'volume_down' }}"
+        sequence:
+          - {action: media_player.volume_down, target: {entity_id: "{{ volume_player }}"}}
+      - conditions: "{{ button == 'mute' and not is_hold }}"
+        sequence:
+          - action: media_player.volume_mute
+            target: {entity_id: "{{ volume_player }}"}
+            data:
+              is_volume_muted: "{{ not is_state_attr(volume_player, 'is_volume_muted', true) }}"
+
+      # ===== Navigation -> nav_remote.send_command =====
+      - conditions: "{{ button == 'up' and up_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ up_command }}"}}
+      - conditions: "{{ button == 'down' and down_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ down_command }}"}}
+      - conditions: "{{ button == 'left' and left_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ left_command }}"}}
+      - conditions: "{{ button == 'right' and right_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ right_command }}"}}
+      - conditions: "{{ button == 'select' and not is_hold and select_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ select_command }}"}}
+      - conditions: "{{ button in ['cancel','menu'] and not is_hold and menu_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ menu_command }}"}}
+      - conditions: "{{ button == 'control4' and not is_hold and home_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ home_command }}"}}
+      - conditions: "{{ button == 'rewind' and rewind_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ rewind_command }}"}}
+      - conditions: "{{ button == 'fast_forward' and ff_command != '' }}"
+        sequence:
+          - {action: remote.send_command, target: {entity_id: "{{ nav_remote }}"}, data: {command: "{{ ff_command }}"}}
+
+      # ===== Transport -> transport_player (one-shot) =====
+      - conditions: "{{ button == 'play' and not is_hold }}"
+        sequence:
+          - {action: media_player.media_play, target: {entity_id: "{{ transport_player }}"}}
+      - conditions: "{{ button == 'pause' and not is_hold }}"
+        sequence:
+          - {action: media_player.media_pause, target: {entity_id: "{{ transport_player }}"}}
+      - conditions: "{{ button == 'stop' and not is_hold }}"
+        sequence:
+          - {action: media_player.media_stop, target: {entity_id: "{{ transport_player }}"}}
+      - conditions: "{{ button == 'skip_forward' and not is_hold }}"
+        sequence:
+          - {action: media_player.media_next_track, target: {entity_id: "{{ transport_player }}"}}
+      - conditions: "{{ button == 'skip_back' and not is_hold }}"
+        sequence:
+          - {action: media_player.media_previous_track, target: {entity_id: "{{ transport_player }}"}}
+
+      # ===== Room Off (one-shot) =====
+      - conditions: "{{ button == 'room_off' and not is_hold }}"
+        sequence:
+          - action: media_player.turn_off
+            target: !input room_off_targets
+
+      # ===== Optional per-button actions (one-shot) =====
+      - conditions: "{{ button == 'watch' and not is_hold }}"
+        sequence: !input on_watch
+      - conditions: "{{ button == 'listen' and not is_hold }}"
+        sequence: !input on_listen
+      - conditions: "{{ button == 'list' and not is_hold }}"
+        sequence: !input on_list
+      - conditions: "{{ button == 'guide' and not is_hold }}"
+        sequence: !input on_guide
+      - conditions: "{{ button == 'info' and not is_hold }}"
+        sequence: !input on_info
+      - conditions: "{{ button == 'dvr' and not is_hold }}"
+        sequence: !input on_dvr
+      - conditions: "{{ button == 'record' and not is_hold }}"
+        sequence: !input on_record
+      - conditions: "{{ button == 'red' and not is_hold }}"
+        sequence: !input on_red
+      - conditions: "{{ button == 'green' and not is_hold }}"
+        sequence: !input on_green
+      - conditions: "{{ button == 'yellow' and not is_hold }}"
+        sequence: !input on_yellow
+      - conditions: "{{ button == 'blue' and not is_hold }}"
+        sequence: !input on_blue
+      - conditions: "{{ button == 'channel_up' and not is_hold }}"
+        sequence: !input on_channel_up
+      - conditions: "{{ button == 'channel_down' and not is_hold }}"
+        sequence: !input on_channel_down
+    default: []
