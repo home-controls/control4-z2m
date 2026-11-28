@@ -378,9 +378,12 @@ class LegacyNcp {
     }
 }
 
-/** A new Ezsp on the driver, wired as Driver.startup() wires one (it makes a new one on every reset). */
+/**
+ * A new Ezsp on the driver, wired as Driver.startup() wires one (it makes a new one on every reset). Since herdsman
+ * 11 that passes the driver's transport, which its serial driver listens on; herdsman 10 took no argument.
+ */
 function legacyEzsp(driver: Any): LegacyNcp {
-    const ezsp = new LegacyEzspClass();
+    const ezsp = new LegacyEzspClass(driver.transport);
     ezsp.on("frame", driver.handleFrame.bind(driver));
     driver.ezsp = ezsp;
     return new LegacyNcp(ezsp);
