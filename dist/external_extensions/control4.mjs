@@ -1,4 +1,4 @@
-// control4-z2m 0.4.0 - Zigbee2MQTT external extension
+// control4-z2m 0.4.1 - Zigbee2MQTT external extension
 // Generated from src/ by tools/build.mjs - edit the TypeScript, not this file.
 
 
@@ -1533,6 +1533,24 @@ var Animator = class {
     this.healTries = 0;
     await this.applyStatus(true);
   }
+  /**
+   * kp: the keypad has just changed a button's LED by itself - its own press feedback as a
+   * tap or a hold ends. Another site, 2026-11-14: the pressed button went dark ~1.3 s after
+   * the press (when the keypad sends its `c4.kp.cc`), after the status paint had already
+   * landed, and lastSent kept that LED from ever being painted again; a forced refresh lit
+   * it at once. So paint that one button's status colour again, changed or not. A button
+   * no status has named since the start (it shows the keypad's own colours), or one an
+   * animation or a status effect is drawing, is left alone.
+   */
+  repaintPressed(btn) {
+    if (this.protocol !== "kp" || !this.buttons.includes(btn) || !this.painted.has(btn)) return;
+    if (this.animating && this.overlayButtons.includes(btn)) return;
+    if (this.statusEffect?.buttons.includes(btn)) return;
+    const colour = this.statusFrame().get(btn);
+    if (colour === void 0) return;
+    this.lastSent.delete(btn);
+    this.emit(/* @__PURE__ */ new Map([[btn, colour]]), true, this.pressed, true);
+  }
   // -- overlays ---------------------------------------------------------------
   async play(input) {
     if (!(input.effect in EFFECTS)) throw new Error(`unknown effect '${input.effect}'`);
@@ -2265,6 +2283,9 @@ var C4Device = class {
   stateReader() {
     return void 0;
   }
+  /** The device announced itself (it re-joined or powered up, so its frame counter may have restarted). Default: nothing. */
+  noteRejoined() {
+  }
   /** State to publish once at startup (persisted settings). */
   initialState() {
     return {};
@@ -2810,6 +2831,11 @@ var Link = class {
     this.host.log.warning(`Control4: ${ieee} is reachable again${after}`);
     this.host.reachabilityChanged?.();
   }
+  /** How long ago the device last sent us a unicast; undefined when it has sent none since the start. */
+  sinceUnicast(ieee, now = this.host.now()) {
+    const at = this.lastUnicast.get(ieee);
+    return at === void 0 ? void 0 : now - at;
+  }
   /** The device was just rebooted (its Reboot button, or autoReboot): the time its re-join count and reboot_min start from. */
   noteRebooted(ieee, at = this.host.now()) {
     this.lastReboot.set(ieee, at);
@@ -3206,6 +3232,10 @@ var AnimationKeys = class {
         return void 0;
     }
     return void 0;
+  }
+  /** The device changed this button's LED by itself (a keypad's press feedback): paint its status back. */
+  repaintPressed(btn) {
+    this.animator.repaintPressed(btn);
   }
   initialState() {
     return { led_notification: this.animator.animating };
@@ -3971,6 +4001,7 @@ var LED_REPAINT_SETTLE = 1e3;
 var STATE_READ_REUSE = 2e3;
 var STATE_READ_RAMP_WAITS = 10;
 var STATE_READ_FRESH = 1e4;
+var LEVEL_SEQ_WINDOW = 3e4;
 var SETTINGS_READ_KEY = "settings_read";
 var SETTINGS_READ_DELAY = 3e4;
 async function sendReboot(dev, verb) {
@@ -4019,6 +4050,10 @@ var Dim1z = class extends DmDevice {
   levelEpoch = 0;
   lastStateRead = 0;
   stateRead;
+  /** The frame number of the announcement being handled (handleAscii); undefined otherwise. */
+  announceSeq;
+  /** The newest c4.dm.t0c applied: its frame number, and when. */
+  levelSeq;
   tv = new TvParams(this, DIM1Z_TV_PARAMS);
   led;
   get ledKeys() {
@@ -4084,6 +4119,7 @@ var Dim1z = class extends DmDevice {
    * acknowledgement and goes once (sendReboot).
    */
   reboot() {
+    this.forgetLevelSeq();
     return sendReboot(this, "c4.dm.rb");
   }
   /** Whether the link may reboot it on its own: its auto_reboot option, on unless set off. */
@@ -4105,10 +4141,47 @@ var Dim1z = class extends DmDevice {
     };
     return [hex(`led_${pos}_on_color`), hex(`led_${pos}_off_color`)];
   }
+  handleAscii(frame2) {
+    const seq = frame2.kind === "reply" ? Number.NaN : Number.parseInt(frame2.seq, 16);
+    this.announceSeq = Number.isFinite(seq) ? seq : void 0;
+    try {
+      super.handleAscii(frame2);
+    } finally {
+      this.announceSeq = void 0;
+    }
+  }
+  /** A reboot or a re-join restarts the dimmer's frame counter: an older number is no longer stale. */
+  forgetLevelSeq() {
+    this.levelSeq = void 0;
+  }
+  noteRejoined() {
+    this.forgetLevelSeq();
+  }
+  /**
+   * A c4.dm.t0c numbered before the newest one applied in the last LEVEL_SEQ_WINDOW.
+   * On a slow mesh a step of a ramp can arrive after the report that ended it, and with
+   * our fade already landed it would be published as the state: another site
+   * 2026-11-14, a late "14 %" after the final "0 %" showed ON 36 for a light that was
+   * off. The dimmer numbers its frames with a 16-bit counter. The same number again is
+   * the same report, and is applied again.
+   */
+  staleLevelReport() {
+    const seq = this.announceSeq;
+    if (seq === void 0) return false;
+    const now = Date.now();
+    const last = this.levelSeq;
+    if (last && now - last.at < LEVEL_SEQ_WINDOW && (seq - last.seq & 65535) >= 32768) {
+      this.log.debug(`Control4 ${this.name}: level report ${hex4(seq)} is older than ${hex4(last.seq)} - dropped`);
+      return true;
+    }
+    this.levelSeq = { seq, at: now };
+    return false;
+  }
   onAnnounce(ns, data) {
     if (ns === "c4.dm.t0c") {
       const pct = parseHex(data[0]);
       if (pct === void 0) return;
+      if (this.staleLevelReport()) return;
       this.noteRamp(LED_REPAINT_SETTLE);
       const level = this.hold.report(pctToBrightness(pct));
       if (level !== void 0) this.applyLoad(level > 0, level);
@@ -5066,6 +5139,7 @@ function kpLedSelects(ids) {
   });
   return out;
 }
+var KP_PRESS_REPAINT_DELAY = 150;
 var Keypad = class extends DmxDevice {
   buttons;
   anim;
@@ -5105,7 +5179,10 @@ var Keypad = class extends DmxDevice {
   onAnnounce(ns, data) {
     switch (ns) {
       case "c4.kp.cc":
-        if (data.length >= 2) super.onAnnounce("c4.dmx.cc", data);
+        if (data.length >= 2) {
+          super.onAnnounce("c4.dmx.cc", data);
+          this.repaintAfterPress(data[0]);
+        }
         return;
       case "c4.kp.bb":
         super.onAnnounce("c4.dmx.bp", data);
@@ -5121,9 +5198,16 @@ var Keypad = class extends DmxDevice {
       case "c4.kp.be":
       case "c4.kp.he":
         super.onAnnounce("c4.dmx.he", data);
+        this.repaintAfterPress(data[0]);
         return;
     }
     super.onAnnounce(ns, data);
+  }
+  /** A tap or a hold on this button just ended, and the keypad changed its LED by itself: paint its status back. */
+  repaintAfterPress(hex) {
+    const id = parseHex(hex);
+    if (id === void 0) return;
+    this.after(KP_PRESS_REPAINT_DELAY, () => this.anim.repaintPressed(id));
   }
   async setValue(key, value, meta) {
     if (this.anim.handles(key)) return this.anim.set(key, value);
@@ -6554,6 +6638,9 @@ var TrafficWatch = class {
 // src/core/runtime.ts
 var LED_DEFAULTS_RETRY = 5e3;
 var IDENTITY_RETRIES = [3e3, 1e4];
+var REDISCOVER_DEVICE_GAP = 30 * 6e4;
+var REDISCOVER_INSTANCE_GAP = 15e3;
+var REDISCOVER_FRESH_RX = 6e4;
 var IDENTITY_REJOIN_SENDS = 3;
 var IDENTITY_REJOIN_GAP = 4e3;
 var REJOIN_CHECKS = [12e4, 24e4];
@@ -6669,6 +6756,11 @@ var Runtime = class {
   bare = /* @__PURE__ */ new Map();
   /** Devices whose undelivered check-in reply is being retried. */
   recovering = /* @__PURE__ */ new Set();
+  /** When each device was last asked for its address, and when any device was (REDISCOVER_*). */
+  rediscovered = /* @__PURE__ */ new Map();
+  lastRediscover = Number.NEGATIVE_INFINITY;
+  /** Address requests skipped by the REDISCOVER_* limits, for stats. */
+  rediscoversSkipped = 0;
   /** Each device's latest re-join: a newer one supersedes the checks of an older one. */
   rejoins = /* @__PURE__ */ new Map();
   /** When each device re-joined, within REJOIN_STUCK_WINDOW and since its last automatic reboot. */
@@ -6942,7 +7034,11 @@ var Runtime = class {
     const name = () => this.host.friendlyName(ieee);
     try {
       this.link.requestRouteRefresh(`controller identity to ${ieee} not delivered`);
-      await Promise.resolve(this.host.rediscover?.(ieee)).catch((error) => this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`));
+      if (this.mayRediscover(ieee)) {
+        await Promise.resolve(this.host.rediscover?.(ieee)).catch(
+          (error) => this.log.debug(`Control4: rediscovering ${ieee} failed: ${error}`)
+        );
+      }
       for (let i = 0; i < IDENTITY_RETRIES.length; i++) {
         await sleep3(IDENTITY_RETRIES[i]);
         if (!this.started || !this.host.deviceInfo(ieee)) return;
@@ -6959,6 +7055,23 @@ var Runtime = class {
     } finally {
       this.recovering.delete(ieee);
     }
+  }
+  /** Whether an undelivered check-in reply may ask the device for its address now (REDISCOVER_*); records it when it may. */
+  mayRediscover(ieee) {
+    const now = this.now();
+    const heard = this.link.sinceUnicast(ieee, now);
+    const skip = heard !== void 0 && heard < REDISCOVER_FRESH_RX || now - (this.rediscovered.get(ieee) ?? Number.NEGATIVE_INFINITY) < REDISCOVER_DEVICE_GAP || now - this.lastRediscover < REDISCOVER_INSTANCE_GAP;
+    if (skip) {
+      this.rediscoversSkipped++;
+      return false;
+    }
+    this.rediscovered.set(ieee, now);
+    this.lastRediscover = now;
+    return true;
+  }
+  /** Address requests (NWK_addr_req broadcasts) the REDISCOVER_* limits have skipped since the start. */
+  get rediscoverSkips() {
+    return this.rediscoversSkipped;
   }
   /**
    * A check-in, or a poll for its controller, from a network address Zigbee2MQTT doesn't
@@ -7011,6 +7124,7 @@ var Runtime = class {
   rejoined(ieee) {
     const dev = this.get(ieee);
     if (!dev) return;
+    dev.noteRejoined();
     const token = (this.rejoins.get(dev.ieee) ?? 0) + 1;
     this.rejoins.set(dev.ieee, token);
     const current = () => dev.alive && this.rejoins.get(dev.ieee) === token;
@@ -7342,7 +7456,7 @@ var Store = class {
 };
 
 // src/core/version.ts
-var VERSION = true ? "0.4.0" : "dev";
+var VERSION = true ? "0.4.1" : "dev";
 
 // src/z2m/global.ts
 var RUNTIME_KEY = "__control4_z2m_runtime__";
@@ -8130,7 +8244,7 @@ var Control4Extension = class {
       case "stats":
         return {
           tx: rt.tx.stats(),
-          link: rt.link.summary(),
+          link: { ...rt.link.summary(), rediscovers_skipped: rt.rediscoverSkips },
           devices: [...rt.devices.values()].map((d) => ({ ieee: d.ieee, name: d.name, model: d.model, family: d.family, ...rt.link.health(d.ieee) })),
           animators: rt.anim.all().map((a) => a.state())
         };
