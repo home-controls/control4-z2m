@@ -1,0 +1,475 @@
+blueprint:
+  name: Control4 SR250 / SR260 Remote → color-key menus
+  description: >
+    On-screen menus behind the C4-SR250B's colored keys.
+
+    Red, green and yellow each open a list of the entities you choose. Each
+    line shows the current state ("On  Green lamp", "71°F Temperature",
+    "Cool 70° Ecobee"). Picking a dimmable light opens Off / 25 / 50 / 75 /
+    100 %; an on/off light or a switch toggles; a scene or script runs;
+    sensors are display only. Picking a fan opens its speeds (and presets,
+    and direction if it has one); picking a thermostat opens warmer /
+    cooler, its modes and its fan modes.
+
+    Blue opens a list of rooms and switches the remote to the one you pick,
+    like a Control4 remote: the top line shows that room, and red / green
+    then list that room's lights and scenes / fans, thermostats and
+    temperature and humidity sensors. The remote's own room is first on the
+    list, to switch back; in it, red and green use the lists set below. The
+    chosen room is kept in an input_text helper (row 1 follows it through
+    c4_sr250_room_display.yaml). Use "Never show" for loads that must stay
+    on (for example a dimmer that only powers smart bulbs).
+
+    After a pick, row 2 shows the new state for a few seconds, then goes
+    back to the media player's app.
+
+    Requires the C4-SR250B ZHA quirk (control4_sr250.py) with
+    C4SR250DisplayCluster on EP1. Leave the matching color actions empty in
+    c4_sr250_media_player.yaml.
+  domain: automation
+  input:
+    remote:
+      name: SR250 remote
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: Control4
+              model: C4-SR250B
+            - integration: zha
+              manufacturer: Control4
+              model: C4-SR260
+    red_entities:
+      name: Red key
+      description: Usually this room's lights and scenes.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: [light, scene, script, switch]
+    green_entities:
+      name: Green key
+      description: Fans, thermostats, temperature / humidity sensors.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: [fan, climate, sensor, switch, light]
+    yellow_entities:
+      name: Yellow key
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: [light, fan, switch, scene, script, climate, sensor]
+    blue_areas:
+      name: Blue key rooms
+      description: Rooms listed on the blue key.
+      default: []
+      selector:
+        area:
+          multiple: true
+    room_helper:
+      name: Current room helper
+      description: An input_text that holds the room the remote is switched to.
+      default: ""
+      selector:
+        entity:
+          domain: input_text
+    blue_exclude:
+      name: Never show
+      description: Entities never listed for other rooms.
+      default: []
+      selector:
+        entity:
+          multiple: true
+    short_names:
+      name: Short names
+      description: >
+        Optional names for the LCD (19 characters fit), as entity=name pairs
+        separated by |, e.g. sensor.outdoor_temp=Outside|fan.ceiling=Ceiling fan
+      default: ""
+      selector:
+        text: {}
+    now_player:
+      name: Media player for row 2
+      description: Row 2 goes back to its app after a pick.
+      default: ""
+      selector:
+        entity:
+          domain: media_player
+    selection_timeout:
+      name: Selection timeout
+      default: "00:01:00"
+      selector:
+        duration: {}
+
+mode: restart
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote
+      command: remote_button_short_press
+
+variables:
+  remote: !input remote
+  red_entities: !input red_entities
+  green_entities: !input green_entities
+  yellow_entities: !input yellow_entities
+  blue_areas: !input blue_areas
+  blue_exclude: !input blue_exclude
+  room_helper: !input room_helper
+  home_area: "{{ area_id(remote) or '' }}"
+  current_area: >-
+    {%- set h = states(room_helper) if room_helper else '' -%}
+    {{ h if h and area_name(h) else home_area }}
+  at_home: "{{ current_area == home_area }}"
+  now_player: !input now_player
+  short_names_raw: !input short_names
+  short_names: >-
+    {%- set ns = namespace(m={}) -%}
+    {%- for pair in short_names_raw.split('|') if '=' in pair -%}
+      {%- set k, v = pair.split('=', 1) -%}
+      {%- set ns.m = dict(ns.m, **{k | trim: v | trim}) -%}
+    {%- endfor -%}
+    {{ ns.m }}
+  button: >-
+    {%- set d = trigger.event.data -%}
+    {%- if d.args is mapping and 'button' in d.args -%}{{ d.args.button }}
+    {%- elif d.params is mapping and 'button' in d.params -%}{{ d.params.button }}
+    {%- endif -%}
+  title: "{{ {'red': 'Lights', 'green': 'Environment', 'yellow': 'Favorites', 'blue': 'Rooms'}.get(button, '') }}"
+  values: >-
+    {%- set picks = {'red': red_entities, 'green': green_entities, 'yellow': yellow_entities}.get(button, []) -%}
+    {%- if button == 'blue' -%}
+      {{ ([home_area] if home_area else []) + (blue_areas | reject('eq', home_area) | list) }}
+    {%- elif not at_home and button in ['red', 'green'] -%}
+      {%- set ents = area_entities(current_area) | reject('in', blue_exclude)
+                     | reject('is_hidden_entity') | reject('is_state', 'unavailable') | list -%}
+      {%- if button == 'red' -%}
+        {{ ents | select('match', '^(light|scene)\.') | list }}
+      {%- else -%}
+        {%- set ns = namespace(out=ents | select('match', '^(fan|climate)\.') | list) -%}
+        {%- for e in ents | select('match', '^sensor\.') -%}
+          {%- if state_attr(e, 'device_class') in ['temperature', 'humidity'] -%}
+            {%- set ns.out = ns.out + [e] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.out }}
+      {%- endif -%}
+    {%- else -%}{{ picks | reject('is_state', 'unavailable') | list }}{%- endif -%}
+  labels: &labels >-
+    {%- set ns = namespace(out=[]) -%}
+    {%- for e in values -%}
+      {%- if button == 'blue' -%}
+        {%- set mark = '> ' if e == current_area else '' -%}
+        {%- set ns.out = ns.out + [(mark ~ (area_name(e) or e)) | replace('|', '/')] -%}
+      {%- else -%}
+        {%- set dom = e.split('.')[0] -%}
+        {%- set name = short_names.get(e) or state_attr(e, 'friendly_name') or e -%}
+        {%- set area = area_name(e) -%}
+        {%- if e not in short_names and area and name.startswith(area ~ ' ') and name | length > area | length + 1 -%}
+          {%- set name = name[area | length + 1:] -%}
+        {%- endif -%}
+        {%- set s = states(e) -%}
+        {%- if dom == 'sensor' -%}
+          {%- set v = s | float(none) -%}
+          {%- set label = ((v | round(0) | int) ~ (state_attr(e, 'unit_of_measurement') or '') if v is not none else s) ~ ' ' ~ name -%}
+        {%- elif dom == 'climate' -%}
+          {%- set cur = state_attr(e, 'current_temperature') -%}
+          {%- set label = s | capitalize ~ ((' ' ~ (cur | float(0) | round(0) | int) ~ '°') if cur is not none else '') ~ ' ' ~ name -%}
+        {%- elif dom in ['scene', 'script'] -%}
+          {%- set label = name -%}
+        {%- else -%}
+          {%- set label = ('On  ' if s == 'on' else 'Off ') ~ name -%}
+        {%- endif -%}
+        {%- set ns.out = ns.out + [label | replace('|', '/')] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ ns.out }}
+  remote_ieee: >-
+    {% set ns = namespace(ieee='') %}
+    {% for ident in device_attr(remote, 'identifiers') or [] %}
+      {% if ident[0] == 'zha' %}{% set ns.ieee = ident[1] %}{% endif %}
+    {% endfor %}
+    {{ ns.ieee }}
+
+condition:
+  - condition: template
+    value_template: "{{ title != '' and values | count > 0 and remote_ieee != '' }}"
+
+action:
+  - &show
+    action: zha.issue_zigbee_cluster_command
+    data:
+      ieee: "{{ remote_ieee }}"
+      endpoint_id: 1
+      cluster_id: 64583  # 0xFC47 SR250 display
+      cluster_type: in
+      command: 0         # show_list
+      command_type: server
+      params:
+        title: "{{ title }}"
+        items: "{{ labels | join('|') }}"
+        selected_index: "{{ values.index(current_area) if button == 'blue' and current_area in values else 0 }}"
+  - &wait
+    wait_for_trigger:
+      - platform: event
+        event_type: zha_event
+        id: select
+        event_data:
+          device_id: !input remote
+          command: menu_select
+      - platform: event
+        event_type: zha_event
+        id: cancel
+        event_data:
+          device_id: !input remote
+          command: menu_cancel
+    timeout: !input selection_timeout
+    continue_on_timeout: true
+  - &timeout_close
+    if:
+      - "{{ wait.trigger is none }}"
+    then:
+      - action: zha.issue_zigbee_cluster_command
+        data:
+          ieee: "{{ remote_ieee }}"
+          endpoint_id: 1
+          cluster_id: 64583
+          cluster_type: in
+          command: 1  # close_list
+          command_type: server
+          params: {}
+  - condition: template
+    value_template: "{{ wait.trigger is not none and wait.trigger.id == 'select' }}"
+  - &pick
+    variables:
+      picked_index: >-
+        {%- set a = wait.trigger.event.data.args -%}
+        {{ (a.selected_index if a is mapping else -1) | int(-1) }}
+      picked: "{{ values[picked_index] if 0 <= picked_index < values | count else '' }}"
+  - condition: template
+    value_template: "{{ picked != '' }}"
+
+  # Blue: switch the remote to the picked room.
+  - if:
+      - "{{ button == 'blue' }}"
+    then:
+      - if:
+          - "{{ room_helper != '' }}"
+        then:
+          - action: input_text.set_value
+            target: {entity_id: "{{ room_helper }}"}
+            data:
+              value: "{{ '' if picked == home_area else picked }}"
+      # The quirk puts the picked label on row 2; put the media app back.
+      - delay: 1
+      - &restore_row2
+        action: zha.set_zigbee_cluster_attribute
+        data:
+          ieee: "{{ remote_ieee }}"
+          endpoint_id: 1
+          cluster_id: 64583
+          cluster_type: in
+          attribute: 3  # active_source (row 2)
+          value: >-
+            {%- if now_player and states(now_player) not in ['off', 'standby', 'unavailable', 'unknown'] -%}
+              {{ (state_attr(now_player, 'app_name') or state_attr(now_player, 'source') or '')[:19] }}
+            {%- endif -%}
+    else:
+      # Dimmable lights, fans and thermostats: a second menu with settings.
+      - if:
+          - >-
+            {{ picked.split('.')[0] in ['fan', 'climate']
+               or (picked.startswith('light.')
+                   and (state_attr(picked, 'supported_color_modes') or ['onoff'])
+                       | reject('in', ['onoff']) | list | count > 0) }}
+        then:
+          - variables:
+              target: "{{ picked }}"
+              tname: >-
+                {%- set n = short_names.get(picked) or state_attr(picked, 'friendly_name') or picked -%}
+                {{ n[:19] }}
+              # Each entry is [token, label]; the token says what to do.
+              options: >-
+                {%- set ns = namespace(o=[]) -%}
+                {%- if picked.startswith('light.') -%}
+                  {%- set on = is_state(picked, 'on') -%}
+                  {%- set cur = ((state_attr(picked, 'brightness') | int(0)) * 100 / 255) | round(0) | int -%}
+                  {%- set ns.o = ns.o + [['off', ('> ' if not on else '') ~ 'Off']] -%}
+                  {%- for b in [25, 50, 75, 100] -%}
+                    {%- set ns.o = ns.o + [['bri:' ~ b, ('> ' if on and (cur - b) | abs < 13 else '') ~ b ~ '%']] -%}
+                  {%- endfor -%}
+                {%- elif picked.startswith('fan.') -%}
+                  {%- set pct = state_attr(picked, 'percentage') | int(0) -%}
+                  {%- set on = is_state(picked, 'on') -%}
+                  {%- set ns.o = ns.o + [['off', ('> ' if not on else '') ~ 'Off']] -%}
+                  {%- set step = state_attr(picked, 'percentage_step') | float(0) -%}
+                  {%- set speeds = ((100 / step) | round(0) | int) if step > 0 else 0 -%}
+                  {%- for i in range(1, speeds + 1) -%}
+                    {%- set pv = (i * step) | round(0) | int -%}
+                    {%- set cur = on and (pct - pv) | abs < step / 2 -%}
+                    {%- set ns.o = ns.o + [['pct:' ~ pv, ('> ' if cur else '') ~ 'Speed ' ~ i ~ ' (' ~ pv ~ '%)']] -%}
+                  {%- endfor -%}
+                  {%- if speeds == 0 -%}{%- set ns.o = ns.o + [['on', ('> ' if on else '') ~ 'On']] -%}{%- endif -%}
+                  {%- for m in state_attr(picked, 'preset_modes') or [] -%}
+                    {%- set ns.o = ns.o + [['preset:' ~ m, ('> ' if state_attr(picked, 'preset_mode') == m else '') ~ m | capitalize]] -%}
+                  {%- endfor -%}
+                  {%- if state_attr(picked, 'current_direction') -%}
+                    {%- set ns.o = ns.o + [['reverse', 'Reverse (' ~ state_attr(picked, 'current_direction') ~ ')']] -%}
+                  {%- endif -%}
+                {%- else -%}
+                  {%- set t = state_attr(picked, 'temperature') -%}
+                  {%- if t is not none -%}
+                    {%- set ns.o = ns.o + [['temp:1', 'Warmer (' ~ ((t | float + 1) | round(0) | int) ~ '°)'], ['temp:-1', 'Cooler (' ~ ((t | float - 1) | round(0) | int) ~ '°)']] -%}
+                  {%- endif -%}
+                  {%- for m in state_attr(picked, 'hvac_modes') or [] -%}
+                    {%- set ns.o = ns.o + [['hvac:' ~ m, ('> ' if is_state(picked, m) else '') ~ m | replace('_', '/') | capitalize]] -%}
+                  {%- endfor -%}
+                  {%- for m in state_attr(picked, 'fan_modes') or [] -%}
+                    {%- set ns.o = ns.o + [['fanmode:' ~ m, ('> ' if state_attr(picked, 'fan_mode') == m else '') ~ 'Fan ' ~ m]] -%}
+                  {%- endfor -%}
+                {%- endif -%}
+                {{ ns.o }}
+              values: "{{ options | map(attribute=0) | list }}"
+              start: >-
+                {%- set ns = namespace(i=-1) -%}
+                {%- for o in options -%}
+                  {%- if ns.i < 0 and o[1].startswith('> ') -%}{%- set ns.i = loop.index0 -%}{%- endif -%}
+                {%- endfor -%}
+                {{ [ns.i, 0] | max }}
+          # After a pick the quirk closes the list (`ri` + `le`). Sent right
+          # away, the new list lands before that `le` and gets closed by it,
+          # leaving the keys driving the TV. Let the close finish first.
+          - delay: {milliseconds: 750}
+          - action: zha.issue_zigbee_cluster_command
+            data:
+              ieee: "{{ remote_ieee }}"
+              endpoint_id: 1
+              cluster_id: 64583
+              cluster_type: in
+              command: 0  # show_list
+              command_type: server
+              params:
+                title: "{{ tname }}"
+                items: "{{ options | map(attribute=1) | map('replace', '|', '/') | join('|') }}"
+                selected_index: "{{ start | int(0) }}"
+          - *wait
+          - *timeout_close
+          - condition: template
+            value_template: "{{ wait.trigger is not none and wait.trigger.id == 'select' }}"
+          - *pick
+          - condition: template
+            value_template: "{{ picked != '' }}"
+          - variables:
+              verb: "{{ picked.split(':')[0] }}"
+              arg: "{{ picked.split(':', 1)[1] if ':' in picked else '' }}"
+          - choose:
+              - conditions: "{{ verb == 'off' }}"
+                sequence:
+                  - action: homeassistant.turn_off
+                    target: {entity_id: "{{ target }}"}
+              - conditions: "{{ verb == 'bri' }}"
+                sequence:
+                  - action: light.turn_on
+                    target: {entity_id: "{{ target }}"}
+                    data: {brightness_pct: "{{ arg | int }}"}
+              - conditions: "{{ verb == 'on' }}"
+                sequence:
+                  - action: fan.turn_on
+                    target: {entity_id: "{{ target }}"}
+              - conditions: "{{ verb == 'pct' }}"
+                sequence:
+                  - action: fan.set_percentage
+                    target: {entity_id: "{{ target }}"}
+                    data: {percentage: "{{ arg | int }}"}
+              - conditions: "{{ verb == 'preset' }}"
+                sequence:
+                  - action: fan.set_preset_mode
+                    target: {entity_id: "{{ target }}"}
+                    data: {preset_mode: "{{ arg }}"}
+              - conditions: "{{ verb == 'reverse' }}"
+                sequence:
+                  - action: fan.set_direction
+                    target: {entity_id: "{{ target }}"}
+                    data:
+                      direction: "{{ 'reverse' if state_attr(target, 'current_direction') == 'forward' else 'forward' }}"
+              - conditions: "{{ verb == 'temp' }}"
+                sequence:
+                  - action: climate.set_temperature
+                    target: {entity_id: "{{ target }}"}
+                    data:
+                      temperature: "{{ (state_attr(target, 'temperature') | float) + (arg | float) }}"
+              - conditions: "{{ verb == 'hvac' }}"
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target: {entity_id: "{{ target }}"}
+                    data: {hvac_mode: "{{ arg }}"}
+              - conditions: "{{ verb == 'fanmode' }}"
+                sequence:
+                  - action: climate.set_fan_mode
+                    target: {entity_id: "{{ target }}"}
+                    data: {fan_mode: "{{ arg }}"}
+          - delay: 1
+          - action: zha.set_zigbee_cluster_attribute
+            data:
+              ieee: "{{ remote_ieee }}"
+              endpoint_id: 1
+              cluster_id: 64583
+              cluster_type: in
+              attribute: 3  # active_source (row 2)
+              value: >-
+                {%- if target.startswith('light.') -%}
+                  {%- set v = ((((state_attr(target, 'brightness') | int(0)) * 100 / 255) | round(0) | int) ~ '%') if is_state(target, 'on') else 'off' -%}
+                {%- elif target.startswith('fan.') -%}
+                  {%- set v = (state_attr(target, 'percentage') | int(0) ~ '%') if is_state(target, 'on') else 'off' -%}
+                {%- else -%}
+                  {%- set v = states(target) ~ ' ' ~ (state_attr(target, 'temperature') | float(0) | round(0) | int) ~ '°' -%}
+                {%- endif -%}
+                {{ (tname ~ ' ' ~ v)[:19] }}
+          - delay: 4
+          - *restore_row2
+        else:
+          - &act
+            choose:
+              - conditions: "{{ picked.split('.')[0] in ['scene', 'script'] }}"
+                sequence:
+                  - action: homeassistant.turn_on
+                    target: {entity_id: "{{ picked }}"}
+              - conditions: "{{ picked.split('.')[0] in ['light', 'fan', 'switch'] }}"
+                sequence:
+                  - action: homeassistant.toggle
+                    target: {entity_id: "{{ picked }}"}
+          - &feedback
+            if:
+              - "{{ picked.split('.')[0] in ['light', 'fan', 'switch'] }}"
+            then:
+              - delay: 1
+              - action: zha.set_zigbee_cluster_attribute
+                data:
+                  ieee: "{{ remote_ieee }}"
+                  endpoint_id: 1
+                  cluster_id: 64583
+                  cluster_type: in
+                  attribute: 3  # active_source (row 2)
+                  value: >-
+                    {%- set name = short_names.get(picked) or state_attr(picked, 'friendly_name') or picked -%}
+                    {{ (('On ' if is_state(picked, 'on') else 'Off ') ~ name)[:19] }}
+              - delay: 4
+              - action: zha.set_zigbee_cluster_attribute
+                data:
+                  ieee: "{{ remote_ieee }}"
+                  endpoint_id: 1
+                  cluster_id: 64583
+                  cluster_type: in
+                  attribute: 3
+                  value: >-
+                    {%- if now_player and states(now_player) not in ['off', 'standby', 'unavailable', 'unknown'] -%}
+                      {{ (state_attr(now_player, 'app_name') or state_attr(now_player, 'source') or '')[:19] }}
+                    {%- endif -%}

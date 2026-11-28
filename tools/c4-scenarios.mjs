@@ -11,10 +11,11 @@
 //     node tools/c4-scenarios.mjs --device "Keypad A" [--button 1] [--only tap,hold,...]
 //
 // Scenarios:
-//   tap      a known tap acts on the event the blueprint's response picks: under
-//            Auto on a button with multi-tap actions, its first known tap when
-//            the tap is toward ON (early commit), the fast count when toward OFF.
-//            A Toggle / Room master button taps from all off and from some on
+//   tap      a known tap: the run Home Assistant's trace shows owning it changed
+//            the targets on the event it took the tap on (under Auto on a button
+//            with multi-tap actions, the first known tap toward ON, the fast
+//            count toward OFF). A Toggle / Room master button taps from all off
+//            and from some on
 //   known    a button that acts at once (Instant, or Auto with no multi-tap
 //            actions) acts on each known tap of a double tap, with presses
 //            100, 150 and 450 ms apart (judged from the targets' states: see
@@ -27,8 +28,8 @@
 //            count; Toggle / Room master from all off and from some on
 //   triple   the same for a known triple tap
 //   hold     a hold ramps the light targets and runs no tap
-//   led      after a tap, and back, the button's LED shows the colour its inputs
-//            give the targets' state
+//   led      after a tap, and back, every led_status call the LED runs' traces
+//            show was published to the device
 //   idle     during the scenarios before it, no other c4_device automation started a run
 //   unknown  an event for an IEEE with no HA device starts no c4_device run, and
 //            the dispatcher (if deployed) drops it
@@ -39,9 +40,16 @@
 // (ADR 0005), and a c4_device automation for the device whose button has
 // targets. rename and stale check the optional dispatcher package and are
 // skipped without it.
+//
+// What c4_device decides (which run owns a tap, the LED calls) is read from
+// Home Assistant's traces through readTrace (tools/c4-device-run.mjs); the
+// rules themselves are tested offline against the blueprint (test/c4-device.ts).
+// The runner judges what happened: the targets, the timing, what was sent.
 import fs from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+
+import {readTrace} from "./c4-device-run.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(root, "test", "fixtures", "control4-event.json"), "utf8"));
@@ -184,9 +192,6 @@ export function sequences(dev, button, gap = SECOND_PRESS) {
     };
 }
 
-/** Whether the button acts on each known tap: c4_device's `acts_at_once` variable (tools/gen-c4-device.mjs). */
-const actsAtOnce = (cfg) => cfg.response === "instant" || (cfg.response === "auto" && !cfg.multi);
-
 /** The button's response, for a scenario that skips it: "response auto on a button with multi-tap actions". */
 const responseOf = (cfg) => `response ${cfg.response}${cfg.multi ? " on a button with multi-tap actions" : ""}`;
 
@@ -203,19 +208,21 @@ export function towardOn(cfg, anyOn) {
     return (cfg.mode === "toggle" || cfg.mode === "room_master") && !anyOn;
 }
 
-/** Under Auto on a button with multi-tap actions, the first known tap runs the tap toward ON (c4_device's `commits_early`). */
-const commitsEarly = (cfg) => cfg.response === "auto" && cfg.multi;
+/**
+ * The run that owned Button `button`'s single tap, among the runs a scenario
+ * traced (in start order): the first that tapped, or committed early, for it.
+ */
+export function tapOwner(traced, button) {
+    return traced.map((x) => x.run).find((r) => r && r.button === button && (r.does === "tap" || r.does === "early commit"));
+}
 
 /**
- * The event the blueprint acts on for a known single tap, as a gesture, when
- * `anyOn` says whether any target is on. A copy of c4_device's `is_tap` and
- * early commit (tools/gen-c4-device.mjs): change both together, or the tap
- * scenario checks against a stale rule.
+ * Whether the owner's tap ran at once, on its event: it tapped, or it
+ * committed early toward ON (Direction, from `anyOn`); toward OFF an early
+ * commit waits for the fast count.
  */
-export function tapSource(cfg, anyOn) {
-    if (cfg.response === "wait") return "single";
-    if (actsAtOnce(cfg) || (commitsEarly(cfg) && towardOn(cfg, anyOn))) return "tap_known";
-    return "fast_single";
+export function tappedAtOnce(owner, cfg, anyOn) {
+    return owner !== undefined && (owner.does === "tap" || (owner.does === "early commit" && towardOn(cfg, anyOn)));
 }
 
 /** The entity ids an action list names (any entity_id in it), to see what the action changes. */
@@ -358,23 +365,12 @@ async function discover(ha, deviceArg, button) {
     if (!ident) throw new Error(`'${deviceArg}' is not a Zigbee2MQTT device`);
     const states = await ha.call({type: "get_states"});
     const entities = await ha.call({type: "config/entity_registry/list"});
-    // What c4_device's drives_load reads: "Paddle controls local load", and each paddle half's button behaviour.
-    const stateOf = (id) => states.find((s) => s.entity_id === id)?.state;
-    const own = entities.filter((e) => e.device_id === d.id).map((e) => e.entity_id);
-    const localSwitchOn = own.some((id) => /^switch\..*_paddle_local_control$/.test(id) && stateOf(id) === "on");
-    const behaviour = {};
-    for (const half of ["top", "bottom"]) {
-        const read = own.filter((id) => new RegExp(`^select\\..*_${half}_button_behaviour$`).test(id)).map(stateOf);
-        if (read.length) behaviour[half] = read.includes("event_only") ? "event_only" : read[0];
-    }
     const dev = {
         id: d.id,
         ieee: ident.slice("zigbee2mqtt_".length),
         model: d.model_id ?? d.model ?? "",
         name: d.name_by_user ?? d.name,
         nameByUser: d.name_by_user,
-        localSwitchOn,
-        behaviour,
     };
     // The entity c4_device hears the device through (its unique_id is the extension's).
     dev.events = entities.find((x) => x.device_id === d.id && x.platform === "mqtt" && x.unique_id === `${dev.ieee}_control4_event`)?.entity_id;
@@ -427,7 +423,7 @@ async function publish(ha, seq) {
  * last 5 traces of an automation, and every target change starts an LED run
  * that pushes older ones out.
  */
-async function observe(ha, targets, fn, settle = 2500, {autos = [], runs, errors = [], label, events = []} = {}) {
+async function observe(ha, targets, fn, settle = 2500, {autos = [], runs, errors = [], label, events = [], traceOf} = {}) {
     const fired = [];
     const dispatched = [];
     const changes = [];
@@ -446,20 +442,25 @@ async function observe(ha, targets, fn, settle = 2500, {autos = [], runs, errors
     const startedAt = await haNow(ha);
     const startStates = Object.fromEntries((await snapshot(ha, targets)).map((st) => [st.entity_id, st]));
     let done = false;
+    // traceOf's runs since startedAt, by run id: each read again until it has stopped (its LED calls come late).
+    const traces = new Map();
     // A trace read that fails stops the polling and is reported in `errors`, never thrown mid-scenario.
     const poll = async () => {
-        for (;;) {
+        for (let last = false; ; ) {
             try {
                 for (const a of runs ? autos : []) {
                     const seen = runs.get(a.entity) ?? new Set();
                     for (const t of await eventRuns(ha, a, startedAt)) seen.add(t.run_id);
                     runs.set(a.entity, seen);
                 }
+                if (traceOf) await readRuns(ha, traceOf, startedAt, traces);
             } catch (e) {
                 errors.push(`${label ? `${label}: ` : ""}could not read automation traces: ${e?.message ?? e}`);
                 return;
             }
-            if (done || !runs) return;
+            if (last || (!runs && !traceOf)) return;
+            // One more pass after the observation ends, for the runs its last changes started.
+            last = done;
             await sleep(250);
         }
     };
@@ -473,7 +474,17 @@ async function observe(ha, targets, fn, settle = 2500, {autos = [], runs, errors
         await offFired();
         await offState();
     }
-    return {fired, dispatched, changes, startedAt, startStates};
+    const traced = [...traces.values()]
+        .sort((a, b) => a.t - b.t)
+        .map(({t, trace}) => {
+            try {
+                return {t, run: readTrace(trace)};
+            } catch (e) {
+                errors.push(`${label ? `${label}: ` : ""}a c4_device trace could not be read: ${e?.message ?? e}`);
+                return {t, run: undefined};
+            }
+        });
+    return {fired, dispatched, changes, startedAt, startStates, traced};
 }
 
 async function snapshot(ha, targets) {
@@ -563,6 +574,21 @@ async function observeRestoring(ha, targets, fn, settle, opts) {
     return {...obs, restoreError};
 }
 
+/**
+ * Read `auto`'s runs since `since` into `into` (run id -> {t, trace, done}):
+ * each new one with trace/get, and again until it has stopped. HA keeps only
+ * the last 5 traces of an automation, so this runs while the scenario does.
+ */
+async function readRuns(ha, auto, since, into) {
+    const list = await ha.call({type: "trace/list", domain: "automation", item_id: auto.id});
+    for (const t of list) {
+        const at = Date.parse(t.timestamp?.start ?? "");
+        if (!(at >= since) || into.get(t.run_id)?.done) continue;
+        const trace = await ha.call({type: "trace/get", domain: "automation", item_id: auto.id, run_id: t.run_id});
+        into.set(t.run_id, {t: at, trace, done: trace.state !== "running"});
+    }
+}
+
 /** New traces of an automation since `since`, started by a Control4 event. */
 async function eventRuns(ha, auto, since) {
     const traces = await ha.call({type: "trace/list", domain: "automation", item_id: auto.id});
@@ -584,6 +610,7 @@ function watched(ctx, name, seq, prepare, entities = ctx.cfg.targets) {
         label: name,
         prepare,
         events: [ctx.dev.events],
+        traceOf: ctx.mine,
     }).catch((e) => {
         ctx.idleBlockers.push(`${name} failed before all its runs were seen: ${e?.message ?? e}`);
         throw e;
@@ -612,18 +639,23 @@ async function tapFrom(ctx, start) {
     const {dev, cfg, seqs} = ctx;
     const {obs, lines} = await observePrepared(ctx, `tap${start.label ? ` ${start.label}` : ""}`, seqs.tap, start.calls);
     const t0 = obs.fired[0]?.t;
-    const src = tapSource(cfg, anyOnIn(cfg.targets, obs.startStates));
-    const at = obs.fired.findIndex((f) => f.data.gesture === src);
+    const owner = tapOwner(obs.traced, ctx.button);
+    const src = owner?.variables.evt?.gesture;
+    const at = src === undefined ? -1 : obs.fired.findIndex((f) => f.data.gesture === src);
     const from = obs.fired[at]?.t;
     const until = obs.fired[at + 1]?.t ?? (from ?? 0) + 2000;
     const first = obs.changes[0];
     const okEvents = obs.fired.length === seqs.tap.length && obs.fired.every((f) => f.data.ieee === dev.ieee);
     const okTiming = first != null && from != null && first.t >= from && first.t <= until;
-    let ok = okEvents && okTiming;
-    const direction = commitsEarly(cfg) ? `, ${directionOf(cfg, obs.startStates)}` : "";
-    lines.push(`expected the tap on ${src} (response ${cfg.response}, ${cfg.multi ? "with" : "no"} multi-tap actions${direction})`);
+    let ok = okEvents && okTiming && owner !== undefined;
+    const direction = owner?.does === "early commit" ? `, ${directionOf(cfg, obs.startStates)}` : "";
+    if (owner)
+        lines.push(
+            `HA's run took the tap on ${src} (${owner.does} on ${owner.trigger}; response ${cfg.response}, ${cfg.multi ? "with" : "no"} multi-tap actions${direction})`,
+        );
+    else lines.push("no c4_device run owned the tap (HA's traces show none that tapped or committed early for this button)");
     if (!okEvents) lines.push(`${dev.events} saw ${obs.fired.length} of ${seqs.tap.length} events for this device`);
-    if (!okTiming) lines.push(first ? `first change at ${ms(first.t, t0)} is outside the ${src} window` : "no target changed");
+    if (owner && !okTiming) lines.push(first ? `first change at ${ms(first.t, t0)} is outside the ${src} window` : "no target changed");
     // Toggle / Room master drive the group as one: all off while any is on, else all on.
     if (start.label && !cfg.custom) {
         const want = anyOnIn(cfg.targets, obs.startStates) ? "off" : "on";
@@ -892,12 +924,14 @@ const KNOWN_GAPS = [100, 150, 450];
 
 async function knownScenario(ctx) {
     const {cfg} = ctx;
-    if (!actsAtOnce(cfg)) return {skip: `${responseOf(cfg)} does not act on known taps`};
     if (!ctx.seqs.double.length) return {skip: "the contract fixture has no known double tap for this device"};
     const results = [];
     for (const gap of KNOWN_GAPS) {
         const label = `presses ${gap} ms apart`;
         const {obs, lines} = await observePrepared(ctx, `known ${label}`, sequences(ctx.dev, ctx.button, gap).double);
+        // Home Assistant decides which taps act: a response that acts on no known tap skips the scenario.
+        if (!obs.traced.some((x) => x.run?.does === "tap" && x.run.trigger === "known"))
+            return {skip: `${responseOf(cfg)}: HA ran no tap on a known tap${obs.restoreError ? ` (${obs.restoreError})` : ""}`};
         const verdict = checkKnownTaps(cfg, obs);
         results.push({label, ok: verdict.ok, lines: [...lines, ...verdict.lines], restoreError: obs.restoreError});
     }
@@ -906,9 +940,11 @@ async function knownScenario(ctx) {
 
 async function fallbackScenario(ctx) {
     const {cfg, seqs} = ctx;
-    if (!actsAtOnce(cfg) && !commitsEarly(cfg)) return {skip: `${responseOf(cfg)} acts on a count anyway`};
     if (!seqs.unknownTap.length) return {skip: "this device always knows its taps (no release to wait for)"};
     const {obs, lines, between} = await observePrepared(ctx, "fallback", seqs.unknownTap);
+    const owner = tapOwner(obs.traced, ctx.button);
+    // A response that acts on the device's own count anyway has nothing to fall back from.
+    if (owner && owner.trigger !== "fast_tap") return {skip: `${responseOf(cfg)}: HA ran the tap on ${owner.trigger}, not on the fast count`};
     const at = obs.fired.findIndex((f) => f.data.gesture === "fast_single");
     const ok = at >= 0 && between(at).length > 0 && obs.changes.every((c) => c.t >= obs.fired[at].t);
     lines.push(`expected the tap on the fast count (known_taps ${obs.fired[at]?.data.known_taps})`);
@@ -928,13 +964,13 @@ const COUNT = {2: "double", 3: "triple"};
  * after the count (the device's own count under Wait, else the fast count),
  * judged on those that aren't the button's targets when it names any.
  */
-export function checkMultiTap(cfg, {fired, changes, startStates}, taps, action) {
+export function checkMultiTap(cfg, {fired, changes, startStates}, taps, action, owner) {
     const lines = [];
     const count = cfg.response === "wait" ? COUNT[taps] : `fast_${COUNT[taps]}`;
     const at = fired.find((f) => f.data.gesture === count);
     if (!at) return {ok: false, lines: [`${count} was not dispatched`]};
     const first = fired.find((f) => f.data.gesture === "tap_known" && Number(f.data.tap_index) === 1);
-    const early = actsAtOnce(cfg) || (commitsEarly(cfg) && towardOn(cfg, anyOnIn(cfg.targets, startStates)));
+    const early = tappedAtOnce(owner, cfg, anyOnIn(cfg.targets, startStates));
     const before = changes.filter((c) => cfg.targets.includes(c.entity_id) && c.t < at.t);
     let ok = true;
     lines.push(`expected the tap ${early ? "at known tap #1" : "not to run"}, and the ${COUNT[taps]}-tap action on ${count}`);
@@ -974,36 +1010,30 @@ async function multiTapScenario(ctx, taps) {
     for (const start of starts(cfg)) {
         const calls = [...(off.length ? [{domain: "homeassistant", service: "turn_off", service_data: {entity_id: off}}] : []), ...start.calls];
         const {obs, lines} = await observePrepared(ctx, `${COUNT[taps]}${start.label ? ` ${start.label}` : ""}`, seq, calls, [...cfg.targets, ...others]);
-        const verdict = checkMultiTap(cfg, obs, taps, action);
+        // The run that owned known tap #1, if one did: HA's decision, read from its trace.
+        const owner = obs.traced
+            .map((x) => x.run)
+            .find(
+                (r) =>
+                    r?.button === ctx.button && r.trigger === "known" && Number(r.variables.evt?.tap_index) === 1 && ["tap", "early commit"].includes(r.does),
+            );
+        const verdict = checkMultiTap(cfg, obs, taps, action, owner);
         results.push({label: start.label, ok: verdict.ok, lines: [...lines, ...verdict.lines], restoreError: obs.restoreError});
     }
     return merge(results);
 }
 
-/**
- * Whether Button `button` drives its device's own load, which a hold then ramps
- * itself: c4_device's drives_load variable (tools/gen-c4-device.mjs). An
- * APD120 or SW120277 half does unless its button behaviour (`behaviour.top`,
- * `behaviour.bottom`, the select's state; absent when it has none) is
- * event_only; any other device while its "Paddle controls local load" switch
- * is on (a DIM1-Z).
- */
-export function drivesLoad(model, button, {localSwitchOn = false, behaviour = {}} = {}) {
-    if (model === "C4-APD120" || model === "C4-SW120277") {
-        const half = {1: "top", 2: "bottom"}[button];
-        return half !== undefined && behaviour[half] !== "event_only";
-    }
-    return localSwitchOn;
-}
-
 async function holdScenario(ctx) {
-    const {cfg, seqs, dev, button} = ctx;
+    const {cfg, seqs, button} = ctx;
     if (!seqs.hold.length) return {skip: "this device reports no hold"};
     if (cfg.hold === false) return {skip: "hold-to-dim is off for this button"};
-    if (drivesLoad(dev.model, button, dev)) return {skip: "the button drives its own load, which a hold ramps itself"};
     const lights = cfg.targets.filter((e) => e.startsWith("light."));
     if (!lights.length) return {skip: "the button has no light targets"};
     const obs = await watched(ctx, "hold", seqs.hold);
+    // A button that drives its own load (c4_device's drives_load, as HA rendered it) leaves the ramp to the device.
+    const mine = obs.traced.map((x) => x.run).filter((r) => r?.button === button);
+    if (!mine.some((r) => r.does === "hold") && mine.some((r) => r.variables.drives_load === true))
+        return {skip: `the button drives its own load, which a hold ramps itself${obs.restoreError ? ` (${obs.restoreError})` : ""}`};
     const t0 = obs.fired[0]?.t;
     const holdAt = obs.fired.find((f) => f.data.gesture === "hold")?.t;
     const lines = obs.changes.map((c) => `${c.entity_id}: ${c.from} -> ${c.to} ${t0 == null ? "" : ms(c.t, t0)}`);
@@ -1012,52 +1042,6 @@ async function holdScenario(ctx) {
     if (early.length) lines.push(`${early.length} change(s) before the hold event: a tap ran`);
     if (levels.size < 2) lines.push("the lights did not ramp");
     return {ok: levels.size >= 2 && early.length === 0, lines, restoreError: obs.restoreError};
-}
-
-/** A copy of c4_device's on_states (tools/gen-c4-device.mjs): the states an LED shows as on. */
-const ON_STATES = [
-    "on",
-    "open",
-    "opening",
-    "closing",
-    "unlocked",
-    "unlocking",
-    "playing",
-    "buffering",
-    "home",
-    "heat",
-    "cool",
-    "heat_cool",
-    "auto",
-    "dry",
-    "fan_only",
-    "armed_home",
-    "armed_away",
-    "armed_night",
-    "armed_vacation",
-    "armed_custom_bypass",
-    "triggered",
-    "pending",
-    "arming",
-    "cleaning",
-    "active",
-];
-
-/** A copy of c4_device's led_buttons: how many of a model's buttons have an LED the extension finds by name. */
-const LED_BUTTONS = {"C4-DIM1-Z": 2, "C4-APD120": 2, "C4-SW120277": 2, "C4-KP3-Z": 3, "C4-KP6-Z": 6, "C4-KC120277": 6};
-
-/**
- * The LEDs c4_device names for the button in its led_status calls, as strings: the N
- * of each picked colour select (led_N_... / button_N_...), else the button's name
- * (button_N) on a model whose LEDs the extension finds by name; none on a model with
- * no such LED (c4_device's paints_leds: an FS1-Z, fan or outlet). A copy of c4_device's
- * LED calls (tools/gen-c4-device.mjs): change both together.
- */
-export function ledNumbers(input, button, model) {
-    if (!LED_BUTTONS[model]) return [];
-    const picked = [...new Set(inputList(input, `b${button}_led`).flatMap((e) => /(?:button|led)_([0-9]+)_/.exec(e)?.[1] ?? []))];
-    if (picked.length) return picked;
-    return button <= (LED_BUTTONS[model] ?? 0) ? [`button_${button}`] : [];
 }
 
 /** How far (of 255) a Scene light may be from its level and still count: c4_device's 2 points. */
@@ -1083,82 +1067,38 @@ export function sceneOf(actions) {
     );
 }
 
-/**
- * Whether the Scene in a button's Tap action (`actions`, one scene.apply) is
- * Active for the entities' states, and whether it is misconfigured (`bad`):
- * no single scene.apply, a light without a state, or other lights than
- * `targets`. A copy of c4_device's Scene check (tools/gen-c4-device.mjs):
- * change both together.
- */
-export function sceneState(actions, targets, stateOf) {
-    const scene = sceneOf(actions);
-    let bad = Object.keys(scene).length === 0 || Object.keys(scene).sort().join() !== [...new Set(targets)].sort().join();
-    let ok = true;
-    for (const [e, {state: st, level: lvl}] of Object.entries(scene)) {
-        if (st == null) bad = true;
-        const s = stateOf(e);
-        const v = s?.attributes?.brightness;
-        if ((s?.state ?? "unknown") !== st || (lvl != null && st === "on" && e.startsWith("light.") && (v == null || Math.abs(Number(v) - lvl) > SCENE_SLACK)))
-            ok = false;
-    }
-    return {active: ok && !bad, bad};
-}
-
-/**
- * The colour and brightness the button's LED shows for the entities' states
- * (`stateOf(entity)` -> HA state) at local time `time` ("HH:MM:SS"). A copy of
- * c4_device's LED calls (tools/gen-c4-device.mjs), defaults included: change
- * both together. Brightness is null when it follows the lights.
- */
-export function expectedLed(input, button, stateOf, time) {
-    const b = `b${button}`;
-    const own = inputList(input, `${b}_watch`);
-    const watch = own.length ? own : buttonConfig(input, button).targets;
-    const sts = watch.map((e) => stateOf(e)?.state ?? "unknown");
-    let faulted = sts.some((s) => UNJUDGED.includes(s));
-    let lit;
-    // A Scene button's LED shows whether its Scene is Active, unless it has watches.
-    if ((input[`${b}_mode`] ?? "toggle") === "scene" && !own.length) {
-        const scene = sceneState(inputList(input, `${b}_action`), watch, stateOf);
-        faulted ||= scene.bad;
-        lit = scene.active;
-    } else {
-        const n = sts.filter((s) => ON_STATES.includes(s) || (s.trim() !== "" && Number(s) > 0)).length;
-        lit = (input.led_match ?? "any") === "any" ? n > 0 : n === sts.length;
-    }
-    // A time selector also takes 9:3: pad each part, as c4_device does, so they compare with time as text.
-    const padded = (t) =>
-        [...String(t).split(":"), "0"]
-            .slice(0, 3)
-            .map((p) => `0${Number.parseInt(p, 10) || 0}`.slice(-2))
-            .join(":");
-    const [start, end] = [padded(input.night_start ?? "21:00:00"), padded(input.night_end ?? "06:00:00")];
-    const inWindow = start <= end ? start <= time && time < end : time >= start || time < end;
-    const rooms = inputList(input, "room_lights");
-    const roomOn = (rooms.length ? rooms : roomOf(input)).some((e) => stateOf(e)?.state === "on");
-    const night = (input.night_enabled ?? false) && inWindow && !((input.night_needs_dark ?? true) && roomOn);
-    const nightColour = input[lit ? `${b}_night_on` : `${b}_night_off`] ?? "(same as day)";
-    const onBri = Number(input.led_on_brightness ?? 75);
-    if (night && nightColour !== "(same as day)") return {color: nightColour, brightness: Number(input.night_brightness ?? 10)};
-    const fault = input.fault_colour ?? "Red";
-    if (faulted && fault !== "Treat as off") return {color: fault, brightness: onBri};
-    if (lit) return {color: input[`${b}_on`] ?? "Green", brightness: input.led_follow ? null : onBri};
-    return {color: input[`${b}_off`] ?? "Off", brightness: Number(input.led_off_brightness ?? 15)};
-}
-
-/** The time of day in time zone `tz`, as "HH:MM:SS". */
-const localTime = (tz) =>
-    new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"}).format(new Date());
-
 /** How long after the targets change the LED scenario reads the LED: c4_device's LED delay, then time for a DIM1-Z's fade. */
 const LED_SETTLE = 3000;
 
+/** Two led_status calls are the same call: the same LEDs and look. */
+const sameCall = (a, b) =>
+    ["buttons", "color", "brightness", "pressed_color", "pressed_brightness"].every((k) => String(a?.[k] ?? "") === String(b?.[k] ?? ""));
+
+/** A led_status call for a line: "1,5 Cyan 75%". */
+const showCall = (c) => `${c.buttons} ${c.color}${c.brightness == null ? "" : ` ${c.brightness}%`}${c.pressed_color ? `, pressed ${c.pressed_color}` : ""}`;
+
+/**
+ * The LED scenario's verdict: every led_status call each LED run decided on (its
+ * trace's calls, read by readTrace) was published to the device after the run
+ * began. `ledRuns` are {t, run} in start order; `sent` the led_status payloads
+ * seen on the device's set topic, each with its time `t`.
+ */
+export function checkLedCalls(ledRuns, sent) {
+    const lines = [];
+    let ok = true;
+    for (const {t, run} of ledRuns) {
+        for (const call of run.leds) {
+            const seen = sent.some((x) => x.t >= t && sameCall(x.call, call));
+            if (!seen) ok = false;
+            lines.push(`${seen ? "sent" : "NOT sent"}: ${showCall(call)} (HA's LED run on ${run.trigger})`);
+        }
+    }
+    return {ok, lines};
+}
+
 async function ledScenario(ctx) {
     const {ha, dev, cfg, mine, button, seqs} = ctx;
-    const nums = ledNumbers(mine.input, button, dev.model);
-    if (!nums.length) return {skip: "c4_device paints no LED for this button"};
     if (!seqs.tap.length) return {skip: "the contract fixture has no known tap for this device"};
-    const tz = (await ha.call({type: "get_config"})).time_zone;
     const topic = `control4/${dev.ieee}/set`;
     const sent = [];
     const off = await ha.subscribe("call_service", (e) => {
@@ -1172,32 +1112,8 @@ async function ledScenario(ctx) {
                 return undefined;
             }
         })();
-        if (payload?.led_status) sent.push(payload.led_status);
+        if (payload?.led_status) sent.push({t: Date.parse(e.time_fired), call: payload.led_status});
     });
-    const lines = [];
-    let ok = true;
-    // The last LED status sent for this button's LED, against the colour its inputs give the states now.
-    const judge = async (when) => {
-        await sleep(LED_SETTLE);
-        const states = new Map((await ha.call({type: "get_states"})).map((s) => [s.entity_id, s]));
-        const want = expectedLed(mine.input, button, (e) => states.get(e), localTime(tz));
-        const got = sent
-            .filter((l) =>
-                String(l.buttons)
-                    .split(",")
-                    .some((t) => nums.includes(t.trim())),
-            )
-            .at(-1);
-        sent.length = 0;
-        const show = (l) => `${l.color}${l.brightness == null ? "" : ` ${l.brightness}%`}`;
-        if (!got) {
-            lines.push(`${when}: no LED status sent for LED ${nums.join(", ")} (want ${show(want)})`);
-            ok = false;
-        } else if (got.color !== want.color || (want.brightness != null && got.brightness !== want.brightness)) {
-            lines.push(`${when}: LED ${nums.join(", ")} sent ${show(got)}, want ${show(want)}`);
-            ok = false;
-        } else lines.push(`${when}: LED ${nums.join(", ")} ${show(got)}`);
-    };
     const [start] = starts(cfg);
     let obs;
     try {
@@ -1207,23 +1123,26 @@ async function ledScenario(ctx) {
             entities,
             async () => {
                 await publish(ha, seqs.tap);
-                await judge("after the tap");
+                await sleep(LED_SETTLE);
                 await prepare(ha, start.calls);
-                await judge("back where it started");
+                await sleep(LED_SETTLE);
             },
             0,
             {
+                traceOf: mine,
                 prepare: async () => {
                     await prepare(ha, start.calls);
                     await sleep(LED_SETTLE);
-                    sent.length = 0;
                 },
             },
         );
     } finally {
         await off();
     }
-    return {ok, lines, restoreError: obs.restoreError};
+    const ledRuns = obs.traced.filter((x) => x.run?.does === "leds" && x.run.leds.length > 0);
+    if (!ledRuns.length) return {skip: `c4_device sent no LED calls for this device${obs.restoreError ? ` (${obs.restoreError})` : ""}`};
+    const verdict = checkLedCalls(ledRuns, sent);
+    return {ok: verdict.ok, lines: verdict.lines, restoreError: obs.restoreError};
 }
 
 async function idleScenario(ctx) {

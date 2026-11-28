@@ -1,4 +1,6 @@
 /** Types for tools/c4-scenarios.mjs (used by the tests). */
+import type {LedCall, TracedRun} from "./c4-device-run.mjs";
+
 interface Timed {
     /** When to publish it, ms after the sequence's first event. */
     at: number;
@@ -62,6 +64,8 @@ export function checkMultiTap(
     obs: Observation,
     taps: 2 | 3,
     action: unknown[],
+    /** The run that owned known tap #1, from its trace; undefined when none did. */
+    owner?: Pick<TracedRun, "does">,
 ): Verdict;
 export function buttonConfig(input: Record<string, unknown>, button: number): ButtonConfig;
 /** The service call that readies a button's targets for its mode, or undefined. */
@@ -70,25 +74,21 @@ export function prepareCall(cfg: Pick<ButtonConfig, "mode" | "targets">): Servic
 export function starts(cfg: Pick<ButtonConfig, "mode" | "targets">): {label: string; calls: ServiceCall[]}[];
 /** Whether a tap leaves the targets brighter (Direction toward ON). */
 export function towardOn(cfg: Pick<ButtonConfig, "mode" | "custom">, anyOn: boolean): boolean;
-/** The gesture the blueprint acts on for a known single tap. */
-export function tapSource(cfg: Pick<ButtonConfig, "mode" | "custom" | "multi" | "response">, anyOn: boolean): string;
 /** The entity ids an action list names. */
 export function namedEntities(actions: unknown): string[];
-/** The button's LED numbers. */
-export function ledNumbers(input: Record<string, unknown>, button: number, model: string): string[];
 /** The Scene in a Tap action that is one scene.apply: each entity's state and level; empty otherwise. */
 export function sceneOf(actions: unknown[]): Record<string, SceneTarget>;
-/** Whether the Tap action's Scene is Active, and whether it is misconfigured. */
-export function sceneState(actions: unknown[], targets: string[], stateOf: (entity: string) => HaState | undefined): {active: boolean; bad: boolean};
-/** Whether the button drives its device's own load (which a hold then ramps itself): c4_device's drives_load. */
-export function drivesLoad(model: string, button: number, read?: {localSwitchOn?: boolean; behaviour?: {top?: string; bottom?: string}}): boolean;
-/** The colour and brightness (null when it follows the lights) the button's LED shows. */
-export function expectedLed(
-    input: Record<string, unknown>,
-    button: number,
-    stateOf: (entity: string) => HaState | undefined,
-    time: string,
-): {color: string; brightness: number | null};
+/** A run a scenario traced: when it began (HA's clock, ms) and the run, undefined when its trace could not be read. */
+export interface Traced {
+    t: number;
+    run: TracedRun | undefined;
+}
+/** The run that owned Button `button`'s single tap: the first that tapped, or committed early, for it. */
+export function tapOwner(traced: Traced[], button: number): TracedRun | undefined;
+/** Whether the owner's tap ran at once: it tapped, or it committed early toward ON. */
+export function tappedAtOnce(owner: Pick<TracedRun, "does"> | undefined, cfg: Pick<ButtonConfig, "mode" | "custom">, anyOn: boolean): boolean;
+/** The LED scenario's verdict: every call each LED run decided on was published to the device after the run began. */
+export function checkLedCalls(ledRuns: {t: number; run: Pick<TracedRun, "leds" | "trigger">}[], sent: {t: number; call: LedCall}[]): Verdict;
 export function sequences(
     dev: {ieee: string; name: string; model: string},
     button: number,

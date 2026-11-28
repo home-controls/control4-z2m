@@ -7,7 +7,7 @@ import {parseDocument, type Scalar} from "yaml";
 import {DEFAULT_TAP_WINDOW_MS, GESTURES, MAX_TAP_WINDOW_MS, MIN_TAP_WINDOW_MS, MODELS, modelInfo, TAP_WINDOW_OPTION} from "../src/core/constants";
 import {buildDefinitions} from "../src/z2m/definitions";
 import {commandOf, eventEntityConfig, eventTypeOf} from "../src/z2m/extension";
-import {EVENTS_NOTE, port, remoteEventType} from "../tools/port-zha-blueprints.mjs";
+import {EVENTS_NOTE, FILES, port, remoteEventType, ZHA_DIR} from "../tools/port-zha-blueprints.mjs";
 import {renderTemplate} from "./c4-device";
 import {inputTag, kindOf, substitute} from "./c4-device/blueprint";
 import {conditionPasses, type HaState, type HaWorld, haEnvironment, renderValue, renderVariables} from "./c4-device/engine";
@@ -81,6 +81,12 @@ describe("blueprints", () => {
         const {blueprint: _b, ...body} = bp;
         for (const used of usedInputs(body)) expect(declared.has(used), `${file}: !input ${used} not declared`).toBe(true);
         expect(declared.has("base_topic")).toBe(false);
+    });
+
+    // #23 / #24: the ported blueprints are generated; a hand edit, or a changed original, shows here.
+    it.each(FILES)("%s is what tools/port-zha-blueprints.mjs makes of its ZHA original in tools/zha-blueprints", (file) => {
+        const original = fs.readFileSync(path.join(ZHA_DIR, file), "utf8");
+        expect(port(original, file).text).toBe(fs.readFileSync(path.join(DIR, file), "utf8"));
     });
 
     it.each(files)("%s has no ZHA device I/O left", (file) => {

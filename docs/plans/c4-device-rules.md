@@ -9,10 +9,17 @@ From `/supermatt:improve-architecture` on 2026-10-29 (verdict: Localized, candid
   `tools/ha-validate-blueprints.mjs`), `test/c4-device.ts` with its internals in `test/c4-device/`,
   `tools/c4-device-run.mjs` and its `.d.mts`, the tests at the interface (`test/c4-device*.test.ts`), and the covered
   rule pins removed from `test/blueprints.test.ts`.
-- **Steps 8-9 are not built.** There is no `readTrace` or `TracedRun`, and no `test/fixtures/c4-device-trace-*.json`.
-  `tools/c4-scenarios.mjs` still holds its JS copies of the rules (`tapSource`, `actsAtOnce`, `commitsEarly`,
-  `LED_BUTTONS` and the rest), and `test/c4-scenarios.test.ts` still tests them.
-- Below, everything that belongs to steps 8-9 is marked **not yet built**.
+- **Steps 8-9 are built (#25)**, except the by-hand run against real lights:
+  - `readTrace` and `TracedRun` are in `tools/c4-device-run.mjs`. They are tested in `test/c4-device-trace.test.ts`
+    against traces captured on a live HA (`test/fixtures/c4-device-trace-*.json`): a tap that committed early, a
+    failed condition and an LED run. No c4_device run had errored there, so the errored case is a captured trace
+    with its error fields set.
+  - `tools/c4-scenarios.mjs` reads the run that owned each tap, and each LED run's calls, from the traces of the
+    device's own automation. Its copies of the rules are gone (`tapSource`, `actsAtOnce`, `commitsEarly`,
+    `expectedLed`, `ledNumbers`, `sceneState`, `drivesLoad`, `LED_BUTTONS`, `ON_STATES`), and so are their tests.
+    `sceneOf` and `roomOf` stay for `buttonConfig`; `towardOn` stays as the runner's own check of Direction.
+  - **Not yet done:** step 9's by-hand run of the new runner against real lights.
+- Below, the steps 8-9 markers say what is built.
 
 ## Problem
 
@@ -97,7 +104,7 @@ export interface LedCall { buttons: string; color: string; brightness: number; p
 export type LedLook = Omit<LedCall, "buttons">;
 export function readRun(variables: Record<string, unknown>, passes: boolean): Run;  // throws when the flags say two things at once
 export function ledLook(calls: LedCall[], name: string): LedLook | undefined;
-// Not yet built (step 8): TracedRun and readTrace
+// Built in step 8 (#25): TracedRun and readTrace
 export interface TracedRun extends Run { leds: LedCall[]; hears?: boolean; error?: string; running: boolean }
 export function readTrace(traceGet: unknown): TracedRun;   // a trace/get result; steps found by content (`calls`, `hears`)
 ```
@@ -118,8 +125,8 @@ expect(kc.on(change("light.two", 200)).led("button_2")).toEqual({color: "Blue", 
 ```
 
 ```js
-// tools/c4-scenarios.mjs, once step 8 is built (not yet): HA's real decision, read from the run's trace (the engine is never loaded here)
-const owner = traces.map(readTrace).find((r) => r.button === button && ["tap", "early commit"].includes(r.does));
+// tools/c4-scenarios.mjs (step 8): HA's real decision, read from the run's trace (the engine is never loaded here)
+const owner = tapOwner(obs.traced, button);   // the first traced run that tapped, or committed early, for the button
 ```
 
 **What it hides:**
@@ -133,7 +140,7 @@ const owner = traces.map(readTrace).find((r) => r.button === button && ["tap", "
 - The minijinja settings: `pycompat`, lenient undefined, and the `sum(start=)` override.
 - A port of HA's `_parse_result`.
 - HA's rendering order: variables one after another, the condition rendered untyped, the gate on the LED branch, and the LED and hears steps found by their content.
-- The trace layout: the `trigger/<idx>` step's `changed_variables`, `condition/0`, and `script_execution` (not yet built: step 8).
+- The trace layout: the `trigger/<idx>` step's `changed_variables`, `condition/0`, and `script_execution` (step 8, `readTrace`).
 
 ## Cohesion Statement
 
@@ -142,7 +149,7 @@ const owner = traces.map(readTrace).find((r) => r.button === button && ["tap", "
   - which runs a happening starts, and which one passes;
   - each run's decision (tap, early commit, hold, multi-tap gesture, targets);
   - the led_status calls an LED run sends, and whether the device hears its buttons;
-  - reading the same decision from an HA trace (`tools/c4-device-run.mjs`; not yet built, step 8).
+  - reading the same decision from an HA trace (`tools/c4-device-run.mjs`, step 8).
 - **What stays out:**
   - Tap outcomes (the TAP branch's service calls), hold ramps, early-commit waits, and Direction (`toward_on`). These were settled as out of scope. c4-scenarios keeps judging them in JS (`towardOn`, `checkKnownTaps`, `checkMultiTap`), so Direction still has an independent check.
   - The generator's string building. It doesn't change; the module reads the committed YAML, which the existing test keeps equal to the generator's output.
@@ -157,7 +164,7 @@ const owner = traces.map(readTrace).find((r) => r.button === button && ["tap", "
   - Vetting found it is published by mitsuhiko, with a registry signature and SLSA provenance.
   - It is an exact-pinned devDependency, imported only by `test/c4-device.ts`. Nothing in `src/` or `tools/` imports it, so it never reaches `dist/`.
 - **No renderer port and no world port.** Each would have only one adapter.
-- **The one real seam is the `Run` shape.** Two adapters fill it: the local render (through `readRun`, built) and HA's trace (`readTrace`, not yet built).
+- **The one real seam is the `Run` shape.** Two adapters fill it: the local render (through `readRun`) and HA's trace (`readTrace`).
 - **Engine drift** is caught by the conformance probe (see Testing). Drift in the stubs is a known, accepted gap.
 
 ## Testing Strategy
@@ -186,15 +193,15 @@ const owner = traces.map(readTrace).find((r) => r.button === button && ["tap", "
   - Hears: boot and reload, with and without the events entity.
   - Errors: a template error throws `C4TemplateError`; an undeclared input or Button 3+ on a paddle throws at setup.
   - `readRun` throws on conflicting flags.
-  - **Not yet built (step 9):** `readTrace` is tested against captured trace fixtures (`test/fixtures/c4-device-trace-*.json`): a run that passes, a failed condition, an LED run, and an errored run.
+  - **Built (step 9):** `readTrace` is tested against captured trace fixtures (`test/fixtures/c4-device-trace-*.json`): a run that passes, a failed condition and an LED run; the errored run is a captured one with its error fields set.
   - Conformance probe: `test/fixtures/jinja-conformance.jinja` with an expected-output file covers every construct c4_device uses, plus a dict-insertion-order case. `renderTemplate` must reproduce the expected output exactly.
 - **Old tests to remove** (in their own commit, after the new ones pass):
   - the rule pins in `test/blueprints.test.ts` on `variables`, `condition` and the LED step (about 40 of the 66). The structural pins stay.
-  - the tests in `test/c4-scenarios.test.ts` for the JS copies that go (not yet: they go with steps 8-9).
+  - the tests in `test/c4-scenarios.test.ts` for the JS copies that went with steps 8-9 (removed).
 - **Test environment needs:**
   - minijinja-js. Its node build loads WASM synchronously; check this at step 1.
   - the Contract fixture.
-  - trace fixtures captured once from the test HA (not yet captured).
+  - trace fixtures captured once from the test HA (captured 2026-11-28).
 
 ## Migration Strategy
 
@@ -202,12 +209,12 @@ Incremental. The blueprint and the generator don't change, so nothing is deploye
 
 1. The new module and its tests land alongside the text pins, with both green.
 2. The covered pins go, in their own commit.
-3. c4-scenarios switches to reading traces. *(Not yet built.)*
-4. Its JS copies and their tests go. *(Not yet built.)*
+3. c4-scenarios switches to reading traces. *(Built, #25.)*
+4. Its JS copies and their tests go. *(Built, #25.)*
 
 ## Implementation Steps
 
-Steps 1-7 are built; steps 8-9 are not.
+Steps 1-9 are built; step 9's by-hand run against real lights is still to do.
 
 1. **Add `minijinja-js@3.0.0`** as an exact devDependency in `package.json` and the lockfile. Re-run the dependency vetting at install, and confirm the synchronous WASM init under vitest. *(S)*
 2. **Write the conformance probe** in `test/fixtures/jinja-conformance.jinja` with its expected output. Render it once on the test HA (`render_template`) to confirm the expected output; HA is the oracle. *(S)*
@@ -218,14 +225,14 @@ Steps 1-7 are built; steps 8-9 are not.
 5. **Write `test/c4-device.test.ts`**, test-first, covering the behaviours listed above. *(L, ~400 lines)*
 6. **Add the conformance test** in vitest. Give `tools/ha-validate-blueprints.mjs` a step that renders the probe on live HA and compares it with the expected output (run by hand). *(S)*
 7. **Remove the covered rule pins** from `test/blueprints.test.ts`, as a test-removal commit, not a refactor commit. *(S)*
-8. **Switch `tools/c4-scenarios.mjs` to read traces.** *(M; not yet built)*
+8. **Switch `tools/c4-scenarios.mjs` to read traces.** *(M; built, #25)*
    - Add `readTrace` and `TracedRun` to `tools/c4-device-run.mjs` and its `.d.mts` (moved here from step 4), finding the `calls` and `hears` steps by content.
    - It reads the run that owned the tap, and the LED calls, from traces through `readTrace`.
    - Drop `tapSource`, `actsAtOnce`, `commitsEarly`, `expectedLed`, `ledNumbers`, `sceneState`, `paddleLocal`, `LED_BUTTONS`, `ON_STATES`. Keep `sceneOf` and `roomOf` only where `buttonConfig` still needs them.
    - `checkKnownTaps` and `checkMultiTap` take the owning run instead of working it out.
    - Update `tools/c4-scenarios.d.mts`.
-9. **Capture the trace fixtures** from the test HA, add the `readTrace` tests, and prune `test/c4-scenarios.test.ts`. Verify the runner by hand against real lights. *(M; not yet built)*
+9. **Capture the trace fixtures** from the test HA, add the `readTrace` tests, and prune `test/c4-scenarios.test.ts`. Verify the runner by hand against real lights. *(M; built, #25, except the by-hand run)*
 
 **Estimated scope:** about 1,000 lines added and about 700 removed. Two pieces of work:
 - steps 1-7, entirely offline (built);
-- steps 8-9, which need the test HA and real lights (not yet built).
+- steps 8-9, which needed the test HA (built), and a by-hand run against real lights (still to do).

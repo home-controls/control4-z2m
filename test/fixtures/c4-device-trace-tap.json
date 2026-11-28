@@ -1,0 +1,1286 @@
+{
+  "last_step": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/else/0",
+  "run_id": "557462034ab2f6f66d3d4b89eeb4fa7a",
+  "state": "stopped",
+  "script_execution": "finished",
+  "timestamp": {
+    "start": "2026-11-25T04:00:03.844398+00:00",
+    "finish": "2026-11-25T04:00:04.195064+00:00"
+  },
+  "domain": "automation",
+  "item_id": "c4_device_keypad",
+  "trigger": "state of event.keypad_control4_events",
+  "trace": {
+    "trigger/0": [
+      {
+        "path": "trigger/0",
+        "timestamp": "2026-11-25T04:00:03.845240+00:00",
+        "changed_variables": {
+          "trigger": {
+            "id": "event",
+            "idx": "0",
+            "alias": null,
+            "platform": "event.received",
+            "description": "state of event.keypad_control4_events",
+            "entity_id": "event.keypad_control4_events",
+            "from_state": {
+              "entity_id": "event.keypad_control4_events",
+              "state": "2026-11-25T04:00:03.837+00:00",
+              "attributes": {
+                "event_type": "remote_button_short_release",
+                "ieee": "0x000fff0000000001",
+                "device": "Keypad",
+                "model": "C4-KC120277",
+                "action": "button_3_release",
+                "button": "button_3",
+                "gesture": "release",
+                "command": "remote_button_short_release",
+                "button_id": 4,
+                "base": "zigbee2mqtt",
+                "device_class": "button"
+              }
+            },
+            "to_state": {
+              "entity_id": "event.keypad_control4_events",
+              "state": "2026-11-25T04:00:03.844+00:00",
+              "attributes": {
+                "event_type": "remote_button_tap_known",
+                "ieee": "0x000fff0000000001",
+                "device": "Keypad",
+                "model": "C4-KC120277",
+                "action": "button_3_tap_known",
+                "button": "button_3",
+                "gesture": "tap_known",
+                "command": "remote_button_tap_known",
+                "button_id": 4,
+                "tap_index": 1,
+                "base": "zigbee2mqtt",
+                "device_class": "button"
+              }
+            },
+            "for": null
+          },
+          "dev": "0123456789abcdef0123456789abcdef",
+          "ieee": "0x000fff0000000001",
+          "set_topic": "control4/0x000fff0000000001/set",
+          "model": "C4-KC120277",
+          "hold_on_event": false,
+          "is_paddle": false,
+          "led_buttons": 6,
+          "paints_leds": true,
+          "response": "auto",
+          "hold_step": 6,
+          "hold_tick": 0.4,
+          "tap_step": 10,
+          "dim_floor": 10,
+          "room_extra": [],
+          "follow": false,
+          "led_delay": 0.3,
+          "dim_when": "",
+          "dim_level": 10,
+          "dim_level_from": "",
+          "dim_day": 0,
+          "buttons": [
+            {
+              "targets": [
+                "light.one"
+              ],
+              "mode": "toggle",
+              "hold": true,
+              "action": [],
+              "double": [
+                {
+                  "action": "light.turn_on",
+                  "target": {
+                    "entity_id": [
+                      "light.one",
+                      "light.two"
+                    ]
+                  },
+                  "data": {
+                    "brightness_pct": 100,
+                    "transition": 2
+                  }
+                }
+              ],
+              "triple": [],
+              "quad": [],
+              "led": [
+                "select.keypad_led_1_idle_color",
+                "select.keypad_led_1_pressed_color"
+              ],
+              "watch": [],
+              "on": "Cyan",
+              "off": "Magenta",
+              "night_on": "Red",
+              "night_off": "Red"
+            },
+            {
+              "targets": [
+                "light.two"
+              ],
+              "mode": "toggle",
+              "hold": true,
+              "action": [],
+              "double": [],
+              "triple": [],
+              "quad": [],
+              "led": [
+                "select.keypad_led_3_idle_color",
+                "select.keypad_led_3_pressed_color"
+              ],
+              "watch": [],
+              "on": "Cyan",
+              "off": "Magenta",
+              "night_on": "Off",
+              "night_off": "Off"
+            },
+            {
+              "targets": [],
+              "mode": "room_off",
+              "hold": true,
+              "action": [],
+              "double": [],
+              "triple": [
+                {
+                  "alias": "Triple tap: Night Mode",
+                  "action": "script.night_mode",
+                  "data": {
+                    "keypad": "0123456789abcdef0123456789abcdef",
+                    "lights": []
+                  }
+                }
+              ],
+              "quad": [],
+              "led": [
+                "select.keypad_led_5_idle_color",
+                "select.keypad_led_5_pressed_color"
+              ],
+              "watch": [],
+              "on": "Cyan",
+              "off": "Magenta",
+              "night_on": "Off",
+              "night_off": "Off"
+            },
+            {
+              "targets": [],
+              "mode": "toggle",
+              "hold": true,
+              "action": [],
+              "double": [],
+              "triple": [],
+              "quad": [],
+              "led": [],
+              "watch": [],
+              "on": "Green",
+              "off": "Off",
+              "night_on": "(same as day)",
+              "night_off": "(same as day)"
+            },
+            {
+              "targets": [],
+              "mode": "toggle",
+              "hold": true,
+              "action": [],
+              "double": [],
+              "triple": [],
+              "quad": [],
+              "led": [],
+              "watch": [],
+              "on": "Green",
+              "off": "Off",
+              "night_on": "(same as day)",
+              "night_off": "(same as day)"
+            },
+            {
+              "targets": [],
+              "mode": "toggle",
+              "hold": true,
+              "action": [],
+              "double": [],
+              "triple": [],
+              "quad": [],
+              "led": [],
+              "watch": [],
+              "on": "Green",
+              "off": "Off",
+              "night_on": "(same as day)",
+              "night_off": "(same as day)"
+            }
+          ],
+          "room_all": [
+            "light.one",
+            "light.two"
+          ],
+          "scene_lights": [],
+          "led_triggers": [
+            {
+              "id": "led",
+              "entities": [
+                "light.one"
+              ]
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": [
+                "light.two"
+              ]
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": [
+                "light.one"
+              ]
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": [
+                "light.two"
+              ]
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led_bri",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            },
+            {
+              "id": "led",
+              "entities": []
+            }
+          ],
+          "led_first": true,
+          "evt": {
+            "event_type": "remote_button_tap_known",
+            "ieee": "0x000fff0000000001",
+            "device": "Keypad",
+            "model": "C4-KC120277",
+            "action": "button_3_tap_known",
+            "button": "button_3",
+            "gesture": "tap_known",
+            "command": "remote_button_tap_known",
+            "button_id": 4,
+            "tap_index": 1,
+            "base": "zigbee2mqtt",
+            "device_class": "button"
+          },
+          "mine": true,
+          "tid": "known",
+          "bi": 2,
+          "btn": {
+            "targets": [],
+            "mode": "room_off",
+            "hold": true,
+            "action": [],
+            "double": [],
+            "triple": [
+              {
+                "alias": "Triple tap: Night Mode",
+                "action": "script.night_mode",
+                "data": {
+                  "keypad": "0123456789abcdef0123456789abcdef",
+                  "lights": []
+                }
+              }
+            ],
+            "quad": [],
+            "led": [
+              "select.keypad_led_5_idle_color",
+              "select.keypad_led_5_pressed_color"
+            ],
+            "watch": [],
+            "on": "Cyan",
+            "off": "Magenta",
+            "night_on": "Off",
+            "night_off": "Off"
+          },
+          "drives_load": false,
+          "multi": true,
+          "acts_at_once": false,
+          "commits_early": true,
+          "is_tap": false,
+          "gesture": "",
+          "tgt": [
+            "light.one",
+            "light.two"
+          ],
+          "tgt_lights": [
+            "light.one",
+            "light.two"
+          ],
+          "hold_candidate": false,
+          "early": true
+        }
+      }
+    ],
+    "condition/0": [
+      {
+        "path": "condition/0",
+        "timestamp": "2026-11-25T04:00:03.845252+00:00",
+        "result": {
+          "result": true,
+          "entities": []
+        }
+      }
+    ],
+    "action/0": [
+      {
+        "path": "action/0",
+        "timestamp": "2026-11-25T04:00:03.845344+00:00",
+        "changed_variables": {
+          "toward_on": false,
+          "wait": {
+            "remaining": 0,
+            "completed": false,
+            "trigger": null
+          },
+          "first_count": "remote_button_fast_short_press",
+          "any_on": true,
+          "lit": [
+            "light.one"
+          ],
+          "cur": 255,
+          "step": 26,
+          "want": "off",
+          "on_pct": 0
+        },
+        "result": {
+          "choice": 0
+        }
+      }
+    ],
+    "action/0/choose/0": [
+      {
+        "path": "action/0/choose/0",
+        "timestamp": "2026-11-25T04:00:03.845377+00:00",
+        "result": {
+          "result": true
+        }
+      }
+    ],
+    "action/0/choose/0/conditions/0": [
+      {
+        "path": "action/0/choose/0/conditions/0",
+        "timestamp": "2026-11-25T04:00:03.845401+00:00",
+        "result": {
+          "result": true,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0": [
+      {
+        "path": "action/0/choose/0/sequence/0",
+        "timestamp": "2026-11-25T04:00:03.845489+00:00",
+        "changed_variables": {
+          "toward_on": false,
+          "wait": {
+            "remaining": 0,
+            "completed": false,
+            "trigger": null
+          },
+          "first_count": "remote_button_fast_short_press"
+        },
+        "result": {
+          "choice": "then"
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/if": [
+      {
+        "path": "action/0/choose/0/sequence/0/if",
+        "timestamp": "2026-11-25T04:00:03.845514+00:00",
+        "result": {
+          "result": true
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/if/condition/0": [
+      {
+        "path": "action/0/choose/0/sequence/0/if/condition/0",
+        "timestamp": "2026-11-25T04:00:03.845534+00:00",
+        "result": {
+          "result": true,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/0": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/0",
+        "timestamp": "2026-11-25T04:00:03.845611+00:00",
+        "changed_variables": {
+          "toward_on": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1",
+        "timestamp": "2026-11-25T04:00:03.845684+00:00",
+        "changed_variables": {
+          "wait": {
+            "remaining": 0,
+            "completed": false,
+            "trigger": null
+          },
+          "first_count": "remote_button_fast_short_press"
+        },
+        "result": {
+          "choice": "then"
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/if": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/if",
+        "timestamp": "2026-11-25T04:00:03.845704+00:00",
+        "result": {
+          "result": true
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/if/condition/0": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/if/condition/0",
+        "timestamp": "2026-11-25T04:00:03.845724+00:00",
+        "result": {
+          "result": true,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/0": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/0",
+        "timestamp": "2026-11-25T04:00:03.845810+00:00",
+        "changed_variables": {
+          "wait": {
+            "remaining": 5.658161227998789,
+            "completed": true,
+            "trigger": {
+              "id": "0",
+              "idx": "0",
+              "alias": null,
+              "platform": "mqtt",
+              "topic": "control4/0x000fff0000000001/event",
+              "payload": "{\"ieee\":\"0x000fff0000000001\",\"device\":\"Keypad\",\"model\":\"C4-KC120277\",\"action\":\"button_3_fast_single\",\"button\":\"button_3\",\"gesture\":\"fast_single\",\"command\":\"remote_button_fast_short_press\",\"button_id\":4,\"known_taps\":true,\"base\":\"zigbee2mqtt\",\"event_type\":\"remote_button_fast_short_press\"}",
+              "qos": 0,
+              "description": "mqtt topic control4/0x000fff0000000001/event",
+              "payload_json": {
+                "ieee": "0x000fff0000000001",
+                "device": "Keypad",
+                "model": "C4-KC120277",
+                "action": "button_3_fast_single",
+                "button": "button_3",
+                "gesture": "fast_single",
+                "command": "remote_button_fast_short_press",
+                "button_id": 4,
+                "known_taps": true,
+                "base": "zigbee2mqtt",
+                "event_type": "remote_button_fast_short_press"
+              }
+            }
+          }
+        },
+        "result": {
+          "wait": {
+            "remaining": 5.658161227998789,
+            "completed": true,
+            "trigger": {
+              "id": "0",
+              "idx": "0",
+              "alias": null,
+              "platform": "mqtt",
+              "topic": "control4/0x000fff0000000001/event",
+              "payload": "{\"ieee\":\"0x000fff0000000001\",\"device\":\"Keypad\",\"model\":\"C4-KC120277\",\"action\":\"button_3_fast_single\",\"button\":\"button_3\",\"gesture\":\"fast_single\",\"command\":\"remote_button_fast_short_press\",\"button_id\":4,\"known_taps\":true,\"base\":\"zigbee2mqtt\",\"event_type\":\"remote_button_fast_short_press\"}",
+              "qos": 0,
+              "description": "mqtt topic control4/0x000fff0000000001/event",
+              "payload_json": {
+                "ieee": "0x000fff0000000001",
+                "device": "Keypad",
+                "model": "C4-KC120277",
+                "action": "button_3_fast_single",
+                "button": "button_3",
+                "gesture": "fast_single",
+                "command": "remote_button_fast_short_press",
+                "button_id": 4,
+                "known_taps": true,
+                "base": "zigbee2mqtt",
+                "event_type": "remote_button_fast_short_press"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/1": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/1",
+        "timestamp": "2026-11-25T04:00:04.189827+00:00",
+        "changed_variables": {
+          "first_count": "remote_button_fast_short_press"
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/2": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/2",
+        "timestamp": "2026-11-25T04:00:04.189967+00:00",
+        "changed_variables": {
+          "wait": {
+            "remaining": 0,
+            "completed": false,
+            "trigger": null
+          }
+        },
+        "result": {
+          "wait": {
+            "remaining": 0,
+            "completed": false,
+            "trigger": null
+          }
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/3": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/3",
+        "timestamp": "2026-11-25T04:00:04.190146+00:00"
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/3/if": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/3/if",
+        "timestamp": "2026-11-25T04:00:04.190179+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/0/then/1/then/3/if/condition/0": [
+      {
+        "path": "action/0/choose/0/sequence/0/then/1/then/3/if/condition/0",
+        "timestamp": "2026-11-25T04:00:04.190206+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1": [
+      {
+        "path": "action/0/choose/0/sequence/1",
+        "timestamp": "2026-11-25T04:00:04.190732+00:00",
+        "changed_variables": {
+          "any_on": true,
+          "lit": [
+            "light.one"
+          ],
+          "cur": 255,
+          "step": 26,
+          "want": "off",
+          "on_pct": 0
+        },
+        "result": {
+          "choice": 25
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/0",
+        "timestamp": "2026-11-25T04:00:04.190772+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/0/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/0/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.190809+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/1": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/1",
+        "timestamp": "2026-11-25T04:00:04.190913+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/1/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/1/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.190940+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/2": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/2",
+        "timestamp": "2026-11-25T04:00:04.191018+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/2/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/2/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191041+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/3": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/3",
+        "timestamp": "2026-11-25T04:00:04.191115+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/3/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/3/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191138+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/4": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/4",
+        "timestamp": "2026-11-25T04:00:04.191206+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/4/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/4/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191228+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/5": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/5",
+        "timestamp": "2026-11-25T04:00:04.191296+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/5/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/5/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191319+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/6": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/6",
+        "timestamp": "2026-11-25T04:00:04.191384+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/6/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/6/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191406+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/7": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/7",
+        "timestamp": "2026-11-25T04:00:04.191470+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/7/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/7/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191491+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/8": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/8",
+        "timestamp": "2026-11-25T04:00:04.191552+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/8/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/8/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191573+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/9": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/9",
+        "timestamp": "2026-11-25T04:00:04.191632+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/9/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/9/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191652+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/10": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/10",
+        "timestamp": "2026-11-25T04:00:04.191710+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/10/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/10/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191730+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/11": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/11",
+        "timestamp": "2026-11-25T04:00:04.191790+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/11/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/11/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191811+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/12": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/12",
+        "timestamp": "2026-11-25T04:00:04.191869+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/12/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/12/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191889+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/13": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/13",
+        "timestamp": "2026-11-25T04:00:04.191948+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/13/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/13/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.191969+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/14": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/14",
+        "timestamp": "2026-11-25T04:00:04.192026+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/14/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/14/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192046+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/15": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/15",
+        "timestamp": "2026-11-25T04:00:04.192102+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/15/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/15/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192121+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/16": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/16",
+        "timestamp": "2026-11-25T04:00:04.192177+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/16/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/16/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192197+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/17": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/17",
+        "timestamp": "2026-11-25T04:00:04.192255+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/17/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/17/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192276+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/18": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/18",
+        "timestamp": "2026-11-25T04:00:04.192333+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/18/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/18/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192353+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/19": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/19",
+        "timestamp": "2026-11-25T04:00:04.192408+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/19/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/19/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192428+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/20": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/20",
+        "timestamp": "2026-11-25T04:00:04.192483+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/20/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/20/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192502+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/21": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/21",
+        "timestamp": "2026-11-25T04:00:04.192557+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/21/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/21/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192577+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/22": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/22",
+        "timestamp": "2026-11-25T04:00:04.192632+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/22/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/22/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192650+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/23": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/23",
+        "timestamp": "2026-11-25T04:00:04.192701+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/23/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/23/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192719+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/24": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/24",
+        "timestamp": "2026-11-25T04:00:04.192770+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/24/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/24/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192792+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25",
+        "timestamp": "2026-11-25T04:00:04.192845+00:00",
+        "result": {
+          "result": true
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.192864+00:00",
+        "result": {
+          "result": true,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/0",
+        "timestamp": "2026-11-25T04:00:04.192962+00:00",
+        "changed_variables": {
+          "any_on": true,
+          "lit": [
+            "light.one"
+          ],
+          "cur": 255,
+          "step": 26
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1",
+        "timestamp": "2026-11-25T04:00:04.193204+00:00",
+        "changed_variables": {
+          "want": "off",
+          "on_pct": 0
+        },
+        "result": {
+          "choice": "default"
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/0",
+        "timestamp": "2026-11-25T04:00:04.193230+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/0/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/0/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.193253+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/1": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/1",
+        "timestamp": "2026-11-25T04:00:04.193322+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/1/conditions/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/choose/1/conditions/0",
+        "timestamp": "2026-11-25T04:00:04.193343+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/default/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/0",
+        "timestamp": "2026-11-25T04:00:04.193440+00:00",
+        "changed_variables": {
+          "want": "off",
+          "on_pct": 0
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1",
+        "timestamp": "2026-11-25T04:00:04.193536+00:00",
+        "result": {
+          "choice": "else"
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/if": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/if",
+        "timestamp": "2026-11-25T04:00:04.193558+00:00",
+        "result": {
+          "result": false
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/if/condition/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/if/condition/0",
+        "timestamp": "2026-11-25T04:00:04.193579+00:00",
+        "result": {
+          "result": false,
+          "entities": []
+        }
+      }
+    ],
+    "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/else/0": [
+      {
+        "path": "action/0/choose/0/sequence/1/choose/25/sequence/1/default/1/else/0",
+        "timestamp": "2026-11-25T04:00:04.193660+00:00",
+        "result": {
+          "params": {
+            "domain": "homeassistant",
+            "service": "turn_off",
+            "service_data": {},
+            "target": {
+              "entity_id": [
+                "light.one",
+                "light.two"
+              ]
+            }
+          },
+          "running_script": false
+        }
+      }
+    ]
+  }
+}

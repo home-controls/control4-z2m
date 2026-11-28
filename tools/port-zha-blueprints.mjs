@@ -15,10 +15,15 @@
 // control4/... is the namespace every Zigbee2MQTT instance with the extension
 // serves, so a blueprint reaches a device whichever coordinator it is on.
 //
-//   node tools/port-zha-blueprints.mjs <zha-blueprints-dir> [out-dir]
+//   node tools/port-zha-blueprints.mjs [zha-blueprints-dir] [out-dir]
+//
+// The ZHA originals are kept in tools/zha-blueprints (the default source); out-dir defaults to blueprints/.
 import fs from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+
+/** Where the ZHA originals are kept: control4-zha-quirks' blueprints, as tools/zha-blueprints/README.md says. */
+export const ZHA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "zha-blueprints");
 
 export const FILES = [
     "c4_sr250_room_display.yaml",
@@ -305,11 +310,8 @@ export function port(text, file) {
 }
 
 function main() {
-    const [src, outArg] = process.argv.slice(2);
-    if (!src) {
-        console.error("usage: node tools/port-zha-blueprints.mjs <zha-blueprints-dir> [out-dir]");
-        process.exit(2);
-    }
+    const [srcArg, outArg] = process.argv.slice(2);
+    const src = srcArg ?? ZHA_DIR;
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const outDir = outArg ?? path.join(root, "blueprints");
     fs.mkdirSync(outDir, {recursive: true});

@@ -37,6 +37,43 @@ export function readRun(variables, passes) {
     return {...run, does: says[0]};
 }
 
+/** A trace's step entries in the order Home Assistant ran them. */
+function stepEntries(steps) {
+    return Object.values(steps)
+        .flat()
+        .filter((e) => e && typeof e === "object")
+        .sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? "")));
+}
+
+/**
+ * One c4_device run as Home Assistant traced it: a `trace/get` result (or the
+ * extended_dict of a saved trace), read into the same shape as the local
+ * render's runs. The top-level variables come from the trigger step, whether
+ * it passed from `condition/0`, and the LED calls and `hears` from whichever
+ * action step set them, found by content rather than by path, so a change to
+ * the blueprint's action layout doesn't break it.
+ */
+export function readTrace(trace) {
+    const steps = trace && typeof trace.trace === "object" && trace.trace ? trace.trace : {};
+    const triggerKey = Object.keys(steps).find((k) => /^trigger(\/\d+)?$/.test(k));
+    if (!triggerKey) throw new Error("c4_device trace: it has no trigger step, so no top-level variables");
+    const {this: _this, trigger: _trigger, context: _context, ...variables} = steps[triggerKey][0]?.changed_variables ?? {};
+    const passes = steps["condition/0"]?.[0]?.result?.result === true;
+    const entries = stepEntries(steps);
+    const set = (name) => entries.find((e) => e.changed_variables && Object.hasOwn(e.changed_variables, name))?.changed_variables[name];
+    const calls = set("calls");
+    const hears = set("hears");
+    const stepError = entries.find((e) => typeof e.error === "string")?.error;
+    const error = typeof trace.error === "string" ? trace.error : stepError;
+    return {
+        ...readRun(variables, passes),
+        leds: Array.isArray(calls) ? calls : [],
+        ...(typeof hears === "boolean" ? {hears} : {}),
+        ...(error ? {error} : {}),
+        running: trace.state === "running",
+    };
+}
+
 /** The look one LED gets from a run's led_status calls, by its name ("button_3") or number ("5"). */
 export function ledLook(calls, name) {
     const call = calls.find((c) => String(c.buttons).split(",").includes(String(name)));
