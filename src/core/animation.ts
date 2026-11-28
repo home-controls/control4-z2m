@@ -867,6 +867,25 @@ export class Animator {
         await this.applyStatus(true);
     }
 
+    /**
+     * kp: the keypad has just changed a button's LED by itself - its own press feedback as a
+     * tap or a hold ends. Another site, 2026-11-14: the pressed button went dark ~1.3 s after
+     * the press (when the keypad sends its `c4.kp.cc`), after the status paint had already
+     * landed, and lastSent kept that LED from ever being painted again; a forced refresh lit
+     * it at once. So paint that one button's status colour again, changed or not. A button
+     * no status has named since the start (it shows the keypad's own colours), or one an
+     * animation or a status effect is drawing, is left alone.
+     */
+    repaintPressed(btn: number): void {
+        if (this.protocol !== "kp" || !this.buttons.includes(btn) || !this.painted.has(btn)) return;
+        if (this.animating && this.overlayButtons.includes(btn)) return;
+        if (this.statusEffect?.buttons.includes(btn)) return;
+        const colour = this.statusFrame().get(btn);
+        if (colour === undefined) return;
+        this.lastSent.delete(btn);
+        this.emit(new Map([[btn, colour]]), true, this.pressed, true);
+    }
+
     // -- overlays ---------------------------------------------------------------
 
     async play(input: EffectSpec): Promise<boolean> {

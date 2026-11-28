@@ -65,6 +65,11 @@ export class AnimationKeys {
         return undefined;
     }
 
+    /** The device changed this button's LED by itself (a keypad's press feedback): paint its status back. */
+    repaintPressed(btn: number): void {
+        this.animator.repaintPressed(btn);
+    }
+
     initialState(): Payload {
         return {led_notification: this.animator.animating};
     }
