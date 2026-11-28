@@ -400,6 +400,18 @@ V × A = VA and W / VA = PF on every reading, so the layout holds on fw 5.1.1. T
 both come to 4.4-4.6 kJ. That is ~1.27 Wh per tick, not 1 Wh. Field 2 is a whole number of watts, so a day's
 reading against the counter would pin the factor down better. The fixture draws 35-36 W at full.
 
+**Measured over two weeks (2026-11-13 to 11-27, #13): 1.25 Wh per tick.** Home Assistant's daily statistics for
+the same APD120 give field 2 integrated (the daily mean × 24 h) against the energy total's rise. Every day with
+real use comes to 1.248-1.256 Wh per tick, and the two weeks together to 1.250, while the light ran at different
+levels from day to day. That steady ratio is another sign the counter follows energy, not time on. Days of a few
+watt-hours scatter more (1.22-1.28), from rounding. The unit sat at its default `c4.dmx.pmti` of `0064 0064`
+(100) throughout, which the extension never changes. Whether a Control4 controller's `0002` changes the scale is
+untested.
+
+`ENERGY_WH_PER_COUNT` is still 1.27, so the energy entity reads about 1.6 % high. Lowering it would step every
+published total down once, which Home Assistant's Energy dashboard can take for a meter reset: a change needs the
+published total kept continuous.
+
 There is no temperature in `pwr` at all.
 
 ### Last reset reason: `c4.sy.ri`
@@ -587,7 +599,7 @@ the keypad's own frames (by MAC source); the keypad talks straight to the coordi
 
 Still open. Each needs a write (restored after), the light switched, or someone at the device:
 
-- **The energy counter's exact scale**: field 5 against field 2 integrated over a day (now ~1.27 Wh per tick).
+- ~~**The energy counter's exact scale**~~: 1.25 Wh per tick at the default `pmti`, measured over two weeks (above).
 - **The rest of the `blc` table**: what `ch 00 i 01` accepts, what i 00 / i 02 / i 04 do, and ch 01 (status LED
   brightness?), in a dark and a lit room.
 - **Aux keypad (C4-KA) presses**: what wire id they report, if any.
