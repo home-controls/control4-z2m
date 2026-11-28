@@ -316,6 +316,7 @@ written down outside this README:
 | `docs/plans/device-completion.md` | The plan that makes every model complete, phase by phase |
 | `docs/plans/frame-type-survey.md` | The plan for finding the commands the devices take that no Get shows |
 | `docs/plans/c4-device-rules.md` | The plan behind testing c4_device's rules where they live (Development, below) |
+| `docs/plans/ha-updates.md` | The plan for installing and updating control4-z2m from inside Home Assistant: one update entity, files sent over MQTT, local edits left alone |
 | `docs/TESTING.md` | Testing a device: what to try on each model and what to report |
 | `docs/adr/` | Decisions that would surprise a reader, such as ADR 0006, the automatic remote reboot |
 | `GLOSSARY.md` | The words used here: button wire, button behaviour, LED slot, LED mode, unreachable, remote reboot, … |
