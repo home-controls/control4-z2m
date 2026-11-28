@@ -213,6 +213,21 @@ describe("handoff", () => {
         expect(a.evicted).toEqual([KP]);
     });
 
+    // A tie goes to this instance. The extension test's offer once tied with the
+    // keypad's lastSeen to the millisecond and so was never adopted (#21, #40).
+    it("keeps its own values when the offer had the device at the same moment it did", async () => {
+        const at = Date.now() - 60_000;
+        aHadIt(at);
+        b.store.set(KP, "button_1_idle_color", "green");
+        b.records.set(KP, at);
+        b.handoff.seed([KP]);
+        b.handoff.joined(KP);
+        await settle();
+
+        expect(b.store.get(KP, "button_1_idle_color")).toBe("green");
+        expect(b.adopted).toEqual([]);
+    });
+
     it("starts the device as new when no instance answers (the old one is down)", async () => {
         b.join(KP);
         expect(b.handoff.pending(KP)).toBe(true);

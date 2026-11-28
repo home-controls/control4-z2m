@@ -456,13 +456,16 @@ describe("extension end to end", () => {
                 from: "zigbee2mqtt_old",
                 to: "zigbee2mqtt",
                 id,
-                had: Date.now(),
+                // Strictly after this instance last saw it (its lastSeen, seeded at start):
+                // a tie goes to this instance, which then keeps its own values (#21, #40).
+                had: h.devices[1].lastSeen + 1_000,
                 holds: true,
                 model: "KPZ-3B1",
                 settings: {button_1_idle_color: "blue", led_defaults: "existing"},
                 profile: {name: "Keypad A", options: {tap_window: 0.8}},
             });
-            await tick(150);
+            // The ack goes out once the offers are decided, after HANDOFF_TIMING.offers.
+            await vi.waitFor(() => expect(sent(KP, "ack")).toHaveLength(1), {timeout: 2_000});
 
             expect(h.devices[1].modelID).toBe("KPZ-3B1");
             expect(store().all(KP)).toEqual({button_1_idle_color: "blue", led_defaults: "existing"});
